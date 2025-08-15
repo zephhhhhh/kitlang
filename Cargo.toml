@@ -1,0 +1,12 @@
+[package]
+name = "kitlang"
+version = "0.1.0"
+edition = "2024"
+authors = ["zephhhhhh"]
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+unicode-xid = "0.2.6"
+thiserror = "2.0.12"
