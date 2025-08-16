@@ -1,0 +1,14 @@
+use std::println;
+
+pub fn function_definition(age: i32) -> bool {
+    let age_times_2 = age * 2;
+    if age_times_2 == 42 {
+        true
+    } else {
+        false
+    }
+}
+
+pub struct SomeData {
+    pub element: ElementTy,
+}

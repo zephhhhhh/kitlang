@@ -5,7 +5,7 @@ macro_rules! define_punctuation {
             ($punct_name: ident, $punct_char: literal)
         ),*
     ) => {
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
         pub enum Punctuation {
             $($punct_name),*
         }
@@ -168,6 +168,30 @@ pub enum TokenKind {
     Unknown,
 
     Eof,
+}
+
+impl From<Keyword> for TokenKind {
+    fn from(value: Keyword) -> Self {
+        Self::Keyword(value)
+    }
+}
+
+impl From<&Keyword> for TokenKind {
+    fn from(value: &Keyword) -> Self {
+        Self::Keyword(value.clone())
+    }
+}
+
+impl From<Punctuation> for TokenKind {
+    fn from(value: Punctuation) -> Self {
+        Self::Punctuation(value)
+    }
+}
+
+impl From<&Punctuation> for TokenKind {
+    fn from(value: &Punctuation) -> Self {
+        Self::Punctuation(*value)
+    }
 }
 
 impl TokenKind {
