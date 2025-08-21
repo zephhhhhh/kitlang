@@ -1,0 +1,505 @@
+use crate::{
+    ast::{ASTNodeID, ASTRoot},
+    lexer::tokenise_stripped,
+    parser::errors::{ParseError, ParseErrorKind},
+    token::{Keyword, Punctuation, Token, TokenKind},
+};
+
+mod errors;
+mod expr;
+mod item;
+mod statement;
+
+use errors::PResult;
+
+pub type TokenList = Vec<Token>;
+
+/// A cursor into a list of tokens, provides functionality for peeking as well as consuming tokens
+/// in a linear order.
+#[derive(Debug)]
+pub struct TokenCursor<'a> {
+    pub tokens: &'a TokenList,
+    pub position: u32,
+}
+
+impl<'a> TokenCursor<'a> {
+    #[inline]
+    #[must_use]
+    pub fn new(tokens: &'a TokenList) -> TokenCursor<'a> {
+        Self {
+            tokens,
+            position: 0,
+        }
+    }
+}
+
+// Accessors..
+impl TokenCursor<'_> {
+    /// Returns the total number tokens in the underlying [`TokenList`].
+    #[inline]
+    #[must_use]
+    pub fn len(&self) -> u32 {
+        self.tokens.len() as u32
+    }
+
+    /// Returns if the total number of tokens in the underlying [`TokenList`] is `zero`.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
+    }
+
+    /// Returns the current position of the [`TokenCursor`] as an index.
+    #[inline]
+    #[must_use]
+    pub fn position(&self) -> u32 {
+        self.position
+    }
+
+    /// Returns the total number of tokens remaining until the end of the [`TokenList`].
+    #[inline]
+    #[must_use]
+    pub fn remaining(&self) -> u32 {
+        self.len() - self.position
+    }
+
+    /// Returns true if the current cursor position is at the end of the [`TokenList`].
+    #[inline]
+    #[must_use]
+    pub fn is_end(&self) -> bool {
+        self.position >= self.len()
+    }
+
+    /// Returns a reference to a [`Token`] at a specified absolute index into the [`TokenList`].
+    #[inline]
+    #[must_use]
+    pub fn get(&self, index: u32) -> Option<&Token> {
+        self.tokens.get(index as usize)
+    }
+
+    /// Returns a range that represents the end of the file.
+    #[inline]
+    #[must_use]
+    pub fn eof_span(&self) -> ::std::ops::Range<u32> {
+        self.len()..self.len()
+    }
+
+    /// Returns a range that represents the current token index.
+    #[inline]
+    #[must_use]
+    pub fn pos_span(&self) -> ::std::ops::Range<u32> {
+        self.position()..self.position()
+    }
+}
+
+impl TokenCursor<'_> {
+    /// Advance the token cursor by one position
+    /// # Returns
+    /// `true` if the cursor could advance, `false` otherwise.
+    #[inline]
+    pub fn advance(&mut self) -> bool {
+        if self.position < self.len() {
+            self.position = self.position.saturating_add(1);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Advance the token cursor by `count` positions.
+    /// # Returns
+    /// The number of tokens the cursor was advanced by, may be less if reaching the end.
+    #[inline]
+    pub fn advance_by(&mut self, count: u32) -> u32 {
+        let adjusted = count.min(self.remaining());
+        self.position = self.position.saturating_add(adjusted);
+        adjusted
+    }
+
+    /// Get the current token and advance the cursor by one position.
+    #[inline]
+    pub fn consume(&mut self) -> Option<&Token> {
+        if self.position >= self.len() {
+            None
+        } else {
+            let position = self.position;
+            self.advance();
+            self.get(position)
+        }
+    }
+
+    /// Peek at the current token _without_ advancing the cursor position.
+    #[inline]
+    pub fn peek(&self) -> Option<&Token> {
+        self.get(self.position)
+    }
+
+    /// Peek `ahead` number of tokens ahead of the current cursor position, _without_ advancing the
+    /// cursor position.
+    #[inline]
+    pub fn peek_at(&self, ahead: u32) -> Option<&Token> {
+        self.get(self.position.saturating_add(ahead))
+    }
+
+    /// Peek at the token ahead of the current token _without_ advancing the cursor position.
+    #[inline]
+    pub fn peek_second(&self) -> Option<&Token> {
+        self.peek_at(1)
+    }
+
+    /// Peek at the token two ahead of the current token _without_ advancing the cursor position.
+    #[inline]
+    pub fn peek_third(&self) -> Option<&Token> {
+        self.peek_at(2)
+    }
+}
+
+/// A sequence of [`Token`]'s
+#[derive(Debug)]
+pub struct TokenStream(pub Vec<Token>);
+
+/// Context/Information about a parsing session.
+/// Contains things such as Diagnostic settings, warning settings, etc..
+#[derive(Debug)]
+pub struct ParserContext {}
+
+#[derive(Debug)]
+pub(crate) struct Parser<'a, 'b> {
+    context: &'a ParserContext,
+
+    cursor: TokenCursor<'b>,
+}
+
+impl<'a, 'b> Parser<'a, 'b> {
+    #[inline]
+    #[must_use]
+    pub fn from_cursor(
+        token_cursor: TokenCursor<'b>,
+        context: &'a ParserContext,
+    ) -> Parser<'a, 'b> {
+        Self {
+            context,
+            cursor: token_cursor,
+        }
+    }
+}
+
+impl Parser<'_, '_> {
+    pub fn parse_full(&mut self) -> PResult<ASTRoot> {
+        let mut root_ast = ASTRoot::default();
+
+        while !self.cursor.is_end() {
+            let Some((_offset, token)) = self.find_next_significant_token()? else {
+                break;
+            };
+
+            if matches!(token.kind, TokenKind::Eof) {
+                self.cursor.advance();
+            } else if token.kind.can_start_item() {
+                root_ast.push_item(self.parse_item()?);
+            } else {
+                return Err(ParseError::new(
+                    ParseErrorKind::ExpectedItem(token.kind.clone()),
+                    token,
+                ));
+            }
+        }
+
+        Ok(root_ast)
+    }
+}
+
+// Checking..
+impl Parser<'_, '_> {
+    /// Peek at the current token, return `true` if the [`TokenKind`] of the [`Token`] matches the
+    /// `expected_kind`
+    #[inline]
+    fn check_kind(&self, expected_kind: &TokenKind) -> bool {
+        if let Some(t) = self.cursor.peek() {
+            t.kind == *expected_kind
+        } else {
+            false
+        }
+    }
+
+    /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
+    /// matches the `expected_kind`
+    #[inline]
+    fn check_kind_advance(&mut self, expected_kind: &TokenKind) -> bool {
+        if self.check_kind(expected_kind) {
+            self.cursor.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Peek at the current token, return `true` if the [`TokenKind`] of the [`Token`] is a
+    /// [`Keyword`] and that keyword matches the `expected_keyword`.
+    #[inline]
+    fn check_keyword(&self, expected_keyword: Keyword) -> bool {
+        self.check_kind(&TokenKind::Keyword(expected_keyword))
+    }
+
+    /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
+    /// is a [`Keyword`] and that keyword matches the `expected_keyword`
+    #[inline]
+    fn check_keyword_advance(&mut self, expected_keyword: Keyword) -> bool {
+        if self.check_keyword(expected_keyword) {
+            self.cursor.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Peek at the current token, return `true` and if the [`TokenKind`] of the [`Token`]
+    /// is [`Punctuation`] and that the punctuation matches the `expected_punctuation`
+    #[inline]
+    fn check_punctuation(&self, expected_punctuation: Punctuation) -> bool {
+        self.check_kind(&TokenKind::Punctuation(expected_punctuation))
+    }
+
+    /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
+    /// is [`Punctuation`] and that the punctuation matches the `expected_punctuation`
+    #[inline]
+    fn check_punctuation_advance(&mut self, expected_punctuation: Punctuation) -> bool {
+        if self.check_punctuation(expected_punctuation) {
+            self.cursor.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Peek at the current token, return `true` if the [`TokenKind`] of the [`Token`]
+    /// is an `Identifier`.
+    #[inline]
+    fn check_ident(&self) -> bool {
+        if let Some(t) = self.cursor.peek() {
+            matches!(t.kind, TokenKind::Ident(_))
+        } else {
+            false
+        }
+    }
+
+    /// Peek at the current token, check if the [`TokenKind`] of the [`Token`]
+    /// is an `Identifier`.
+    /// # Returns
+    /// `Some(ident_value)` and advance the cursor if it is an `Identifier`,
+    /// else `None`.
+    #[inline]
+    fn check_ident_advance(&mut self) -> Option<String> {
+        if self.check_ident() {
+            self.cursor.consume().and_then(|t| {
+                if let TokenKind::Ident(ident_value) = &t.kind {
+                    Some(ident_value.clone())
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn check_punctuation_sequence(&self, offset: u32, sequence: &[Punctuation]) -> bool {
+        for (si, punct) in sequence.iter().enumerate() {
+            let Some(token) = self.cursor.peek_at(offset + si as u32) else {
+                return false;
+            };
+
+            if token.kind != TokenKind::Punctuation(*punct) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    #[inline]
+    fn get_punctuation_sequence<const N: usize>(&self, offset: u32) -> Option<[Punctuation; N]> {
+        let mut result = [Punctuation::Tilde; N];
+        for (i, out_p) in result.iter_mut().enumerate() {
+            let token = self.cursor.peek_at(offset + i as u32)?;
+
+            if let TokenKind::Punctuation(p) = token.kind {
+                *out_p = p;
+            } else {
+                return None;
+            }
+        }
+        Some(result)
+    }
+}
+
+// Expect..
+impl Parser<'_, '_> {
+    #[inline]
+    fn expect_kind(&mut self, expected_kind: &TokenKind) -> PResult<()> {
+        if self.check_kind_advance(expected_kind) {
+            Ok(())
+        } else if let Some(token) = self.cursor.peek() {
+            Err(ParseError::new(
+                ParseErrorKind::ExpectedToken(expected_kind.clone(), token.kind.clone()),
+                token,
+            ))
+        } else {
+            Err(ParseError::new(
+                ParseErrorKind::ExpectedTokenFoundNone(expected_kind.clone()),
+                self.cursor.eof_span(),
+            ))
+        }
+    }
+
+    #[inline]
+    fn expect_keyword(&mut self, expected_keyword: Keyword) -> PResult<()> {
+        self.expect_kind(&TokenKind::Keyword(expected_keyword))
+    }
+
+    #[inline]
+    fn expect_punctuation(&mut self, expected_punctuation: Punctuation) -> PResult<()> {
+        self.expect_kind(&TokenKind::Punctuation(expected_punctuation))
+    }
+
+    #[inline]
+    fn expect_ident(&mut self) -> PResult<String> {
+        self.check_ident_advance().ok_or_else(|| {
+            if let Some(token) = self.cursor.peek() {
+                ParseError::new(
+                    ParseErrorKind::ExpectedIdentifier(token.kind.clone()),
+                    token,
+                )
+            } else {
+                ParseError::new(
+                    ParseErrorKind::ExpectedIdentifierFoundNone,
+                    self.cursor.eof_span(),
+                )
+            }
+        })
+    }
+}
+
+// Implementation details..
+impl Parser<'_, '_> {
+    /// Checks if the token is valid, returning an `Err` if it isn't.
+    /// # Returns
+    /// *   `Ok(())` if the token is valid,
+    /// *   `Err(ParseError)` if the token is invalid.
+    fn check_token_invalid(&self, token: &Token) -> PResult<()> {
+        match &token.kind {
+            TokenKind::InvalidIdent(ident) => Err(ParseError::new(
+                ParseErrorKind::InvalidIdentifier(ident.clone()),
+                token,
+            )),
+            TokenKind::InvalidLiteral(source) => Err(ParseError::new(
+                ParseErrorKind::InvalidLiteral(source.clone()),
+                token,
+            )),
+            TokenKind::Unknown => Err(ParseError::new(ParseErrorKind::UnknownToken, token)),
+            _ => Ok(()),
+        }
+    }
+
+    /// Find the next significant token, I.e. A token that isn't `mut` or something similar, and
+    /// that may identify which variant we should try to parse.
+    /// # Returns
+    /// *   `Ok(Some(offset_from_current_token, significant_token))` if there is no error found while
+    ///     checking tokens.
+    /// *   `Ok(None)` if no significant token was found, but there were no errors either.
+    /// *   `Err(ParseError)` if an invalid token was found while checking next tokens.
+    fn find_next_significant_token(&self) -> PResult<Option<(u32, &Token)>> {
+        self.find_next_significant_token_with_offset(0)
+    }
+
+    /// Find the next significant token, I.e. A token that isn't `mut` or something similar, and
+    /// that may identify which variant we should try to parse, starting from a beginning offset
+    /// from the current cursor position `offset`.
+    /// # Returns
+    /// *   `Ok(Some(offset_from_current_token, significant_token))` if there is no error found while
+    ///     checking tokens.
+    /// *   `Ok(None)` if no significant token was found, but there were no errors either.
+    /// *   `Err(ParseError)` if an invalid token was found while checking next tokens.
+    fn find_next_significant_token_with_offset(
+        &self,
+        offset: u32,
+    ) -> PResult<Option<(u32, &Token)>> {
+        let remaining = self.cursor.remaining().saturating_sub(offset);
+        for o in 0..remaining {
+            if let Some(t) = self.cursor.peek_at(offset + o) {
+                self.check_token_invalid(t)?;
+                if t.kind.is_significant() {
+                    return Ok(Some((offset + o, t)));
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(None)
+    }
+
+    /// Find the next significant token, I.e. A token that isn't `mut` or something similar, and
+    /// that may identify which variant we should try to parse, starting from a beginning offset
+    /// from the current cursor position `offset`.
+    /// # Returns
+    /// *   `Ok(offset_from_current_token, significant_token)` if there is no error found while
+    ///     checking tokens.
+    /// *   `Err(ParseError)` if an invalid token was found while checking next tokens, or if there
+    ///     were no more tokens available.
+    fn expect_next_significant_token_with_offset(&self, offset: u32) -> PResult<(u32, &Token)> {
+        self.find_next_significant_token_with_offset(offset)?
+            .ok_or_else(|| ParseError::new(ParseErrorKind::NoTokens, self.cursor.eof_span()))
+    }
+
+    /// Find the next significant token, I.e. A token that isn't `mut` or something similar, and
+    /// that may identify which variant we should try to parse.
+    /// # Returns
+    /// *   `Ok(offset_from_current_token, significant_token)` if there is no error found while
+    ///     checking tokens.
+    /// *   `Err(ParseError)` if an invalid token was found while checking next tokens, or if there
+    ///     were no more tokens available.
+    fn expect_next_significant_token(&self) -> PResult<(u32, &Token)> {
+        self.expect_next_significant_token_with_offset(0)
+    }
+}
+
+impl Parser<'_, '_> {
+    /// Returns an error representing that the token stream ended unexpectedly.
+    #[inline]
+    fn no_token_error(&self) -> ParseError {
+        ParseError::no_tokens(self.cursor.eof_span())
+    }
+
+    /// Returns the token at the offset, or [`ParseErrorKind::NoTokens`] otherwise.
+    #[inline]
+    fn peek_at(&self, offset: u32) -> PResult<&Token> {
+        self.cursor
+            .peek_at(offset)
+            .ok_or_else(|| self.no_token_error())
+    }
+}
+
+/// Parse AST from a [`Token`] iterator.
+/// # Note
+/// This function will collect the iterator into a [`Vec<Token>`].
+pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>) -> PResult<ASTRoot> {
+    // TODO: Probably try a method to not collect the iterator in the future, this is easier for
+    // now though.
+    let token_list = tokens.collect::<Vec<Token>>();
+    let context = ParserContext {};
+
+    let mut parser = Parser::from_cursor(TokenCursor::new(&token_list), &context);
+
+    parser.parse_full()
+}
+
+/// Parse AST from a source code string.
+/// # Note
+/// This function will collect the iterator into a [`Vec<Token>`].
+///
+/// This function also strips all comments and documentation from the code.
+pub fn parse_from_source(source: &str) -> PResult<ASTRoot> {
+    let token_iter = tokenise_stripped(source);
+    parse_from_tokens(token_iter)
+}

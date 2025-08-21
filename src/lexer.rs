@@ -6,7 +6,7 @@ use crate::token::{Keyword, LiteralKind, Punctuation, Token, TokenKind};
 #[derive(Debug)]
 pub struct CodeCursor<'a> {
     /// Length of the input string in characters.
-    length: usize,
+    length: CodeCursorIndex,
     /// Iterator over `code-points` of a source string.
     chars: Chars<'a>,
     /// Previous character to be read.
@@ -16,13 +16,16 @@ pub struct CodeCursor<'a> {
 /// End of file.
 pub(crate) const EOF_CHAR: char = '\0';
 
+/// Type used to describe an index of a [`CodeCursor`].
+pub type CodeCursorIndex = u32;
+
 impl<'a> CodeCursor<'a> {
     /// Construct a new code character iterator with a provided input string.
     #[inline]
     #[must_use]
     pub fn new(input: &'a str) -> CodeCursor<'a> {
         Self {
-            length: input.len(),
+            length: input.len() as CodeCursorIndex,
             chars: input.chars(),
             previous: EOF_CHAR,
         }
@@ -39,15 +42,15 @@ impl<'a> CodeCursor<'a> {
     /// The current position of the cursor in the string.
     #[inline]
     #[must_use]
-    pub fn position(&self) -> usize {
-        self.length - self.remaining()
+    pub fn position(&self) -> CodeCursorIndex {
+        self.length.saturating_sub(self.remaining())
     }
 
     /// The amount of characters remaining.
     #[inline]
     #[must_use]
-    pub fn remaining(&self) -> usize {
-        self.as_str().len()
+    pub fn remaining(&self) -> CodeCursorIndex {
+        self.as_str().len() as CodeCursorIndex
     }
 
     /// Get the last 'consumed' `symbol`.
@@ -99,12 +102,12 @@ impl<'a> CodeCursor<'a> {
     /// The character at the specified `offset` or `None` if the iterator could not be advanced to
     /// that point.
     #[inline]
-    pub fn peek_at(&self, offset: usize) -> Option<char> {
+    pub fn peek_at(&self, offset: CodeCursorIndex) -> Option<char> {
         if offset == 0 {
             self.chars.clone().next()
         } else {
             let mut iter = self.chars.clone();
-            iter.advance_by(offset).ok()?;
+            iter.advance_by(offset as usize).ok()?;
             iter.next()
         }
     }
@@ -136,8 +139,8 @@ impl<'a> CodeCursor<'a> {
     /// # Returns
     /// How many characters were consumed.
     #[inline]
-    pub fn consume_while(&mut self, mut predicate: impl FnMut(char) -> bool) -> usize {
-        let mut consumed: usize = 0;
+    pub fn consume_while(&mut self, mut predicate: impl FnMut(char) -> bool) -> CodeCursorIndex {
+        let mut consumed: CodeCursorIndex = 0;
         while let Some(c) = self.peek_opt() {
             if predicate(c) {
                 self.consume()
@@ -157,7 +160,7 @@ impl<'a> CodeCursor<'a> {
     /// The number of characters consumed before the sequence was found or `eof` was encountered.
     #[inline]
     #[must_use]
-    pub fn consume_until_str(&mut self, sequence: &str) -> Option<usize> {
+    pub fn consume_until_str(&mut self, sequence: &str) -> Option<CodeCursorIndex> {
         let mut consumed = 0;
         while !self.is_eof() {
             if self.compare_next(sequence) {
@@ -172,13 +175,13 @@ impl<'a> CodeCursor<'a> {
 
     #[inline]
     #[must_use]
-    pub fn consume_until_sequence(&mut self, sequence: &[char]) -> Option<usize> {
+    pub fn consume_until_sequence(&mut self, sequence: &[char]) -> Option<CodeCursorIndex> {
         let mut consumed = 0;
         while !self.is_eof() {
             let mut matched = true;
 
             for (i, c) in sequence.iter().enumerate() {
-                if self.peek_at(i)? != *c {
+                if self.peek_at(i as CodeCursorIndex)? != *c {
                     matched = false;
                     break;
                 }
@@ -199,7 +202,7 @@ impl<'a> CodeCursor<'a> {
     /// # Returns
     /// How many characters were consumed.
     #[inline]
-    pub fn consume_whitespace(&mut self) -> usize {
+    pub fn consume_whitespace(&mut self) -> CodeCursorIndex {
         self.consume_while(is_whitespace)
     }
 
@@ -210,7 +213,7 @@ impl<'a> CodeCursor<'a> {
     /// None if the cursor was not at a newline char, or the number of characters consumed if it
     /// was.
     #[inline]
-    pub fn consume_newline(&mut self) -> Option<usize> {
+    pub fn consume_newline(&mut self) -> Option<CodeCursorIndex> {
         let c = self.peek();
         if c == '\r' && self.peek_second() != '\n' {
             None
@@ -232,11 +235,11 @@ impl<'a> CodeCursor<'a> {
     /// The amount of characters consumed, or `None` if one of the expected chars was not found,
     /// or if `eof` was reached.
     #[inline]
-    pub fn consume_expect(&mut self, expected_chars: &[char]) -> Option<usize> {
+    pub fn consume_expect(&mut self, expected_chars: &[char]) -> Option<CodeCursorIndex> {
         for c in expected_chars {
             self.consume().filter(|s| *s == *c)?;
         }
-        Some(expected_chars.len())
+        Some(expected_chars.len() as CodeCursorIndex)
     }
 
     /// Consume the current cursor position, advancing the cursor by one for each character in
@@ -246,11 +249,11 @@ impl<'a> CodeCursor<'a> {
     /// The amount of characters consumed, or `None` if one of the expected chars was not equal,
     /// or if `eof` was reached.
     #[inline]
-    pub fn consume_expect_str(&mut self, expected: &str) -> Option<usize> {
+    pub fn consume_expect_str(&mut self, expected: &str) -> Option<CodeCursorIndex> {
         for c in expected.chars() {
             self.consume().filter(|s| *s == c)?;
         }
-        Some(expected.len())
+        Some(expected.len() as CodeCursorIndex)
     }
 
     /// Returns true if the cursor as at the end of the file.
@@ -297,6 +300,11 @@ fn is_newline_char(c: char) -> bool {
 /// Returns true if the char represents the sign of a number.
 fn is_sign_char(c: char) -> bool {
     c == '-' || c == '+'
+}
+
+/// Conditionally negative a type based on a bool.
+fn negate_if<T: ::std::ops::Neg<Output = T>>(t: T, negative: bool) -> T {
+    if negative { t.neg() } else { t }
 }
 
 /// Returns true if the char sequence represents a numeric literal.
@@ -353,6 +361,21 @@ impl<'a> Lexer<'a> {
             _ => Some(Token::from_kind(TokenKind::Unknown)),
         }
     }
+
+    /// Returns a substring of the `source_string` starting at the `start` index, and ending
+    /// exclusively at the `end` index.
+    #[inline]
+    fn substr(&self, start: CodeCursorIndex, end: CodeCursorIndex) -> &'a str {
+        &self.source_string[(start as usize)..(end as usize)]
+    }
+
+    /// Returns a substring of the `source_string` starting at the `start` index, and ending
+    /// inclusively at the `end` index.
+    #[inline]
+    #[allow(dead_code)]
+    fn substr_inclusive(&self, start: CodeCursorIndex, end: CodeCursorIndex) -> &'a str {
+        &self.source_string[(start as usize)..=(end as usize)]
+    }
 }
 
 // Parsing implementations..
@@ -389,7 +412,7 @@ impl Lexer<'_> {
             self.cursor.consume_until_sequence(&['\n'])?;
             let val_end = self.cursor.position();
 
-            let comment_value = &self.source_string[val_pos..val_end].trim();
+            let comment_value = self.substr(val_pos, val_end).trim();
             // If the doc line is empty we add a new line to the total documentation string.
             if comment_value.is_empty() {
                 total_doc_str += "\n";
@@ -422,7 +445,7 @@ impl Lexer<'_> {
         self.cursor.consume_expect(&['\n'])?;
         let end = self.cursor.position();
 
-        let comment_value = &self.source_string[val_pos..val_end];
+        let comment_value = self.substr(val_pos, val_end).trim();
 
         Some(Token::new(
             TokenKind::Comment(comment_value.trim().to_string()),
@@ -438,14 +461,14 @@ impl Lexer<'_> {
     fn block_comment(&mut self) -> Option<Token> {
         let pos = self.cursor.position();
         self.cursor.consume_expect_str("/*")?;
-        let value_pos = self.cursor.position();
+        let val_pos = self.cursor.position();
 
         self.cursor.consume_until_str("*/")?;
-        let value_end = self.cursor.position();
+        let val_end = self.cursor.position();
         self.cursor.consume_expect_str("*/")?;
         let end = self.cursor.position();
 
-        let comment_value = &self.source_string[value_pos..value_end];
+        let comment_value = self.substr(val_pos, val_end).trim();
 
         let kind = TokenKind::BlockComment(comment_value.trim().to_string());
 
@@ -458,7 +481,7 @@ impl Lexer<'_> {
     fn punctuation(&mut self) -> Option<Token> {
         let pos = self.cursor.position();
         let punct = Punctuation::from_char(self.cursor.consume()?)?;
-        Some(Token::new(TokenKind::Punctuation(punct), pos, pos + 1))
+        Some(Token::new(punct, pos, pos + 1))
     }
 
     /// Parses an identifier from the cursor.
@@ -469,7 +492,7 @@ impl Lexer<'_> {
             + self
                 .cursor
                 .consume_while(unicode_xid::UnicodeXID::is_xid_continue);
-        let ident_value = &self.source_string[pos..end_pos];
+        let ident_value = self.substr(pos, end_pos);
 
         let kind = if let Some(keyword) = Keyword::from_string(ident_value) {
             TokenKind::Keyword(keyword)
@@ -527,29 +550,21 @@ impl Lexer<'_> {
         });
         let val_end = self.cursor.position();
 
-        let value_string = self.source_string[val_pos..val_end].replace('_', "");
+        let value_string = self.substr(val_pos, val_end).replace('_', "");
 
         let literal = if value_string.contains(['e', '.']) {
             if let Ok(v) = value_string.parse::<f64>() {
-                if negative {
-                    LiteralKind::Float(-v)
-                } else {
-                    LiteralKind::Float(v)
-                }
+                LiteralKind::Float(negate_if(v, negative))
             } else {
                 return None;
             }
         } else if let Ok(v) = i64::from_str_radix(&value_string, base) {
-            if negative {
-                LiteralKind::Integer(-v)
-            } else {
-                LiteralKind::Integer(v)
-            }
+            LiteralKind::Integer(negate_if(v, negative))
         } else {
             return None;
         };
 
-        Some(Token::new(TokenKind::Literal(literal), pos, val_end))
+        Some(Token::new(literal, pos, val_end))
     }
 
     /// Parses a string literal from the cursor.
@@ -564,14 +579,14 @@ impl Lexer<'_> {
 
         if self.cursor.consume_expect(&['"']).is_none() {
             return Some(Token::new(
-                TokenKind::InvalidLiteral(self.source_string[val_pos..val_end].to_string()),
+                TokenKind::InvalidLiteral(self.substr(val_pos, val_end).to_string()),
                 pos,
                 val_end,
             ));
         }
 
         let end_pos = self.cursor.position();
-        let string_value = &self.source_string[val_pos..val_end];
+        let string_value = self.substr(val_pos, val_end);
 
         Some(Token::new(
             TokenKind::StringLiteral(string_value.to_string()),

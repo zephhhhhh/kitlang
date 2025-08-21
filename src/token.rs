@@ -49,7 +49,7 @@ macro_rules! define_keywords {
             ($keyword_name: ident, $keyword_str: literal)
         ),+
     ) =>{
-        #[derive(Debug, Clone, PartialEq, PartialOrd, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
         pub enum Keyword {
             $($keyword_name),*
         }
@@ -118,6 +118,7 @@ define_punctuation!(
 );
 
 define_keywords!(
+    (Mod, "mod"),
     (Use, "use"),
     (Pub, "pub"),
     (Global, "global"),
@@ -143,7 +144,26 @@ define_keywords!(
     (False, "false")
 );
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+impl Keyword {
+    /// Returns true if the [`Keyword`] is 'significant' (I.e. not a 'modifier' such as `pub`
+    /// or `mut`, rather something that can start an `expression` or `item` such as `let`)
+    #[inline]
+    pub fn is_significant(self) -> bool {
+        !matches!(self, Self::Pub | Self::Mut)
+    }
+
+    /// Returns true if the [`Keyword`] is a valid keyword that can start an `Item` expression,
+    /// I.e. Function, Struct, etc..
+    #[inline]
+    pub fn can_start_item(self) -> bool {
+        matches!(
+            self,
+            Self::Mod | Self::Use | Self::Fn | Self::Struct | Self::Const | Self::Impl | Self::Enum
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum LiteralKind {
     Float(f64),
     Integer(i64),
@@ -194,6 +214,19 @@ impl From<&Punctuation> for TokenKind {
     }
 }
 
+impl From<LiteralKind> for TokenKind {
+    fn from(value: LiteralKind) -> Self {
+        Self::Literal(value)
+    }
+}
+
+impl From<&LiteralKind> for TokenKind {
+    fn from(value: &LiteralKind) -> Self {
+        Self::Literal(*value)
+    }
+}
+
+// Accessors..
 impl TokenKind {
     /// Returns true if the `kind` of token is _not_ an invalid variant.
     #[inline]
@@ -206,11 +239,56 @@ impl TokenKind {
     }
 }
 
+// Parser convenience..
+impl TokenKind {
+    /// Returns true if the [`TokenKind`] is a valid token that can start an `Item` expression,
+    /// I.e. Function, Struct, etc..
+    #[inline]
+    pub fn can_start_item(&self) -> bool {
+        match self {
+            TokenKind::Keyword(kw) => kw.can_start_item(),
+            _ => false,
+        }
+    }
+
+    /// Returns `true`` if the [`TokenKind`] is a valid `identifier`.
+    #[inline]
+    pub fn is_ident(&self) -> bool {
+        matches!(self, TokenKind::Ident(_))
+    }
+
+    /// Returns `Some(ident)` if the [`TokenKind`] is a valid `identifier`, `None` otherwise.
+    #[inline]
+    pub fn get_ident(&self) -> Option<String> {
+        match self {
+            TokenKind::Ident(i) => Some(i.clone()),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the [`TokenKind`] is 'significant', (I.e. not a 'modifier' such as `pub`
+    /// or `mut`, rather something that can start an `expression` or `item` such as `let`)
+    #[inline]
+    pub fn is_significant(&self) -> bool {
+        match self {
+            TokenKind::Ident(_) => true,
+            TokenKind::Keyword(keyword) => keyword.is_significant(),
+            TokenKind::Punctuation(punctuation) => !matches!(punctuation, Punctuation::Ampersand),
+            TokenKind::StringLiteral(_) | TokenKind::Literal(_) | TokenKind::Eof => true,
+            _ => false,
+        }
+    }
+}
+
+/// A lexical token produced by the lexer.
+///
+/// A `Token` represents a classified span of source text, including its
+/// [`TokenKind`] and the byte offsets denoting it's position in the input.
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct Token {
     pub kind: TokenKind,
-    pub start: usize,
-    pub end: usize,
+    pub start: u32,
+    pub end: u32,
 }
 
 impl Token {
@@ -222,8 +300,18 @@ impl Token {
 
     #[inline]
     #[must_use]
-    pub fn new(kind: TokenKind, start: usize, end: usize) -> Self {
+    pub fn new_raw(kind: TokenKind, start: u32, end: u32) -> Self {
         Self { kind, start, end }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn new(kind: impl Into<TokenKind>, start: u32, end: u32) -> Self {
+        Self {
+            kind: kind.into(),
+            start,
+            end,
+        }
     }
 }
 

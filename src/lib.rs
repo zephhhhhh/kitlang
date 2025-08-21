@@ -1,6 +1,15 @@
 #![feature(iter_advance_by)]
 
+//! Kitlang is a language built for embedding/scripting purposes
+//!
+//! The language is inspired by rust and aims to be as similar to rust as possible with some
+//! creative liberties taken.
+//!
+//! The structure of the project is also inspired by `rust` and `rustc`.
+
+pub mod ast;
 pub mod lexer;
+pub mod parser;
 pub mod prelude;
 pub mod token;
 
