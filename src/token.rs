@@ -198,7 +198,7 @@ impl From<Keyword> for TokenKind {
 
 impl From<&Keyword> for TokenKind {
     fn from(value: &Keyword) -> Self {
-        Self::Keyword(value.clone())
+        Self::Keyword(*value)
     }
 }
 

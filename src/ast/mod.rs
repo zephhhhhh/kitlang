@@ -100,7 +100,7 @@ pub enum ItemKind {
     Fn(Box<Function>),
     Mod,
     Enum,
-    Struct,
+    Struct(Box<Struct>),
     Impl,
 }
 
@@ -112,7 +112,7 @@ impl ItemKind {
             ItemKind::Fn(_) => "Function",
             ItemKind::Mod => "Module",
             ItemKind::Enum => "Enum",
-            ItemKind::Struct => "Struct",
+            ItemKind::Struct(_) => "Struct",
             ItemKind::Impl => "Impl",
         }
     }
@@ -123,15 +123,10 @@ impl ::std::fmt::Debug for ItemKind {
         match self {
             Self::Use => write!(f, "Use"),
             Self::Const => write!(f, "Const"),
-            Self::Fn(arg0) => f
-                .debug_struct("Function")
-                .field("name", &arg0.ident)
-                .field("sig", &arg0.sig)
-                .field("body", &arg0.body)
-                .finish(),
+            Self::Fn(arg0) => arg0.fmt(f),
             Self::Mod => write!(f, "Mod"),
             Self::Enum => write!(f, "Enum"),
-            Self::Struct => write!(f, "Struct"),
+            Self::Struct(s) => s.fmt(f),
             Self::Impl => write!(f, "Impl"),
         }
     }
@@ -617,6 +612,65 @@ impl ::std::fmt::Debug for Function {
             .field("ident", &self.ident.0)
             .field("sig", &self.sig)
             .field("body", &self.body)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct StructField {
+    pub id: ASTNodeID,
+    pub ident: Ident,
+    pub ty: Ty,
+    pub vis: Visibility,
+}
+
+impl StructField {
+    pub fn new(ident: Ident, ty: Ty, vis: Visibility) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            ident,
+            ty,
+            vis,
+        }
+    }
+}
+
+impl ::std::fmt::Debug for StructField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StructField")
+            .field("ident", &self.ident)
+            .field("ty", &self.ty)
+            .field("vis", &self.vis)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Struct {
+    pub id: ASTNodeID,
+    pub ident: Ident,
+    pub fields: Vec<StructField>,
+}
+
+impl Struct {
+    pub fn new(ident: Ident, fields: Vec<StructField>) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            ident,
+            fields,
+        }
+    }
+
+    pub fn new_boxed(ident: Ident, fields: Vec<StructField>) -> Box<Self> {
+        Box::new(Self::new(ident, fields))
+    }
+}
+
+impl ::std::fmt::Debug for Struct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Struct")
+            .field("ident", &self.ident)
+            .field("fields", &self.fields)
             .finish()
     }
 }

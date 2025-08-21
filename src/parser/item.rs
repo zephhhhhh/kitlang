@@ -1,6 +1,7 @@
 use crate::{
     ast::{
-        Function, FunctionReturnTy, FunctionSig, Ident, Item, ItemKind, Parameter, Ty, Visibility,
+        Function, FunctionReturnTy, FunctionSig, Ident, Item, ItemKind, Struct, StructField, Ty,
+        Visibility,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
@@ -78,6 +79,19 @@ impl Parser<'_, '_> {
         Ok(Item::new(item_kind, Visibility::from_is_public(public)))
     }
 
+    fn parse_struct_field_definition(&mut self) -> PResult<StructField> {
+        let public = self.check_keyword_advance(Keyword::Pub);
+        let var_ident = self.expect_ident()?;
+        self.expect_punctuation(Punctuation::Colon)?;
+        let type_ident = self.expect_ident()?;
+
+        Ok(StructField::new(
+            var_ident.into(),
+            type_ident.into(),
+            Visibility::from_is_public(public),
+        ))
+    }
+
     pub fn parse_struct(&mut self) -> PResult<Item> {
         let public = self.check_keyword_advance(Keyword::Pub);
         self.expect_keyword(Keyword::Struct)?;
@@ -85,9 +99,34 @@ impl Parser<'_, '_> {
         let struct_ident = self.expect_ident()?;
         self.expect_punctuation(Punctuation::OpenBrace)?;
 
-        // TODO: Parse struct body..
+        let mut fields = Vec::new();
 
-        todo!()
+        if !self.check_punctuation_advance(Punctuation::CloseBrace) {
+            fields.push(self.parse_struct_field_definition()?);
+
+            // Parse a comma before each additional argument..
+            while !self.cursor.is_end() {
+                if self.check_punctuation_advance(Punctuation::CloseBrace) {
+                    break;
+                }
+                // Comma on last element, but then end structure..
+                if self.check_punctuation(Punctuation::Comma)
+                    && self.peek_at(1)?.kind == TokenKind::Punctuation(Punctuation::CloseBrace)
+                {
+                    self.cursor.advance_by(2);
+                    break;
+                }
+
+                self.expect_punctuation(Punctuation::Comma)?;
+
+                fields.push(self.parse_struct_field_definition()?);
+            }
+        }
+
+        Ok(Item::new(
+            ItemKind::Struct(Struct::new_boxed(struct_ident.into(), fields)),
+            Visibility::from_is_public(public),
+        ))
     }
 
     pub fn parse_implementation(&mut self) -> PResult<Item> {

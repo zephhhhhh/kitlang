@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         BinaryOpKind, Block, Expression, ExpressionAssociation, ExpressionKind, ExpressionOrder,
-        Ident, Literal, Statement, StatementKind, UnaryOpKind,
+        Literal, Statement, StatementKind, UnaryOpKind,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, LiteralKind, Punctuation, TokenKind},
