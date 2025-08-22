@@ -1,4 +1,5 @@
 #![feature(iter_advance_by)]
+#![feature(debug_closure_helpers)]
 
 //! Kitlang is a language built for embedding/scripting purposes
 //!

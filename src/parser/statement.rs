@@ -60,10 +60,10 @@ impl Parser<'_, '_> {
         self.expect_keyword(Keyword::Let)?;
         let mutable = self.parse_mutability()?;
         let var_ident = self.expect_ident()?;
-        let type_ident = if self.check_punctuation_advance(Punctuation::Colon) {
-            self.expect_ident()?
+        let var_type = if self.check_punctuation_advance(Punctuation::Colon) {
+            Ty::new(self.expect_ident()?)
         } else {
-            String::new()
+            Ty::Infer
         };
         self.expect_punctuation(Punctuation::Eq)?;
 
@@ -71,11 +71,11 @@ impl Parser<'_, '_> {
 
         self.expect_punctuation(Punctuation::SemiColon)?;
 
-        Ok(Box::new(Local::new(
-            Ident(var_ident),
-            Ty(type_ident),
+        Ok(Local::new_boxed(
+            var_ident.into(),
+            var_type,
             LocalKind::Initialise(expr),
             mutable,
-        )))
+        ))
     }
 }

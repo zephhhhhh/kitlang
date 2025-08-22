@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Ident, Item,
-        ItemKind, Module, ModuleKind, Struct, StructField, Ty, Visibility,
+        ItemKind, Module, ModuleKind, Struct, StructField,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
@@ -56,7 +56,7 @@ impl Parser<'_, '_> {
             TokenKind::Punctuation(Punctuation::Minus) => {
                 self.cursor.advance();
                 self.expect_punctuation(Punctuation::GreaterThan)?;
-                FunctionReturnTy::Ty(Box::new(Ty(self.expect_ident()?)))
+                FunctionReturnTy::Ty(Box::new(self.expect_ident()?.into()))
             }
             _ => {
                 return Err(ParseError::new(

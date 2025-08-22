@@ -134,8 +134,6 @@ impl ::std::fmt::Debug for ItemKind {
 
 #[derive(Clone, PartialEq, PartialOrd, Hash)]
 pub struct Ident(pub String);
-#[derive(Clone, PartialEq, PartialOrd, Hash)]
-pub struct Ty(pub String);
 
 impl Ident {
     #[inline]
@@ -144,10 +142,16 @@ impl Ident {
     }
 }
 
+#[derive(Clone, PartialEq, PartialOrd, Hash)]
+pub enum Ty {
+    Infer,
+    Type(String),
+}
+
 impl Ty {
     #[inline]
     pub fn new(src: impl AsRef<str>) -> Self {
-        Self(src.as_ref().to_string())
+        Self::Type(src.as_ref().to_string())
     }
 }
 
@@ -171,25 +175,22 @@ where
 
 impl ::std::fmt::Debug for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        write!(f, "Ident({})", self.0)
     }
 }
 
 impl ::std::fmt::Debug for Ty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        match self {
+            Ty::Infer => write!(f, "Infer"),
+            Ty::Type(t) => write!(f, "Type({})", t),
+        }
     }
 }
 
 #[repr(transparent)]
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ASTNodeID(pub u32);
-
-impl ::std::fmt::Debug for ASTNodeID {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 pub const PLACEHOLDER_NODE_ID: ASTNodeID = ASTNodeID(u32::MAX);
 
@@ -438,7 +439,7 @@ impl ::std::fmt::Debug for Expression {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum StatementKind {
     /// Variable declaration.
     Let(Box<Local>),
@@ -450,6 +451,18 @@ pub enum StatementKind {
     Semi(Box<Expression>),
     /// Just a semi-colon.
     Empty,
+}
+
+impl ::std::fmt::Debug for StatementKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Let(arg0) => arg0.fmt_with_name(f, "Let"),
+            Self::Item(arg0) => arg0.fmt(f),
+            Self::Expr(arg0) => f.debug_tuple("Expr").field(arg0).finish(),
+            Self::Semi(arg0) => f.debug_tuple("Semi").field(arg0).finish(),
+            Self::Empty => write!(f, "Empty"),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -525,16 +538,19 @@ impl Local {
     pub fn new_boxed(ident: Ident, ty: Ty, kind: LocalKind, mutable: Mutability) -> Box<Self> {
         Box::new(Self::new(ident, ty, kind, mutable))
     }
+
+    pub fn fmt_with_name(&self, f: &mut std::fmt::Formatter<'_>, name: &str) -> std::fmt::Result {
+        let info = format!("{{ name: {:?}, type: {:?}, {:?} }}", self.ident, self.ty, self.mutable);
+        f.debug_struct(name)
+            .field_with("info", |a| { write!(a, "{}", info) })
+            .field("kind", &self.kind)
+            .finish()
+    }
 }
 
 impl ::std::fmt::Debug for Local {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Local")
-            .field("mutable", &self.mutable)
-            .field("name", &self.ident)
-            .field("ty", &self.ty)
-            .field("kind", &self.kind)
-            .finish()
+        self.fmt_with_name(f, "Local")
     }
 }
 
@@ -567,7 +583,7 @@ impl ::std::fmt::Debug for Constant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Constant")
             .field("ident", &self.ident)
-            .field("ty", &self.ty)
+            .field("type", &self.ty)
             .field("expr", &self.expr)
             .finish()
     }
@@ -616,11 +632,12 @@ impl Parameter {
 
 impl ::std::fmt::Debug for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Parameter")
-            .field("ident", &self.ident)
-            .field("ty", &self.ty)
-            .field("mutable", &self.mutable)
-            .finish()
+        write!(f, "Parameter {{ name: {:?}, type: {:?}, mutable: {:?} }}", self.ident, self.ty, self.mutable)
+        // f.debug_struct("Parameter")
+        //     .field("name", &self.ident)
+        //     .field("type", &self.ty)
+        //     .field("mutable", &self.mutable)
+        //     .finish()
     }
 }
 
@@ -690,7 +707,7 @@ impl ::std::fmt::Debug for StructField {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StructField")
             .field("ident", &self.ident)
-            .field("ty", &self.ty)
+            .field("type", &self.ty)
             .field("vis", &self.vis)
             .finish()
     }
