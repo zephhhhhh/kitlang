@@ -77,6 +77,43 @@ impl TokenCursor<'_> {
         self.tokens.get(index as usize)
     }
 
+    /// Returns the end of the current token.
+    #[inline]
+    #[must_use]
+    pub fn get_current_source_end(&self) -> u32 {
+        if let Some(token) = self.get(self.position()) {
+            token.end
+        } else if let Some(token) = self.tokens.last() {
+            token.end
+        } else {
+            0
+        }
+    }
+
+    /// Returns the start of the current token.
+    #[inline]
+    #[must_use]
+    pub fn get_current_source_start(&self) -> u32 {
+        if let Some(token) = self.get(self.position()) {
+            token.start
+        } else if let Some(token) = self.tokens.last() {
+            token.start
+        } else {
+            0
+        }
+    }
+
+    /// Returns a range that represents the start token.
+    #[inline]
+    #[must_use]
+    pub fn start_span(&self) -> ::std::ops::Range<u32> {
+        if let Some(token) = self.tokens.first() {
+            token.start..token.end
+        } else {
+            0..0
+        }
+    }
+
     /// Returns a range that represents the end of the file.
     #[inline]
     #[must_use]
@@ -193,6 +230,38 @@ impl<'a, 'b> Parser<'a, 'b> {
 }
 
 impl Parser<'_, '_> {
+    fn is_double_colon(&self) -> PResult<bool> {
+        Ok(
+            self.peek_at(0)?.kind == TokenKind::Punctuation(Punctuation::Colon)
+                && self.peek_at(1)?.kind == TokenKind::Punctuation(Punctuation::Colon),
+        )
+    }
+
+    /// Parse a 'path' (I.e. `std::math::powf`) into a single string.
+    /// # Notes
+    /// Always expects atleast one `identifier`.
+    pub fn parse_path(&mut self) -> PResult<String> {
+        let path_start = self.cursor.get_current_source_start();
+        let mut full_path = self.expect_ident()?;
+
+        while !self.cursor.is_end() {
+            if !self.is_double_colon()? {
+                if self.check_punctuation(Punctuation::Colon) {
+                    return Err(ParseError::new(
+                        ParseErrorKind::InvalidPath(full_path),
+                        path_start..self.cursor.get_current_source_end(),
+                    ));
+                }
+                break;
+            }
+            self.cursor.advance_by(2);
+            full_path += "::";
+            full_path += &(self.expect_ident()?);
+        }
+
+        Ok(full_path)
+    }
+
     /// Checks if the current keyword is `pub`, if it is, consume it and return `Ok(Visibility::Public)`,
     /// otherwise `Ok(Visibility::Private)`, If there are no tokens, return `Err`.
     pub fn parse_visibility(&mut self) -> PResult<Visibility> {

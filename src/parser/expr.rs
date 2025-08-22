@@ -97,7 +97,7 @@ impl Parser<'_, '_> {
                 Keyword::Return => self.parse_return(),
                 _ => todo!(),
             },
-            TokenKind::Ident(_) => self.parse_ident_expr(),
+            TokenKind::Ident(_) => self.parse_path_expr(),
             TokenKind::Punctuation(Punctuation::OpenBrace) => self.parse_block_as_expression(),
             TokenKind::Punctuation(Punctuation::OpenParen) => self.parse_parens_expr(),
             TokenKind::Punctuation(Punctuation::Bang)
@@ -174,6 +174,11 @@ impl Parser<'_, '_> {
 
     fn parse_ident_expr(&mut self) -> PResult<Box<Expression>> {
         let ident = self.expect_ident()?;
+        Ok(Expression::new_boxed(ExpressionKind::Ident(ident.into())))
+    }
+
+    fn parse_path_expr(&mut self) -> PResult<Box<Expression>> {
+        let ident = self.parse_path()?;
         Ok(Expression::new_boxed(ExpressionKind::Ident(ident.into())))
     }
 

@@ -37,6 +37,9 @@ pub enum ParseErrorKind {
     #[error("Unexpected token: {0:?}")]
     UnexpectedToken(TokenKind),
 
+    #[error("Invalid path found: {0:?}")]
+    InvalidPath(String),
+
     #[error("Found an invalid binary operator")]
     InvalidBinaryOperator,
 

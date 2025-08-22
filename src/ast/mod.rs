@@ -540,9 +540,12 @@ impl Local {
     }
 
     pub fn fmt_with_name(&self, f: &mut std::fmt::Formatter<'_>, name: &str) -> std::fmt::Result {
-        let info = format!("{{ name: {:?}, type: {:?}, {:?} }}", self.ident, self.ty, self.mutable);
+        let info = format!(
+            "{{ name: {:?}, type: {:?}, {:?} }}",
+            self.ident, self.ty, self.mutable
+        );
         f.debug_struct(name)
-            .field_with("info", |a| { write!(a, "{}", info) })
+            .field_with("info", |a| write!(a, "{}", info))
             .field("kind", &self.kind)
             .finish()
     }
@@ -632,7 +635,11 @@ impl Parameter {
 
 impl ::std::fmt::Debug for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Parameter {{ name: {:?}, type: {:?}, mutable: {:?} }}", self.ident, self.ty, self.mutable)
+        write!(
+            f,
+            "Parameter {{ name: {:?}, type: {:?}, mutable: {:?} }}",
+            self.ident, self.ty, self.mutable
+        )
         // f.debug_struct("Parameter")
         //     .field("name", &self.ident)
         //     .field("type", &self.ty)

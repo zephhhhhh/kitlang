@@ -29,7 +29,7 @@ impl Parser<'_, '_> {
     pub fn parse_function(&mut self) -> PResult<Item> {
         let public = self.parse_visibility()?;
         self.expect_keyword(Keyword::Fn)?;
-        let func_name_ident = self.expect_ident()?;
+        let func_name = self.expect_ident()?;
         self.expect_punctuation(Punctuation::OpenParen)?;
 
         let mut function_arguments = Vec::new();
@@ -74,7 +74,7 @@ impl Parser<'_, '_> {
         };
 
         let item_kind = ItemKind::Fn(Box::new(Function::new(
-            Ident(func_name_ident),
+            func_name.into(),
             function_sig,
             Some(function_body),
         )));
@@ -242,12 +242,12 @@ impl Parser<'_, '_> {
     pub fn parse_mod(&mut self) -> PResult<Item> {
         let public = self.parse_visibility()?;
         self.expect_keyword(Keyword::Mod)?;
-        let module_ident = self.expect_ident()?;
+        let module_path = self.parse_path()?;
 
         if self.check_punctuation_advance(Punctuation::SemiColon) {
             return Ok(Item::new(
                 ItemKind::Mod(Module::new_boxed(
-                    module_ident.into(),
+                    module_path.into(),
                     ModuleKind::Declaration,
                 )),
                 public,
@@ -274,7 +274,7 @@ impl Parser<'_, '_> {
 
         Ok(Item::new(
             ItemKind::Mod(Module::new_boxed(
-                module_ident.into(),
+                module_path.into(),
                 ModuleKind::Definition(items),
             )),
             public,
