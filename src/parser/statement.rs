@@ -44,21 +44,21 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_variable_pattern(&mut self) -> PResult<VariablePattern> {
-        let mutable = self.check_keyword_advance(Keyword::Mut);
+        let mutable = self.parse_mutability()?;
         let var_ident = self.expect_ident()?;
         self.expect_punctuation(Punctuation::Colon)?;
         let type_ident = self.expect_ident()?;
 
         Ok(VariablePattern {
-            ident: Ident(var_ident),
-            ty: Ty(type_ident),
-            mutable: Mutability::from_is_mutable(mutable),
+            ident: var_ident.into(),
+            ty: type_ident.into(),
+            mutable,
         })
     }
 
     pub fn parse_let_local(&mut self) -> PResult<Box<Local>> {
         self.expect_keyword(Keyword::Let)?;
-        let mutable = self.check_keyword_advance(Keyword::Mut);
+        let mutable = self.parse_mutability()?;
         let var_ident = self.expect_ident()?;
         let type_ident = if self.check_punctuation_advance(Punctuation::Colon) {
             self.expect_ident()?
@@ -75,7 +75,7 @@ impl Parser<'_, '_> {
             Ident(var_ident),
             Ty(type_ident),
             LocalKind::Initialise(expr),
-            Mutability::from_is_mutable(mutable),
+            mutable,
         )))
     }
 }

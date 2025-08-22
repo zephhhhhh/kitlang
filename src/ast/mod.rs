@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{fmt::Debug, ops::Range};
 
 #[derive(Debug, Default, PartialEq)]
 pub struct ASTRoot {
@@ -96,10 +96,10 @@ impl BinaryOpKind {
 #[derive(Clone, PartialEq)]
 pub enum ItemKind {
     Use,
-    Const,
+    Const(Box<Constant>),
     Fn(Box<Function>),
-    Mod,
-    Enum,
+    Mod(Box<Module>),
+    Enum(Box<Enum>),
     Struct(Box<Struct>),
     Impl,
 }
@@ -108,10 +108,10 @@ impl ItemKind {
     pub fn get_name(&self) -> &'static str {
         match self {
             ItemKind::Use => "Use",
-            ItemKind::Const => "Const",
+            ItemKind::Const(_) => "Const",
             ItemKind::Fn(_) => "Function",
-            ItemKind::Mod => "Module",
-            ItemKind::Enum => "Enum",
+            ItemKind::Mod(_) => "Module",
+            ItemKind::Enum(_) => "Enum",
             ItemKind::Struct(_) => "Struct",
             ItemKind::Impl => "Impl",
         }
@@ -122,11 +122,11 @@ impl ::std::fmt::Debug for ItemKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Use => write!(f, "Use"),
-            Self::Const => write!(f, "Const"),
+            Self::Const(arg0) => arg0.fmt(f),
             Self::Fn(arg0) => arg0.fmt(f),
-            Self::Mod => write!(f, "Mod"),
-            Self::Enum => write!(f, "Enum"),
-            Self::Struct(s) => s.fmt(f),
+            Self::Mod(arg0) => arg0.fmt(f),
+            Self::Enum(arg0) => arg0.fmt(f),
+            Self::Struct(arg0) => arg0.fmt(f),
             Self::Impl => write!(f, "Impl"),
         }
     }
@@ -510,6 +510,7 @@ pub struct Local {
 }
 
 impl Local {
+    #[inline]
     pub fn new(ident: Ident, ty: Ty, kind: LocalKind, mutable: Mutability) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
@@ -518,6 +519,11 @@ impl Local {
             kind,
             mutable,
         }
+    }
+
+    #[inline]
+    pub fn new_boxed(ident: Ident, ty: Ty, kind: LocalKind, mutable: Mutability) -> Box<Self> {
+        Box::new(Self::new(ident, ty, kind, mutable))
     }
 }
 
@@ -528,6 +534,41 @@ impl ::std::fmt::Debug for Local {
             .field("name", &self.ident)
             .field("ty", &self.ty)
             .field("kind", &self.kind)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Constant {
+    pub id: ASTNodeID,
+    pub ident: Ident,
+    pub ty: Ty,
+    pub expr: Box<Expression>,
+}
+
+impl Constant {
+    #[inline]
+    pub fn new(ident: Ident, ty: Ty, expr: Box<Expression>) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            ident,
+            ty,
+            expr,
+        }
+    }
+
+    #[inline]
+    pub fn new_boxed(ident: Ident, ty: Ty, expr: Box<Expression>) -> Box<Self> {
+        Box::new(Self::new(ident, ty, expr))
+    }
+}
+
+impl ::std::fmt::Debug for Constant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Constant")
+            .field("ident", &self.ident)
+            .field("ty", &self.ty)
+            .field("expr", &self.expr)
             .finish()
     }
 }
@@ -554,7 +595,7 @@ impl Block {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Clone, PartialEq, PartialOrd)]
 pub struct Parameter {
     pub id: ASTNodeID,
     pub ident: Ident,
@@ -570,6 +611,16 @@ impl Parameter {
             ty,
             mutable,
         }
+    }
+}
+
+impl ::std::fmt::Debug for Parameter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Parameter")
+            .field("ident", &self.ident)
+            .field("ty", &self.ty)
+            .field("mutable", &self.mutable)
+            .finish()
     }
 }
 
@@ -671,6 +722,122 @@ impl ::std::fmt::Debug for Struct {
         f.debug_struct("Struct")
             .field("ident", &self.ident)
             .field("fields", &self.fields)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VariantData {
+    Struct(Vec<StructField>),
+    Tuple(Vec<Ty>),
+    Unit,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct EnumVariant {
+    pub id: ASTNodeID,
+    pub ident: Ident,
+    pub data: VariantData,
+}
+
+impl EnumVariant {
+    #[inline]
+    pub fn new(ident: Ident, data: VariantData) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            ident,
+            data,
+        }
+    }
+}
+
+impl ::std::fmt::Debug for EnumVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EnumVariant")
+            .field("ident", &self.ident)
+            .field("data", &self.data)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Enum {
+    pub id: ASTNodeID,
+    pub ident: Ident,
+    pub variants: Vec<EnumVariant>,
+}
+
+impl Enum {
+    #[inline]
+    pub fn new(ident: Ident, variants: Vec<EnumVariant>) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            ident,
+            variants,
+        }
+    }
+
+    #[inline]
+    pub fn new_boxed(ident: Ident, variants: Vec<EnumVariant>) -> Box<Self> {
+        Box::new(Self::new(ident, variants))
+    }
+
+    /// Does the enum have 'zero' variants?
+    #[inline]
+    pub fn is_never_type(&self) -> bool {
+        self.variants.is_empty()
+    }
+
+    /// Does the enum have exactly 'one' variant?
+    #[inline]
+    pub fn is_unit_type(&self) -> bool {
+        self.variants.len() == 1
+    }
+}
+
+impl ::std::fmt::Debug for Enum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Enum")
+            .field("ident", &self.ident)
+            .field("variants", &self.variants)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ModuleKind {
+    Declaration,
+    Definition(Vec<Item>),
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Module {
+    pub id: ASTNodeID,
+    pub ident: Ident,
+    pub kind: ModuleKind,
+}
+
+impl Module {
+    #[inline]
+    pub fn new(ident: Ident, kind: ModuleKind) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            ident,
+            kind,
+        }
+    }
+
+    #[inline]
+    pub fn new_boxed(ident: Ident, kind: ModuleKind) -> Box<Self> {
+        Box::new(Self::new(ident, kind))
+    }
+}
+
+impl ::std::fmt::Debug for Module {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Module")
+            .field("ident", &self.ident)
+            .field("kind", &self.kind)
             .finish()
     }
 }

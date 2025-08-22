@@ -131,6 +131,7 @@ define_keywords!(
     (While, "while"),
     (Break, "break"),
     (Continue, "continue"),
+    (Return, "return"),
     (Match, "match"),
     (Fn, "fn"),
     (Native, "native"),

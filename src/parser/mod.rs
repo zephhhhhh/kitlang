@@ -1,5 +1,5 @@
 use crate::{
-    ast::ASTRoot,
+    ast::{ASTRoot, Mutability, Visibility},
     lexer::tokenise_stripped,
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, Token, TokenKind},
@@ -81,14 +81,22 @@ impl TokenCursor<'_> {
     #[inline]
     #[must_use]
     pub fn eof_span(&self) -> ::std::ops::Range<u32> {
-        self.len()..self.len()
+        if let Some(token) = self.tokens.last() {
+            token.start..token.end
+        } else {
+            0..0
+        }
     }
 
     /// Returns a range that represents the current token index.
     #[inline]
     #[must_use]
     pub fn pos_span(&self) -> ::std::ops::Range<u32> {
-        self.position()..self.position()
+        if let Some(token) = self.get(self.position()) {
+            token.start..token.end
+        } else {
+            self.eof_span()
+        }
     }
 }
 
@@ -185,7 +193,23 @@ impl<'a, 'b> Parser<'a, 'b> {
 }
 
 impl Parser<'_, '_> {
-    pub fn parse_full(&mut self) -> PResult<ASTRoot> {
+    /// Checks if the current keyword is `pub`, if it is, consume it and return `Ok(Visibility::Public)`,
+    /// otherwise `Ok(Visibility::Private)`, If there are no tokens, return `Err`.
+    pub fn parse_visibility(&mut self) -> PResult<Visibility> {
+        Ok(Visibility::from_is_public(
+            self.check_keyword_advance(Keyword::Pub),
+        ))
+    }
+
+    /// Checks if the current keyword is `mut`, if it is, consume it and return `Ok(Mutability::Mutable)`,
+    /// otherwise `Ok(Mutability::Immutable)`, If there are no tokens, return `Err`.
+    pub fn parse_mutability(&mut self) -> PResult<Mutability> {
+        Ok(Mutability::from_is_mutable(
+            self.check_keyword_advance(Keyword::Mut),
+        ))
+    }
+
+    pub fn parse_root(&mut self) -> PResult<ASTRoot> {
         let mut root_ast = ASTRoot::default();
 
         while !self.cursor.is_end() {
@@ -491,7 +515,7 @@ pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>) -> PResult<ASTRoot
 
     let mut parser = Parser::from_cursor(TokenCursor::new(&token_list), &context);
 
-    parser.parse_full()
+    parser.parse_root()
 }
 
 /// Parse AST from a source code string.

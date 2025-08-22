@@ -88,12 +88,15 @@ impl Parser<'_, '_> {
     pub fn parse_expr_atom(&mut self) -> PResult<Box<Expression>> {
         let token = self.peek_at(0)?;
         let atom = match &token.kind {
-            TokenKind::Keyword(Keyword::If) => self.parse_if(),
-            TokenKind::Keyword(Keyword::While) => self.parse_while(),
-            TokenKind::StringLiteral(_)
-            | TokenKind::Literal(_)
-            | TokenKind::Keyword(Keyword::True)
-            | TokenKind::Keyword(Keyword::False) => self.parse_literal(),
+            TokenKind::StringLiteral(_) | TokenKind::Literal(_) => self.parse_literal(),
+            TokenKind::Keyword(kw) => match kw {
+                Keyword::True | Keyword::False => self.parse_literal(),
+                Keyword::If => self.parse_if(),
+                Keyword::While => self.parse_while(),
+                Keyword::Continue => self.parse_continue(),
+                Keyword::Return => self.parse_return(),
+                _ => todo!(),
+            },
             TokenKind::Ident(_) => self.parse_ident_expr(),
             TokenKind::Punctuation(Punctuation::OpenBrace) => self.parse_block_as_expression(),
             TokenKind::Punctuation(Punctuation::OpenParen) => self.parse_parens_expr(),
@@ -169,12 +172,12 @@ impl Parser<'_, '_> {
         Ok(Box::new(Block::new(statements)))
     }
 
-    pub fn parse_ident_expr(&mut self) -> PResult<Box<Expression>> {
+    fn parse_ident_expr(&mut self) -> PResult<Box<Expression>> {
         let ident = self.expect_ident()?;
         Ok(Expression::new_boxed(ExpressionKind::Ident(ident.into())))
     }
 
-    pub fn parse_literal(&mut self) -> PResult<Box<Expression>> {
+    fn parse_literal(&mut self) -> PResult<Box<Expression>> {
         let token = self.peek_at(0)?;
         let kind = match &token.kind {
             TokenKind::Keyword(Keyword::True) => {
@@ -204,7 +207,7 @@ impl Parser<'_, '_> {
         Ok(Expression::new_boxed(ExpressionKind::Literal(kind)))
     }
 
-    pub fn parse_assign_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
+    fn parse_assign_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
         self.expect_punctuation(Punctuation::Eq)?;
 
         let value_expr = self.parse_expression()?;
@@ -214,7 +217,7 @@ impl Parser<'_, '_> {
         )))
     }
 
-    pub fn parse_unary_op(&mut self) -> PResult<Box<Expression>> {
+    fn parse_unary_op(&mut self) -> PResult<Box<Expression>> {
         let token = self.peek_at(0)?;
         let TokenKind::Punctuation(punct) = token.kind else {
             return Err(ParseError::new(
@@ -290,11 +293,11 @@ impl Parser<'_, '_> {
         )))
     }
 
-    pub fn parse_binary_op_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
+    fn parse_binary_op_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
         self.parse_binary_op_continued_ordered(lhs, ExpressionOrderBound::Unbounded)
     }
 
-    pub fn parse_call_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
+    fn parse_call_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
         self.expect_punctuation(Punctuation::OpenParen)?;
 
         let mut args = Vec::new();
@@ -319,7 +322,7 @@ impl Parser<'_, '_> {
         Ok(Expression::new_boxed(ExpressionKind::Call(lhs, args)))
     }
 
-    pub fn parse_if(&mut self) -> PResult<Box<Expression>> {
+    fn parse_if(&mut self) -> PResult<Box<Expression>> {
         self.expect_keyword(Keyword::If)?;
         let condition = self.parse_expression()?;
         let body = self.parse_block_expression()?;
@@ -338,7 +341,7 @@ impl Parser<'_, '_> {
         )))
     }
 
-    pub fn parse_while(&mut self) -> PResult<Box<Expression>> {
+    fn parse_while(&mut self) -> PResult<Box<Expression>> {
         self.expect_keyword(Keyword::While)?;
         let condition = self.parse_expression()?;
         let body = self.parse_block_expression()?;
@@ -346,5 +349,26 @@ impl Parser<'_, '_> {
         Ok(Expression::new_boxed(ExpressionKind::While(
             condition, body,
         )))
+    }
+
+    fn parse_continue(&mut self) -> PResult<Box<Expression>> {
+        self.expect_keyword(Keyword::Continue)?;
+        Ok(Expression::new_boxed(ExpressionKind::Continue))
+    }
+
+    fn parse_return(&mut self) -> PResult<Box<Expression>> {
+        self.expect_keyword(Keyword::Return)?;
+
+        // After a return the only valid values are either: ';', '}' or an `expression`.
+        if self.check_punctuation(Punctuation::SemiColon)
+            || self.check_punctuation(Punctuation::CloseBrace)
+        {
+            Ok(Expression::new_boxed(ExpressionKind::Return(None)))
+        } else {
+            let return_expr = self.parse_expression()?;
+            Ok(Expression::new_boxed(ExpressionKind::Return(Some(
+                return_expr,
+            ))))
+        }
     }
 }
