@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Ident, Item,
-        ItemKind, Module, ModuleKind, Struct, StructField,
+        Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Ident, Impl, Item,
+        ItemKind, Module, ModuleKind, Struct, StructField, Visibility,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
@@ -208,25 +208,48 @@ impl Parser<'_, '_> {
     }
 
     fn parse_impl_item(&mut self) -> PResult<Item> {
-        // Only allowed to parse functions and consts..
-        todo!()
+        let (_, token) = self.expect_next_significant_token()?;
+        match token.kind {
+            TokenKind::Keyword(Keyword::Const) => self.parse_const(),
+            TokenKind::Keyword(Keyword::Fn) => self.parse_function(),
+            _ => Err(ParseError::new(
+                ParseErrorKind::WrongTokenKind(token.kind.clone()),
+                token,
+            )),
+        }
     }
 
     pub fn parse_implementation(&mut self) -> PResult<Item> {
         self.expect_keyword(Keyword::Impl)?;
-        let ty = self.expect_ident()?;
+        let ty = self.parse_path()?;
 
-        // TODO: Parse block expression (only consts, functions allowed)..
+        // Parse module body..
+        self.expect_punctuation(Punctuation::OpenBrace)?;
 
-        todo!()
+        let mut items = Vec::new();
+
+        if !self.check_punctuation_advance(Punctuation::CloseBrace) {
+            items.push(self.parse_impl_item()?);
+
+            // Parse a comma before each additional argument..
+            while !self.cursor.is_end() {
+                if self.check_punctuation_advance(Punctuation::CloseBrace) {
+                    break;
+                }
+
+                items.push(self.parse_impl_item()?);
+            }
+        }
+
+        Ok(Item::new(
+            ItemKind::Impl(Impl::new_boxed(ty.into(), items)),
+            Visibility::Public,
+        ))
     }
 
     fn parse_mod_item(&mut self) -> PResult<Item> {
         let Some((_offset, token)) = self.find_next_significant_token()? else {
-            return Err(ParseError::new(
-                ParseErrorKind::NoTokens,
-                self.cursor.eof_span(),
-            ));
+            return Err(self.no_token_error());
         };
 
         if token.kind.can_start_item() {

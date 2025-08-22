@@ -542,7 +542,7 @@ impl Parser<'_, '_> {
     ///     were no more tokens available.
     fn expect_next_significant_token_with_offset(&self, offset: u32) -> PResult<(u32, &Token)> {
         self.find_next_significant_token_with_offset(offset)?
-            .ok_or_else(|| ParseError::new(ParseErrorKind::NoTokens, self.cursor.eof_span()))
+            .ok_or_else(|| self.no_token_error())
     }
 
     /// Find the next significant token, I.e. A token that isn't `mut` or something similar, and

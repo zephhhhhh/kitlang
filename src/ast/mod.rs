@@ -101,7 +101,7 @@ pub enum ItemKind {
     Mod(Box<Module>),
     Enum(Box<Enum>),
     Struct(Box<Struct>),
-    Impl,
+    Impl(Box<Impl>),
 }
 
 impl ItemKind {
@@ -113,7 +113,7 @@ impl ItemKind {
             ItemKind::Mod(_) => "Module",
             ItemKind::Enum(_) => "Enum",
             ItemKind::Struct(_) => "Struct",
-            ItemKind::Impl => "Impl",
+            ItemKind::Impl(_) => "Impl",
         }
     }
 }
@@ -127,7 +127,7 @@ impl ::std::fmt::Debug for ItemKind {
             Self::Mod(arg0) => arg0.fmt(f),
             Self::Enum(arg0) => arg0.fmt(f),
             Self::Struct(arg0) => arg0.fmt(f),
-            Self::Impl => write!(f, "Impl"),
+            Self::Impl(arg0) => arg0.fmt(f),
         }
     }
 }
@@ -862,6 +862,38 @@ impl ::std::fmt::Debug for Module {
         f.debug_struct("Module")
             .field("ident", &self.ident)
             .field("kind", &self.kind)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Impl {
+    pub id: ASTNodeID,
+    pub target_ident: Ident,
+    pub items: Vec<Item>,
+}
+
+impl Impl {
+    #[inline]
+    pub fn new(target_ident: Ident, items: Vec<Item>) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            target_ident,
+            items,
+        }
+    }
+
+    #[inline]
+    pub fn new_boxed(target_ident: Ident, items: Vec<Item>) -> Box<Self> {
+        Box::new(Self::new(target_ident, items))
+    }
+}
+
+impl ::std::fmt::Debug for Impl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Impl")
+            .field("target_ident", &self.target_ident)
+            .field("items", &self.items)
             .finish()
     }
 }
