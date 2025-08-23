@@ -336,6 +336,10 @@ pub enum ExpressionKind {
     While(Box<Expression>, Box<Block>),
     Assign(Box<Expression>, Box<Expression>),
     Call(Box<Expression>, Vec<Box<Expression>>),
+    MethodCall(Box<MethodCall>),
+    Index(Box<Expression>, Box<Expression>),
+    FieldAccess(Box<Expression>, Ident),
+    StructInit(Box<StructInitialisation>),
     Ident(Ident),
     Continue,
     Break,
@@ -393,6 +397,14 @@ impl ::std::fmt::Debug for ExpressionKind {
             Self::While(arg0, arg1) => f.debug_tuple("While").field(arg0).field(arg1).finish(),
             Self::Assign(arg0, arg1) => f.debug_tuple("Assign").field(arg0).field(arg1).finish(),
             Self::Call(arg0, arg1) => f.debug_tuple("Call").field(arg0).field(arg1).finish(),
+            Self::MethodCall(arg0) => arg0.fmt(f),
+            Self::Index(arg0, arg1) => f.debug_tuple("Index").field(arg0).field(arg1).finish(),
+            Self::FieldAccess(arg0, arg1) => f
+                .debug_tuple("FieldAccess")
+                .field(arg0)
+                .field(arg1)
+                .finish(),
+            Self::StructInit(arg0) => arg0.fmt(f),
             Self::Ident(arg0) => arg0.fmt(f),
             Self::Continue => write!(f, "Continue"),
             Self::Break => write!(f, "Break"),
@@ -894,6 +906,108 @@ impl ::std::fmt::Debug for Impl {
         f.debug_struct("Impl")
             .field("target_ident", &self.target_ident)
             .field("items", &self.items)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct MethodCall {
+    pub id: ASTNodeID,
+    pub target_expr: Box<Expression>,
+    pub method_ident: Ident,
+    pub args: Vec<Box<Expression>>,
+}
+
+impl MethodCall {
+    #[inline]
+    pub fn new(
+        target_expr: Box<Expression>,
+        method_ident: Ident,
+        args: Vec<Box<Expression>>,
+    ) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            target_expr,
+            method_ident,
+            args,
+        }
+    }
+
+    #[inline]
+    pub fn new_boxed(
+        target_expr: Box<Expression>,
+        method_ident: Ident,
+        args: Vec<Box<Expression>>,
+    ) -> Box<Self> {
+        Box::new(Self::new(target_expr, method_ident, args))
+    }
+}
+
+impl ::std::fmt::Debug for MethodCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MethodCall")
+            .field("target_expr", &self.target_expr)
+            .field("method_ident", &self.method_ident)
+            .field("args", &self.args)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct FieldInitialisation {
+    pub id: ASTNodeID,
+    pub ident: Ident,
+    pub expr: Box<Expression>,
+}
+
+impl FieldInitialisation {
+    #[inline]
+    pub fn new(ident: Ident, expr: Box<Expression>) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            ident,
+            expr,
+        }
+    }
+}
+
+impl ::std::fmt::Debug for FieldInitialisation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FieldInitialisation")
+            .field("ident", &self.ident)
+            .field("expr", &self.expr)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct StructInitialisation {
+    pub id: ASTNodeID,
+    pub ident: Ident,
+    pub fields: Vec<FieldInitialisation>,
+}
+
+impl StructInitialisation {
+    #[inline]
+    pub fn new(ident: Ident, fields: Vec<FieldInitialisation>) -> Self {
+        Self {
+            id: PLACEHOLDER_NODE_ID,
+            ident,
+            fields,
+        }
+    }
+
+    #[inline]
+    pub fn new_boxed(ident: Ident, fields: Vec<FieldInitialisation>) -> Box<Self> {
+        Box::new(Self::new(ident, fields))
+    }
+}
+
+impl ::std::fmt::Debug for StructInitialisation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StructInitialisation")
+            .field("ident", &self.ident)
+            .field("fields", &self.fields)
             .finish()
     }
 }

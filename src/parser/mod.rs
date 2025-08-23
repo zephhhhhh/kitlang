@@ -1,5 +1,5 @@
 use crate::{
-    ast::{ASTRoot, Mutability, Visibility},
+    ast::{ASTRoot, Mutability, Ty, Visibility},
     lexer::tokenise_stripped,
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, Token, TokenKind},
@@ -248,6 +248,15 @@ impl Parser<'_, '_> {
         }
 
         Ok(full_path)
+    }
+
+    /// Parse a `Ty` from the current cursor position.
+    /// # Notes
+    /// Always expects atleast one `identifier`.
+    pub fn parse_ty(&mut self) -> PResult<Ty> {
+        let path = self.parse_path()?;
+
+        Ok(Ty::new(path))
     }
 
     /// Checks if the current keyword is `pub`, if it is, consume it and return `Ok(Visibility::Public)`,
@@ -732,6 +741,12 @@ impl Parser<'_, '_> {
         self.cursor
             .peek_at(offset)
             .ok_or_else(|| self.no_token_error())
+    }
+
+    /// Returns the token at the current cursor position, or [`ParseErrorKind::NoTokens`] otherwise.
+    #[inline]
+    fn peek(&self) -> PResult<&Token> {
+        self.cursor.peek().ok_or_else(|| self.no_token_error())
     }
 }
 

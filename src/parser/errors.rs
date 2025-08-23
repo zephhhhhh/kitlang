@@ -23,6 +23,9 @@ pub enum ParseErrorKind {
     #[error("Expected token: {0:?}, but none was found")]
     ExpectedTokenFoundNone(TokenKind),
 
+    #[error("Invalid expression atom: {0:?}")]
+    InvalidExpressionAtom(TokenKind),
+
     #[error("Expected identifier, found: {0:?}")]
     ExpectedIdentifier(TokenKind),
     #[error("Expected identifier, but none was found")]

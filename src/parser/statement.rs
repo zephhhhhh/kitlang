@@ -52,13 +52,24 @@ impl Parser<'_, '_> {
 
     pub fn parse_variable_pattern(&mut self) -> PResult<VariablePattern> {
         let mutable = self.parse_mutability()?;
-        let var_ident = self.expect_ident()?;
-        self.expect_punctuation(Punctuation::Colon)?;
-        let type_ident = self.expect_ident()?;
+        let (var_ident, var_type) = if self.check_keyword_advance(Keyword::This) {
+            let ident = "self".to_string();
+            let ty = if self.check_punctuation_advance(Punctuation::Colon) {
+                self.parse_ty()?
+            } else {
+                Ty::new("Self") // TODO: Make this a Ty.
+            };
+            (ident, ty)
+        } else {
+            let ident = self.expect_ident()?;
+            self.expect_punctuation(Punctuation::Colon)?;
+            let ty = self.parse_ty()?;
+            (ident, ty)
+        };
 
         Ok(VariablePattern {
             ident: var_ident.into(),
-            ty: type_ident.into(),
+            ty: var_type,
             mutable,
         })
     }
@@ -68,7 +79,7 @@ impl Parser<'_, '_> {
         let mutable = self.parse_mutability()?;
         let var_ident = self.expect_ident()?;
         let var_type = if self.check_punctuation_advance(Punctuation::Colon) {
-            Ty::new(self.expect_ident()?)
+            self.parse_ty()?
         } else {
             Ty::Infer
         };

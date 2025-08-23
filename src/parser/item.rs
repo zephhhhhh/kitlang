@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Impl, Item, ItemKind,
-        Module, ModuleKind, Struct, StructField, Ty, VariantData, Visibility,
+        Module, ModuleKind, Struct, StructField, VariantData, Visibility,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
@@ -43,7 +43,7 @@ impl Parser<'_, '_> {
             TokenKind::Punctuation(Punctuation::Minus) => {
                 self.cursor.advance();
                 self.expect_punctuation(Punctuation::GreaterThan)?;
-                FunctionReturnTy::Ty(Box::new(self.expect_ident()?.into()))
+                FunctionReturnTy::Ty(Box::new(self.parse_ty()?))
             }
             _ => {
                 return Err(ParseError::new(
@@ -82,13 +82,9 @@ impl Parser<'_, '_> {
         };
         let var_ident = self.expect_ident()?;
         self.expect_punctuation(Punctuation::Colon)?;
-        let type_ident = self.expect_ident()?;
+        let ty = self.parse_ty()?;
 
-        Ok(StructField::new(
-            var_ident.into(),
-            type_ident.into(),
-            public,
-        ))
+        Ok(StructField::new(var_ident.into(), ty, public))
     }
 
     pub fn parse_struct(&mut self) -> PResult<Item> {
@@ -108,7 +104,7 @@ impl Parser<'_, '_> {
         self.expect_punctuation(Punctuation::OpenBrace)?;
 
         let fields = self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
-            s.parse_struct_field_definition(false)
+            s.parse_struct_field_definition(true)
         })?;
 
         Ok(Item::new(
@@ -135,7 +131,7 @@ impl Parser<'_, '_> {
             // 'Tuple' style enum..
             let tuple_tys =
                 self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
-                    Ok(Ty::new(s.parse_path()?))
+                    s.parse_ty()
                 })?;
 
             Ok(EnumVariant::new(
@@ -178,13 +174,13 @@ impl Parser<'_, '_> {
         self.expect_keyword(Keyword::Const)?;
         let var_ident = self.expect_ident()?;
         self.expect_punctuation(Punctuation::Colon)?;
-        let ty_ident = self.expect_ident()?;
+        let ty = self.parse_ty()?;
         self.expect_punctuation(Punctuation::Eq)?;
         let expr = self.parse_expression()?;
         self.expect_punctuation(Punctuation::SemiColon)?;
 
         Ok(Item::new(
-            ItemKind::Const(Constant::new_boxed(var_ident.into(), ty_ident.into(), expr)),
+            ItemKind::Const(Constant::new_boxed(var_ident.into(), ty, expr)),
             public,
         ))
     }
