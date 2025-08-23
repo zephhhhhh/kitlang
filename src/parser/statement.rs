@@ -18,6 +18,13 @@ impl From<VariablePattern> for Parameter {
     }
 }
 
+impl VariablePattern {
+    #[inline]
+    pub fn into_param(self) -> Parameter {
+        Parameter::new(self.ident, self.ty, self.mutable)
+    }
+}
+
 impl Parser<'_, '_> {
     pub fn parse_statement(&mut self) -> PResult<Statement> {
         let start_span = self.cursor.position();

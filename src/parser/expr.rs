@@ -73,16 +73,8 @@ impl Parser<'_, '_> {
         }
     }
 
-    pub fn parse_semi(&mut self) -> PResult<Box<Expression>> {
-        let expr = self.parse_expression()?;
-        self.expect_punctuation(Punctuation::SemiColon)?;
-        Ok(expr)
-    }
-
-    fn is_double_eq(&self) -> PResult<bool> {
-        let (next, after) = (self.peek_at(0)?, self.peek_at(1)?);
-        Ok(next.kind == TokenKind::Punctuation(Punctuation::Eq)
-            && after.kind == TokenKind::Punctuation(Punctuation::Eq))
+    fn is_double_eq(&self) -> bool {
+        self.check_kind_at(0, Punctuation::Eq) && self.check_kind_at(1, Punctuation::Eq)
     }
 
     pub fn parse_expr_atom(&mut self) -> PResult<Box<Expression>> {
@@ -112,7 +104,7 @@ impl Parser<'_, '_> {
             TokenKind::Punctuation(Punctuation::OpenParen) => self.parse_call_continued(atom),
             TokenKind::Punctuation(Punctuation::Dot) => todo!(), // Field access..
             TokenKind::Punctuation(Punctuation::OpenBracket) => todo!(), // Indexing..
-            ref c if !self.is_double_eq()? && c == &TokenKind::Punctuation(Punctuation::Eq) => {
+            ref c if !self.is_double_eq() && c == &TokenKind::Punctuation(Punctuation::Eq) => {
                 self.parse_assign_continued(atom)
             }
             _ => Ok(atom),
@@ -305,24 +297,9 @@ impl Parser<'_, '_> {
     fn parse_call_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
         self.expect_punctuation(Punctuation::OpenParen)?;
 
-        let mut args = Vec::new();
-
-        if !self.check_punctuation_advance(Punctuation::CloseParen) {
-            // There are arguments.. Parse the first one..
-            args.push(self.parse_expression()?);
-
-            // Parse a comma before each additional argument..
-            while !self.cursor.is_end() {
-                if self.check_punctuation_advance(Punctuation::CloseParen) {
-                    break;
-                }
-
-                self.expect_punctuation(Punctuation::Comma)?;
-
-                let arg = self.parse_expression()?;
-                args.push(arg);
-            }
-        }
+        let args = self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
+            s.parse_expression()
+        })?;
 
         Ok(Expression::new_boxed(ExpressionKind::Call(lhs, args)))
     }

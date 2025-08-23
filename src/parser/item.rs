@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Ident, Impl, Item,
-        ItemKind, Module, ModuleKind, Struct, StructField, Visibility,
+        Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Impl, Item, ItemKind,
+        Module, ModuleKind, Struct, StructField, Ty, VariantData, Visibility,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
@@ -32,23 +32,10 @@ impl Parser<'_, '_> {
         let func_name = self.expect_ident()?;
         self.expect_punctuation(Punctuation::OpenParen)?;
 
-        let mut function_arguments = Vec::new();
-
-        if !self.check_punctuation_advance(Punctuation::CloseParen) {
-            // There are arguments.. Parse the first one..
-            function_arguments.push(self.parse_variable_pattern()?.into());
-
-            // Parse a comma before each additional argument..
-            while !self.cursor.is_end() {
-                if self.check_punctuation_advance(Punctuation::CloseParen) {
-                    break;
-                }
-
-                self.expect_punctuation(Punctuation::Comma)?;
-
-                function_arguments.push(self.parse_variable_pattern()?.into());
-            }
-        }
+        let function_arguments =
+            self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
+                Ok(s.parse_variable_pattern()?.into_param())
+            })?;
 
         let return_type_token = self.peek_at(0)?;
         let func_return_type = match return_type_token.kind {
@@ -82,8 +69,17 @@ impl Parser<'_, '_> {
         Ok(Item::new(item_kind, public))
     }
 
-    fn parse_struct_field_definition(&mut self) -> PResult<StructField> {
-        let public = self.parse_visibility()?;
+    fn parse_struct_field_definition(&mut self, allow_vis_specifier: bool) -> PResult<StructField> {
+        let public = if allow_vis_specifier {
+            self.parse_visibility()?
+        } else {
+            if self.check_keyword(Keyword::Pub) {
+                return Err(self.make_error(ParseErrorKind::UnexpectedToken(
+                    self.peek_at(0)?.kind.clone(),
+                )));
+            }
+            Visibility::Public
+        };
         let var_ident = self.expect_ident()?;
         self.expect_punctuation(Punctuation::Colon)?;
         let type_ident = self.expect_ident()?;
@@ -111,29 +107,9 @@ impl Parser<'_, '_> {
 
         self.expect_punctuation(Punctuation::OpenBrace)?;
 
-        let mut fields = Vec::new();
-
-        if !self.check_punctuation_advance(Punctuation::CloseBrace) {
-            fields.push(self.parse_struct_field_definition()?);
-
-            // Parse a comma before each additional argument..
-            while !self.cursor.is_end() {
-                if self.check_punctuation_advance(Punctuation::CloseBrace) {
-                    break;
-                }
-                // Comma on last element, but then end structure..
-                if self.check_punctuation(Punctuation::Comma)
-                    && self.peek_at(1)?.kind == TokenKind::Punctuation(Punctuation::CloseBrace)
-                {
-                    self.cursor.advance_by(2);
-                    break;
-                }
-
-                self.expect_punctuation(Punctuation::Comma)?;
-
-                fields.push(self.parse_struct_field_definition()?);
-            }
-        }
+        let fields = self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
+            s.parse_struct_field_definition(false)
+        })?;
 
         Ok(Item::new(
             ItemKind::Struct(Struct::new_boxed(struct_ident.into(), fields)),
@@ -142,7 +118,33 @@ impl Parser<'_, '_> {
     }
 
     fn parse_enum_variant(&mut self) -> PResult<EnumVariant> {
-        todo!()
+        let variant_ident = self.expect_ident()?;
+
+        if self.check_punctuation_advance(Punctuation::OpenBrace) {
+            // 'Struct' style enum..
+            let struct_fields =
+                self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
+                    s.parse_struct_field_definition(false)
+                })?;
+
+            Ok(EnumVariant::new(
+                variant_ident.into(),
+                VariantData::Struct(struct_fields),
+            ))
+        } else if self.check_punctuation_advance(Punctuation::OpenParen) {
+            // 'Tuple' style enum..
+            let tuple_tys =
+                self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
+                    Ok(Ty::new(s.parse_path()?))
+                })?;
+
+            Ok(EnumVariant::new(
+                variant_ident.into(),
+                VariantData::Tuple(tuple_tys),
+            ))
+        } else {
+            Ok(EnumVariant::new(variant_ident.into(), VariantData::Unit))
+        }
     }
 
     pub fn parse_enum(&mut self) -> PResult<Item> {
@@ -152,7 +154,7 @@ impl Parser<'_, '_> {
         let enum_ident = self.expect_ident()?;
 
         if self.check_punctuation_advance(Punctuation::SemiColon) {
-            // Enum with 0 variants..
+            // Enum with 0 variants.. (Unit enum)
             return Ok(Item::new(
                 ItemKind::Enum(Enum::new_boxed(enum_ident.into(), vec![])),
                 public,
@@ -161,29 +163,9 @@ impl Parser<'_, '_> {
 
         self.expect_punctuation(Punctuation::OpenBrace)?;
 
-        let mut variants = Vec::new();
-
-        if !self.check_punctuation_advance(Punctuation::CloseBrace) {
-            variants.push(self.parse_enum_variant()?);
-
-            // Parse a comma before each additional argument..
-            while !self.cursor.is_end() {
-                if self.check_punctuation_advance(Punctuation::CloseBrace) {
-                    break;
-                }
-                // Comma on last element, but then end structure..
-                if self.check_punctuation(Punctuation::Comma)
-                    && self.peek_at(1)?.kind == TokenKind::Punctuation(Punctuation::CloseBrace)
-                {
-                    self.cursor.advance_by(2);
-                    break;
-                }
-
-                self.expect_punctuation(Punctuation::Comma)?;
-
-                variants.push(self.parse_enum_variant()?);
-            }
-        }
+        let variants = self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
+            s.parse_enum_variant()
+        })?;
 
         Ok(Item::new(
             ItemKind::Enum(Enum::new_boxed(enum_ident.into(), variants)),
@@ -226,20 +208,8 @@ impl Parser<'_, '_> {
         // Parse module body..
         self.expect_punctuation(Punctuation::OpenBrace)?;
 
-        let mut items = Vec::new();
-
-        if !self.check_punctuation_advance(Punctuation::CloseBrace) {
-            items.push(self.parse_impl_item()?);
-
-            // Parse a comma before each additional argument..
-            while !self.cursor.is_end() {
-                if self.check_punctuation_advance(Punctuation::CloseBrace) {
-                    break;
-                }
-
-                items.push(self.parse_impl_item()?);
-            }
-        }
+        let items =
+            self.parse_block_like_no_delimiter(Punctuation::CloseBrace, |s| s.parse_impl_item())?;
 
         Ok(Item::new(
             ItemKind::Impl(Impl::new_boxed(ty.into(), items)),
@@ -280,20 +250,8 @@ impl Parser<'_, '_> {
         // Parse module body..
         self.expect_punctuation(Punctuation::OpenBrace)?;
 
-        let mut items = Vec::new();
-
-        if !self.check_punctuation_advance(Punctuation::CloseBrace) {
-            items.push(self.parse_mod_item()?);
-
-            // Parse a comma before each additional argument..
-            while !self.cursor.is_end() {
-                if self.check_punctuation_advance(Punctuation::CloseBrace) {
-                    break;
-                }
-
-                items.push(self.parse_mod_item()?);
-            }
-        }
+        let items =
+            self.parse_block_like_no_delimiter(Punctuation::CloseBrace, |s| s.parse_mod_item())?;
 
         Ok(Item::new(
             ItemKind::Mod(Module::new_boxed(

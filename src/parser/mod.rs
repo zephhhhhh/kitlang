@@ -185,18 +185,6 @@ impl TokenCursor<'_> {
     pub fn peek_at(&self, ahead: u32) -> Option<&Token> {
         self.get(self.position.saturating_add(ahead))
     }
-
-    /// Peek at the token ahead of the current token _without_ advancing the cursor position.
-    #[inline]
-    pub fn peek_second(&self) -> Option<&Token> {
-        self.peek_at(1)
-    }
-
-    /// Peek at the token two ahead of the current token _without_ advancing the cursor position.
-    #[inline]
-    pub fn peek_third(&self) -> Option<&Token> {
-        self.peek_at(2)
-    }
 }
 
 /// A sequence of [`Token`]'s
@@ -307,9 +295,22 @@ impl Parser<'_, '_> {
     /// Peek at the current token, return `true` if the [`TokenKind`] of the [`Token`] matches the
     /// `expected_kind`
     #[inline]
-    fn check_kind(&self, expected_kind: &TokenKind) -> bool {
+    fn check_kind(&self, expected_kind: impl Into<TokenKind>) -> bool {
+        let expected = expected_kind.into();
         if let Some(t) = self.cursor.peek() {
-            t.kind == *expected_kind
+            t.kind == expected
+        } else {
+            false
+        }
+    }
+
+    /// Peek at the specified `offset`, return `true` if the [`TokenKind`] of the [`Token`] matches the
+    /// `expected_kind`
+    #[inline]
+    fn check_kind_at(&self, offset: u32, expected_kind: impl Into<TokenKind>) -> bool {
+        let expected = expected_kind.into();
+        if let Some(t) = self.cursor.peek_at(offset) {
+            t.kind == expected
         } else {
             false
         }
@@ -318,7 +319,7 @@ impl Parser<'_, '_> {
     /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
     /// matches the `expected_kind`
     #[inline]
-    fn check_kind_advance(&mut self, expected_kind: &TokenKind) -> bool {
+    fn check_kind_advance(&mut self, expected_kind: impl Into<TokenKind>) -> bool {
         if self.check_kind(expected_kind) {
             self.cursor.advance();
             true
@@ -331,7 +332,7 @@ impl Parser<'_, '_> {
     /// [`Keyword`] and that keyword matches the `expected_keyword`.
     #[inline]
     fn check_keyword(&self, expected_keyword: Keyword) -> bool {
-        self.check_kind(&TokenKind::Keyword(expected_keyword))
+        self.check_kind(expected_keyword)
     }
 
     /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
@@ -350,7 +351,14 @@ impl Parser<'_, '_> {
     /// is [`Punctuation`] and that the punctuation matches the `expected_punctuation`
     #[inline]
     fn check_punctuation(&self, expected_punctuation: Punctuation) -> bool {
-        self.check_kind(&TokenKind::Punctuation(expected_punctuation))
+        self.check_kind(expected_punctuation)
+    }
+
+    /// Peek at the specified `offset`, return `true` and if the [`TokenKind`] of the [`Token`]
+    /// is [`Punctuation`] and that the punctuation matches the `expected_punctuation`
+    #[inline]
+    fn check_punctuation_at(&self, offset: u32, expected_punctuation: Punctuation) -> bool {
+        self.check_kind_at(offset, expected_punctuation)
     }
 
     /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
@@ -430,17 +438,18 @@ impl Parser<'_, '_> {
 // Expect..
 impl Parser<'_, '_> {
     #[inline]
-    fn expect_kind(&mut self, expected_kind: &TokenKind) -> PResult<()> {
-        if self.check_kind_advance(expected_kind) {
+    fn expect_kind(&mut self, expected_kind: impl Into<TokenKind>) -> PResult<()> {
+        let expected = expected_kind.into();
+        if self.check_kind_advance(expected.clone()) {
             Ok(())
         } else if let Some(token) = self.cursor.peek() {
             Err(ParseError::new(
-                ParseErrorKind::ExpectedToken(expected_kind.clone(), token.kind.clone()),
+                ParseErrorKind::ExpectedToken(expected, token.kind.clone()),
                 token,
             ))
         } else {
             Err(ParseError::new(
-                ParseErrorKind::ExpectedTokenFoundNone(expected_kind.clone()),
+                ParseErrorKind::ExpectedTokenFoundNone(expected),
                 self.cursor.eof_span(),
             ))
         }
@@ -448,12 +457,12 @@ impl Parser<'_, '_> {
 
     #[inline]
     fn expect_keyword(&mut self, expected_keyword: Keyword) -> PResult<()> {
-        self.expect_kind(&TokenKind::Keyword(expected_keyword))
+        self.expect_kind(expected_keyword)
     }
 
     #[inline]
     fn expect_punctuation(&mut self, expected_punctuation: Punctuation) -> PResult<()> {
-        self.expect_kind(&TokenKind::Punctuation(expected_punctuation))
+        self.expect_kind(expected_punctuation)
     }
 
     #[inline]
@@ -557,7 +566,160 @@ impl Parser<'_, '_> {
     }
 }
 
+// Parsing 'block' like structures.
 impl Parser<'_, '_> {
+    /// Parses a 'block'-like pattern, where the expected token stream to parse resembles:
+    /// ```
+    /// <OpenPunctuation>
+    ///     <Element>+
+    /// <ClosePunctuation>
+    /// ````
+    /// # Notes
+    /// This function expects that the `<OpenPunctuation>` has already been consumed and that the
+    /// cursor is at the start of the first element in the block.
+    ///
+    /// This function allows for empty blocks.
+    /// # Generic Parameters
+    /// `T` is the type of the element the block will parse.
+    /// `F` is a function that will actually do the parsing of each element, and the function is
+    /// passed `self`.
+    fn parse_block_like_no_delimiter<T, F: FnMut(&mut Self) -> PResult<T>>(
+        &mut self,
+        close: Punctuation,
+        mut f: F,
+    ) -> PResult<Vec<T>> {
+        let mut elements = Vec::new();
+
+        if !self.check_punctuation_advance(close) {
+            elements.push(f(self)?);
+
+            while !self.cursor.is_end() {
+                if self.check_punctuation_advance(close) {
+                    break;
+                }
+                elements.push(f(self)?);
+            }
+        }
+
+        Ok(elements)
+    }
+
+    /// Parses a 'block'-like pattern, where the expected token stream to parse resembles:
+    /// ```
+    /// <OpenPunctuation>
+    ///     <Element><Delimiter>
+    ///     <Element><Delimiter>?
+    /// <ClosePunctuation>
+    /// ````
+    /// # Notes
+    /// This function expects that the `<OpenPunctuation>` has already been consumed and that the
+    /// cursor is at the start of the first element in the block.
+    ///
+    /// This function allows for empty blocks.
+    /// # Generic Parameters
+    /// If `TRAIL_DELIM` is set `true`, the algorithm will allow a trailing delimiter after the
+    /// last element but before the closing [`Punctuation`], otherwise this will cause an error.
+    /// `T` is the type of the element the block will parse.
+    /// `F` is a function that will actually do the parsing of each element, and the function is
+    /// passed `self`.
+    fn parse_block_like_impl<const TRAIL_DELIM: bool, T, F: FnMut(&mut Self) -> PResult<T>>(
+        &mut self,
+        delimiter: Punctuation,
+        close: Punctuation,
+        mut f: F,
+    ) -> PResult<Vec<T>> {
+        let mut elements = Vec::new();
+
+        if !self.check_punctuation_advance(close) {
+            elements.push(f(self)?);
+
+            while !self.cursor.is_end() {
+                if self.check_punctuation_advance(close) {
+                    break;
+                }
+                if TRAIL_DELIM
+                    && self.check_punctuation(delimiter)
+                    && self.check_punctuation_at(1, close)
+                {
+                    self.cursor.advance_by(2);
+                    break;
+                }
+                self.expect_punctuation(delimiter)?;
+
+                elements.push(f(self)?);
+            }
+        }
+
+        Ok(elements)
+    }
+
+    /// Parses a 'block'-like pattern, where the expected token stream to parse resembles:
+    /// ```
+    /// <OpenPunctuation>
+    ///     <Element><Delimiter>
+    ///     <Element><Delimiter>?
+    /// <ClosePunctuation>
+    /// ````
+    /// # Notes
+    /// This function expects that the `<OpenPunctuation>` has already been consumed and that the
+    /// cursor is at the start of the first element in the block.
+    ///
+    /// This function allows for empty blocks.
+    ///
+    /// This function allows for trailing delimiters on the last element before the end of the
+    /// `block`.
+    /// # Generic Parameters
+    /// `T` is the type of the element the block will parse.
+    /// `F` is a function that will actually do the parsing of each element, and the function is
+    /// passed `self`.
+    #[inline]
+    fn parse_block_like<T, F: FnMut(&mut Self) -> PResult<T>>(
+        &mut self,
+        delimiter: Punctuation,
+        close: Punctuation,
+        f: F,
+    ) -> PResult<Vec<T>> {
+        self.parse_block_like_impl::<true, T, F>(delimiter, close, f)
+    }
+
+    /// Parses a 'block'-like pattern, where the expected token stream to parse resembles:
+    /// ```
+    /// <OpenPunctuation>
+    ///     <Element><Delimiter>
+    ///     <Element><Delimiter>?
+    /// <ClosePunctuation>
+    /// ````
+    /// # Notes
+    /// This function expects that the `<OpenPunctuation>` has already been consumed and that the
+    /// cursor is at the start of the first element in the block.
+    ///
+    /// This function allows for empty blocks.
+    ///
+    /// This function does not allow for trailing delimiters on the last element before the end of the
+    /// `block`.
+    /// # Generic Parameters
+    /// `T` is the type of the element the block will parse.
+    /// `F` is a function that will actually do the parsing of each element, and the function is
+    /// passed `self`.
+    #[inline]
+    fn parse_block_like_no_trail<T, F: FnMut(&mut Self) -> PResult<T>>(
+        &mut self,
+        delimiter: Punctuation,
+        close: Punctuation,
+        f: F,
+    ) -> PResult<Vec<T>> {
+        self.parse_block_like_impl::<false, T, F>(delimiter, close, f)
+    }
+}
+
+impl Parser<'_, '_> {
+    /// Returns an error with the specified error `kind`, that is for the `token` currently pointed
+    /// to by the cursor.
+    #[inline]
+    fn make_error(&self, kind: ParseErrorKind) -> ParseError {
+        ParseError::new(kind, self.cursor.pos_span())
+    }
+
     /// Returns an error representing that the token stream ended unexpectedly.
     #[inline]
     fn no_token_error(&self) -> ParseError {
