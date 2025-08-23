@@ -57,7 +57,7 @@ impl Parser<'_, '_> {
             let ty = if self.check_punctuation_advance(Punctuation::Colon) {
                 self.parse_ty()?
             } else {
-                Ty::new("Self") // TODO: Make this a Ty.
+                Ty::This
             };
             (ident, ty)
         } else {

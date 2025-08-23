@@ -254,9 +254,20 @@ impl Parser<'_, '_> {
     /// # Notes
     /// Always expects atleast one `identifier`.
     pub fn parse_ty(&mut self) -> PResult<Ty> {
+        let is_ref = self.check_punctuation_advance(Punctuation::Ampersand);
+        let is_mut_ref = if is_ref {
+            self.check_keyword_advance(Keyword::Mut)
+        } else {
+            false
+        };
+
         let path = self.parse_path()?;
 
-        Ok(Ty::new(path))
+        if is_ref {
+            Ok(Ty::Ref(path, Mutability::from_is_mutable(is_mut_ref)))
+        } else {
+            Ok(Ty::new(path))
+        }
     }
 
     /// Checks if the current keyword is `pub`, if it is, consume it and return `Ok(Visibility::Public)`,

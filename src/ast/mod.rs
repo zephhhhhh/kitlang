@@ -17,7 +17,7 @@ impl ASTRoot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
 pub enum Visibility {
     Public,
     Private,
@@ -29,9 +29,15 @@ impl Visibility {
     pub fn from_is_public(v: bool) -> Self {
         if v { Self::Public } else { Self::Private }
     }
+
+    /// Returns true if `self` is `Visibility::Public`.
+    #[inline]
+    pub fn is_public(self) -> bool {
+        matches!(self, Visibility::Public)
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
 pub enum Mutability {
     Mutable,
     Immutable,
@@ -42,6 +48,11 @@ impl Mutability {
     #[inline]
     pub fn from_is_mutable(v: bool) -> Self {
         if v { Self::Mutable } else { Self::Immutable }
+    }
+
+    /// Returns true if the `self` is `Mutability::Mutable`.
+    pub fn is_mutable(self) -> bool {
+        matches!(self, Mutability::Mutable)
     }
 }
 
@@ -145,7 +156,11 @@ impl Ident {
 #[derive(Clone, PartialEq, PartialOrd, Hash)]
 pub enum Ty {
     Infer,
+    This,
+    Ref(String, Mutability),
     Type(String),
+    Array(Box<Ty>),
+    Tuple(Vec<Box<Ty>>),
 }
 
 impl Ty {
@@ -183,6 +198,24 @@ impl ::std::fmt::Debug for Ty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Ty::Infer => write!(f, "Infer"),
+            Ty::This => write!(f, "Self"),
+            Ty::Ref(t, mutable) => if mutable.is_mutable() {
+                write!(f, "MutRef({t})")
+            } else {
+                write!(f, "Ref({t})")
+            },
+            Ty::Array(t) => write!(f, "Array({t:?})"),
+            Ty::Tuple(t) => {
+                write!(f, "Tuple(")?;
+                for (i, ty) in t.iter().enumerate() {
+                    if i == 0 {
+                        write!(f, "{ty:?}")?;
+                    } else {
+                        write!(f, ", {ty:?}")?;
+                    }
+                }
+                write!(f, ")")
+            }
             Ty::Type(t) => write!(f, "Type({})", t),
         }
     }
