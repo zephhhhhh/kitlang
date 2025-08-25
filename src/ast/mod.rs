@@ -157,7 +157,7 @@ impl Ident {
 pub enum Ty {
     Infer,
     This,
-    Ref(String, Mutability),
+    Ref(Box<Ty>, Mutability),
     Type(String),
     Array(Box<Ty>),
     Tuple(Vec<Box<Ty>>),
@@ -199,11 +199,13 @@ impl ::std::fmt::Debug for Ty {
         match self {
             Ty::Infer => write!(f, "Infer"),
             Ty::This => write!(f, "Self"),
-            Ty::Ref(t, mutable) => if mutable.is_mutable() {
-                write!(f, "MutRef({t})")
-            } else {
-                write!(f, "Ref({t})")
-            },
+            Ty::Ref(t, mutable) => {
+                if mutable.is_mutable() {
+                    write!(f, "MutRef({t:?})")
+                } else {
+                    write!(f, "Ref({t:?})")
+                }
+            }
             Ty::Array(t) => write!(f, "Array({t:?})"),
             Ty::Tuple(t) => {
                 write!(f, "Tuple(")?;

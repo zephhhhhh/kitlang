@@ -264,7 +264,10 @@ impl Parser<'_, '_> {
         let path = self.parse_path()?;
 
         if is_ref {
-            Ok(Ty::Ref(path, Mutability::from_is_mutable(is_mut_ref)))
+            Ok(Ty::Ref(
+                Box::new(Ty::new(path)),
+                Mutability::from_is_mutable(is_mut_ref),
+            ))
         } else {
             Ok(Ty::new(path))
         }

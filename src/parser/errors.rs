@@ -1,3 +1,5 @@
+use ::std::ops::Range;
+
 use thiserror::Error;
 
 use crate::token::{Token, TokenKind};
@@ -71,8 +73,8 @@ impl From<(u32, u32)> for SourceSpan {
     }
 }
 
-impl<T: Into<u32>> From<::std::ops::Range<T>> for SourceSpan {
-    fn from(value: ::std::ops::Range<T>) -> SourceSpan {
+impl<T: Into<u32>> From<Range<T>> for SourceSpan {
+    fn from(value: Range<T>) -> SourceSpan {
         Self::new(value.start.into(), value.end.into())
     }
 }
@@ -87,6 +89,11 @@ impl From<&Token> for SourceSpan {
     fn from(value: &Token) -> Self {
         Self::new(value.start, value.end)
     }
+}
+
+/// Counts the number of newline (`\n`) characters in a string slice.
+fn count_new_lines(str: &str) -> usize {
+    str.chars().filter(|c| *c == '\n').count()
 }
 
 /// Represents an error while parsing the [`Token`]s
@@ -111,6 +118,90 @@ impl ParseError {
     #[must_use]
     pub fn no_tokens(span: impl Into<SourceSpan>) -> Self {
         Self::new(ParseErrorKind::NoTokens, span)
+    }
+
+    /// Get the 3 segments from the source string and `self`.
+    /// # Returns
+    /// `(before, the_error_span, after)`
+    pub fn get_segments_from_source<'a>(
+        &self,
+        source_string: &'a str,
+    ) -> (&'a str, &'a str, &'a str) {
+        let error_span_start = self.span.start as usize;
+        let error_span_end = self.span.end as usize;
+
+        let before_span = &source_string[0..error_span_start];
+        let error_span = &source_string[error_span_start..error_span_end];
+        let after_span = &source_string[error_span_end..];
+
+        (before_span, error_span, after_span)
+    }
+
+    /// Format the source line into the string to be printed, along with where in the printed
+    /// string the "error" span is.
+    fn format_source_line(
+        prefix: &str,
+        before: &str,
+        error: &str,
+        after: &str,
+    ) -> (Range<usize>, String) {
+        let mut err_line = String::from(prefix);
+        err_line += before;
+
+        let err_span_start = err_line.len();
+        err_line += error;
+        let err_span_end = err_line.len();
+
+        err_line += after;
+
+        (err_span_start..err_span_end, err_line)
+    }
+
+    fn generate_highlight_line_str(
+        prefix: &str,
+        err_span: Range<usize>,
+        highlight: &str,
+    ) -> String {
+        let mut highlight_str = prefix.to_string();
+        highlight_str += &" ".repeat(err_span.start.saturating_sub(prefix.len()));
+        highlight_str += &highlight.repeat(err_span.len());
+        highlight_str
+    }
+
+    /// Format the error as an error message, given the source code string.
+    #[inline]
+    #[must_use]
+    pub fn format_as_error_message(&self, source_string: &str) -> String {
+        let (before, error, after) = self.get_segments_from_source(source_string);
+        let line_number = count_new_lines(before).saturating_add(1);
+        let previous_newline_index = before.rfind('\n').unwrap_or(0);
+        let next_newline_index = after.find('\n').unwrap_or(source_string.len());
+        let error_line_char_index = before[previous_newline_index..].chars().count();
+        let _error_section_line_count = count_new_lines(error);
+
+        let line_number_str = line_number.to_string();
+        let line_num_prefix = format!("{line_number_str} | ");
+        let blank_prefix = format!("{} | ", " ".repeat(line_number_str.len()));
+
+        let before_error_line_str =
+            &before[(previous_newline_index.saturating_add(1).min(before.len()))..];
+
+        let (err_span, err_line) = Self::format_source_line(
+            &line_num_prefix,
+            before_error_line_str,
+            error,
+            &after[..next_newline_index],
+        );
+        let highlight_str = Self::generate_highlight_line_str(&blank_prefix, err_span, "^");
+
+        format!(
+            "{0}\n\
+            {line_number}:{error_line_char_index}\n\
+            {blank_prefix}\n\
+            {err_line}\n\
+            {highlight_str}\n",
+            self.error_kind
+        )
     }
 }
 

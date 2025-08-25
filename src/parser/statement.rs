@@ -1,5 +1,6 @@
 use crate::{
     ast::{Ident, Local, LocalKind, Mutability, Parameter, Statement, StatementKind, Ty},
+    parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
 };
 
@@ -52,18 +53,48 @@ impl Parser<'_, '_> {
 
     pub fn parse_variable_pattern(&mut self) -> PResult<VariablePattern> {
         let mutable = self.parse_mutability()?;
+        let is_ref = self.check_punctuation_advance(Punctuation::Ampersand);
+        let is_mut = if is_ref {
+            self.check_keyword_advance(Keyword::Mut)
+        } else {
+            false
+        };
+
         let (var_ident, var_type) = if self.check_keyword_advance(Keyword::This) {
             let ident = "self".to_string();
             let ty = if self.check_punctuation_advance(Punctuation::Colon) {
+                if is_ref {
+                    let token = self.peek()?;
+                    return Err(ParseError::new(
+                        ParseErrorKind::UnexpectedToken(token.kind.clone()),
+                        token,
+                    ));
+                }
+
                 self.parse_ty()?
+            } else if is_ref {
+                Ty::Ref(Box::new(Ty::This), Mutability::from_is_mutable(is_mut))
             } else {
                 Ty::This
             };
+
             (ident, ty)
         } else {
+            if is_ref {
+                let token = self.peek()?;
+                return Err(ParseError::new(
+                    ParseErrorKind::ExpectedToken(
+                        TokenKind::Keyword(Keyword::This),
+                        token.kind.clone(),
+                    ),
+                    token,
+                ));
+            }
+
             let ident = self.expect_ident()?;
             self.expect_punctuation(Punctuation::Colon)?;
             let ty = self.parse_ty()?;
+
             (ident, ty)
         };
 
