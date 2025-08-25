@@ -16,7 +16,7 @@ pub enum ParseErrorKind {
     InvalidStringLiteral,
     #[error("Invalid identifier: {0}")]
     InvalidIdentifier(String),
-    #[error("Invalider literal: {0}")]
+    #[error("Invalid literal: {0}")]
     InvalidLiteral(String),
     #[error("Unknown token found")]
     UnknownToken,
