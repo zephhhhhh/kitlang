@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Impl, Item, ItemKind,
-        Module, ModuleKind, Struct, StructField, VariantData, Visibility,
+        Module, ModuleKind, Struct, StructField, UseImport, VariantData, Visibility,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
@@ -13,6 +13,7 @@ impl Parser<'_, '_> {
     pub fn parse_item(&mut self) -> PResult<Item> {
         let (_, token) = self.expect_next_significant_token()?;
         match token.kind {
+            TokenKind::Keyword(Keyword::Use) => self.parse_use(),
             TokenKind::Keyword(Keyword::Const) => self.parse_const(),
             TokenKind::Keyword(Keyword::Fn) => self.parse_function(),
             TokenKind::Keyword(Keyword::Struct) => self.parse_struct(),
@@ -226,6 +227,19 @@ impl Parser<'_, '_> {
                 token,
             ))
         }
+    }
+
+    pub fn parse_use(&mut self) -> PResult<Item> {
+        let public = self.parse_visibility()?;
+        self.expect_keyword(Keyword::Use)?;
+        let path = self.parse_path()?;
+
+        self.expect_kind(Punctuation::SemiColon)?;
+
+        Ok(Item::new(
+            ItemKind::Use(UseImport::new(path.into())),
+            public,
+        ))
     }
 
     pub fn parse_mod(&mut self) -> PResult<Item> {

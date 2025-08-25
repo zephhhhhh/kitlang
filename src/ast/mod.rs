@@ -51,6 +51,7 @@ impl Mutability {
     }
 
     /// Returns true if the `self` is `Mutability::Mutable`.
+    #[inline]
     pub fn is_mutable(self) -> bool {
         matches!(self, Mutability::Mutable)
     }
@@ -106,7 +107,7 @@ impl BinaryOpKind {
 
 #[derive(Clone, PartialEq)]
 pub enum ItemKind {
-    Use,
+    Use(UseImport),
     Const(Box<Constant>),
     Fn(Box<Function>),
     Mod(Box<Module>),
@@ -116,9 +117,10 @@ pub enum ItemKind {
 }
 
 impl ItemKind {
+    #[inline]
     pub fn get_name(&self) -> &'static str {
         match self {
-            ItemKind::Use => "Use",
+            ItemKind::Use(_) => "Use",
             ItemKind::Const(_) => "Const",
             ItemKind::Fn(_) => "Function",
             ItemKind::Mod(_) => "Module",
@@ -132,7 +134,7 @@ impl ItemKind {
 impl ::std::fmt::Debug for ItemKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Use => write!(f, "Use"),
+            Self::Use(arg0) => arg0.fmt(f),
             Self::Const(arg0) => arg0.fmt(f),
             Self::Fn(arg0) => arg0.fmt(f),
             Self::Mod(arg0) => arg0.fmt(f),
@@ -318,6 +320,7 @@ pub enum ExpressionAssociation {
 }
 
 impl BinaryOpKind {
+    #[inline]
     pub fn get_order(self) -> ExpressionOrder {
         match self {
             Self::Add | Self::Sub => ExpressionOrder::Sum,
@@ -337,6 +340,7 @@ impl BinaryOpKind {
         }
     }
 
+    #[inline]
     pub fn get_association(self) -> ExpressionAssociation {
         match self {
             Self::Add
@@ -382,6 +386,7 @@ pub enum ExpressionKind {
 }
 
 impl ExpressionKind {
+    #[inline]
     pub fn can_be_non_semi(&self) -> bool {
         matches!(
             self,
@@ -389,6 +394,7 @@ impl ExpressionKind {
         )
     }
 
+    #[inline]
     pub fn get_order(&self) -> ExpressionOrder {
         match self {
             ExpressionKind::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_order(),
@@ -401,6 +407,7 @@ impl ExpressionKind {
         }
     }
 
+    #[inline]
     pub fn get_association(&self) -> ExpressionAssociation {
         match self {
             ExpressionKind::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_association(),
@@ -520,6 +527,7 @@ pub struct Statement {
 }
 
 impl Statement {
+    #[inline]
     pub fn new(kind: StatementKind, source_span: Range<u32>) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
@@ -586,6 +594,7 @@ impl Local {
         Box::new(Self::new(ident, ty, kind, mutable))
     }
 
+    #[inline]
     pub fn fmt_with_name(&self, f: &mut std::fmt::Formatter<'_>, name: &str) -> std::fmt::Result {
         let info = format!(
             "{{ name: {:?}, type: {:?}, {:?} }}",
@@ -653,6 +662,7 @@ impl ::std::fmt::Debug for Block {
 }
 
 impl Block {
+    #[inline]
     pub fn new(statements: Vec<Statement>) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
@@ -670,6 +680,7 @@ pub struct Parameter {
 }
 
 impl Parameter {
+    #[inline]
     pub fn new(ident: Ident, ty: Ty, mutable: Mutability) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
@@ -718,6 +729,7 @@ pub struct Function {
 }
 
 impl Function {
+    #[inline]
     pub fn new(ident: Ident, sig: FunctionSig, body: Option<Box<Block>>) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
@@ -747,6 +759,7 @@ pub struct StructField {
 }
 
 impl StructField {
+    #[inline]
     pub fn new(ident: Ident, ty: Ty, vis: Visibility) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
@@ -775,6 +788,7 @@ pub struct Struct {
 }
 
 impl Struct {
+    #[inline]
     pub fn new(ident: Ident, fields: Vec<StructField>) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
@@ -783,6 +797,7 @@ impl Struct {
         }
     }
 
+    #[inline]
     pub fn new_boxed(ident: Ident, fields: Vec<StructField>) -> Box<Self> {
         Box::new(Self::new(ident, fields))
     }
@@ -1043,6 +1058,27 @@ impl ::std::fmt::Debug for StructInitialisation {
         f.debug_struct("StructInitialisation")
             .field("ident", &self.ident)
             .field("fields", &self.fields)
+            .finish()
+    }
+}
+
+// TODO: Re-do this after redoing the path system.
+#[derive(Clone, PartialEq)]
+pub struct UseImport {
+    pub ident: Ident,
+}
+
+impl UseImport {
+    #[inline]
+    pub fn new(ident: Ident) -> Self {
+        Self { ident }
+    }
+}
+
+impl ::std::fmt::Debug for UseImport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UseImport")
+            .field("ident", &self.ident)
             .finish()
     }
 }

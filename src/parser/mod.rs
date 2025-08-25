@@ -217,6 +217,31 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RefType {
+    None,
+    Ref,
+    RefMut,
+}
+
+impl RefType {
+    /// Return the [`Mutability`] of the [`RefType`].
+    /// I.e. `RefMut` = `Mutability::Mutable`, `Ref` & `None` = `Mutability::Immutable`.
+    #[inline]
+    pub fn mutability(self) -> Mutability {
+        match self {
+            Self::RefMut => Mutability::Mutable,
+            _ => Mutability::Immutable,
+        }
+    }
+
+    /// Returns `true` if `self` is a `reference`.
+    #[inline]
+    pub fn is_ref(self) -> bool {
+        matches!(self, Self::Ref | Self::RefMut)
+    }
+}
+
 impl Parser<'_, '_> {
     fn is_double_colon(&self) -> PResult<bool> {
         Ok(
@@ -250,24 +275,29 @@ impl Parser<'_, '_> {
         Ok(full_path)
     }
 
+    /// Parses a '&' and '&mut'
+    pub fn parse_ref_and_refmut(&mut self) -> PResult<RefType> {
+        if self.check_punctuation_advance(Punctuation::Ampersand) {
+            if self.check_keyword_advance(Keyword::Mut) {
+                Ok(RefType::RefMut)
+            } else {
+                Ok(RefType::Ref)
+            }
+        } else {
+            // TODO: Check if next token is 'mut', if so, return an error.
+            Ok(RefType::None)
+        }
+    }
+
     /// Parse a `Ty` from the current cursor position.
     /// # Notes
     /// Always expects atleast one `identifier`.
     pub fn parse_ty(&mut self) -> PResult<Ty> {
-        let is_ref = self.check_punctuation_advance(Punctuation::Ampersand);
-        let is_mut_ref = if is_ref {
-            self.check_keyword_advance(Keyword::Mut)
-        } else {
-            false
-        };
-
+        let ref_type = self.parse_ref_and_refmut()?;
         let path = self.parse_path()?;
 
-        if is_ref {
-            Ok(Ty::Ref(
-                Box::new(Ty::new(path)),
-                Mutability::from_is_mutable(is_mut_ref),
-            ))
+        if ref_type.is_ref() {
+            Ok(Ty::Ref(Box::new(Ty::new(path)), ref_type.mutability()))
         } else {
             Ok(Ty::new(path))
         }
@@ -428,6 +458,7 @@ impl Parser<'_, '_> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     fn check_punctuation_sequence(&self, offset: u32, sequence: &[Punctuation]) -> bool {
         for (si, punct) in sequence.iter().enumerate() {
             let Some(token) = self.cursor.peek_at(offset + si as u32) else {
@@ -725,6 +756,7 @@ impl Parser<'_, '_> {
     /// `F` is a function that will actually do the parsing of each element, and the function is
     /// passed `self`.
     #[inline]
+    #[allow(dead_code)]
     fn parse_block_like_no_trail<T, F: FnMut(&mut Self) -> PResult<T>>(
         &mut self,
         delimiter: Punctuation,

@@ -174,17 +174,19 @@ impl ParseError {
     pub fn format_as_error_message(&self, source_string: &str) -> String {
         let (before, error, after) = self.get_segments_from_source(source_string);
         let line_number = count_new_lines(before).saturating_add(1);
-        let previous_newline_index = before.rfind('\n').unwrap_or(0);
+        let previous_newline_index = before.rfind('\n').map(|i| i.saturating_add(1)).unwrap_or(0);
         let next_newline_index = after.find('\n').unwrap_or(source_string.len());
-        let error_line_char_index = before[previous_newline_index..].chars().count();
+        let error_line_char_index = before[previous_newline_index..]
+            .chars()
+            .count()
+            .saturating_add(1);
         let _error_section_line_count = count_new_lines(error);
 
         let line_number_str = line_number.to_string();
         let line_num_prefix = format!("{line_number_str} | ");
         let blank_prefix = format!("{} | ", " ".repeat(line_number_str.len()));
 
-        let before_error_line_str =
-            &before[(previous_newline_index.saturating_add(1).min(before.len()))..];
+        let before_error_line_str = &before[(previous_newline_index.min(before.len()))..];
 
         let (err_span, err_line) = Self::format_source_line(
             &line_num_prefix,
