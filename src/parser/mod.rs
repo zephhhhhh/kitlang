@@ -272,24 +272,39 @@ impl Parser<'_, '_> {
         )
     }
 
+    fn parse_double_colon(&mut self, path_start: u32) -> PResult<bool> {
+        if self.is_double_colon()? {
+            self.cursor.advance_by(2);
+            Ok(true)
+        } else {
+            if self.check_punctuation(Punctuation::Colon) {
+                return Err(ParseError::new(
+                    ParseErrorKind::InvalidPath,
+                    path_start..self.cursor.get_current_source_end(),
+                ));
+            }
+            Ok(false)
+        }
+    }
+
     /// Parse a 'path' (I.e. `std::math::powf`) into a single string.
     /// # Notes
-    /// Always expects atleast one `identifier`.
+    /// Always expects atleast one `identifier`, can optionally start with '::', to force the path
+    /// to reference absolutely from the 'base'.
     pub fn parse_path(&mut self) -> PResult<String> {
         let path_start = self.cursor.get_current_source_start();
-        let mut full_path = self.expect_ident()?;
+        let mut full_path = String::from(if self.parse_double_colon(path_start)? {
+            "::"
+        } else {
+            ""
+        });
+        full_path += &(self.expect_ident()?);
 
         while !self.cursor.is_end() {
-            if !self.is_double_colon()? {
-                if self.check_punctuation(Punctuation::Colon) {
-                    return Err(ParseError::new(
-                        ParseErrorKind::InvalidPath(full_path),
-                        path_start..self.cursor.get_current_source_end(),
-                    ));
-                }
+            if !self.parse_double_colon(path_start)? {
                 break;
             }
-            self.cursor.advance_by(2);
+
             full_path += "::";
             full_path += &(self.expect_ident()?);
         }

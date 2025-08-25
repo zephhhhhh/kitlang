@@ -9,6 +9,7 @@
 //! The structure of the project is also inspired by `rust` and `rustc`.
 
 pub mod ast;
+pub mod intermediate;
 pub mod lexer;
 pub mod parser;
 pub mod prelude;

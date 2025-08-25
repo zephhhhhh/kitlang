@@ -52,8 +52,8 @@ pub enum ParseErrorKind {
     #[error("Unexpected token: {0:?}")]
     UnexpectedToken(TokenKind),
 
-    #[error("Invalid path found: {0:?}")]
-    InvalidPath(String),
+    #[error("Invalid path, path separator must be '::' and all segments must be identifiers")]
+    InvalidPath,
 
     #[error("Found an invalid binary operator")]
     InvalidBinaryOperator,

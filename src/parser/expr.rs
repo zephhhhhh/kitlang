@@ -101,7 +101,7 @@ impl Parser<'_, '_> {
                     todo!()
                 }
             },
-            TokenKind::Ident(_) => {
+            TokenKind::Ident(_) | TokenKind::Punctuation(Punctuation::Colon) => {
                 let path = self.parse_path()?;
                 if self.check_punctuation(Punctuation::OpenBrace) {
                     self.parse_struct_initialiser(path)
