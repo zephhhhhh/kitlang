@@ -103,6 +103,28 @@ impl TokenCursor<'_> {
         }
     }
 
+    /// Returns the start of the previous token.
+    #[inline]
+    #[must_use]
+    pub fn get_previous_source_start(&self) -> u32 {
+        if let Some(token) = self.get(self.position().saturating_sub(1)) {
+            token.start
+        } else {
+            self.get_current_source_start()
+        }
+    }
+
+    /// Returns the end of the previous token.
+    #[inline]
+    #[must_use]
+    pub fn get_previous_source_end(&self) -> u32 {
+        if let Some(token) = self.get(self.position().saturating_sub(1)) {
+            token.end
+        } else {
+            self.get_current_source_end()
+        }
+    }
+
     /// Returns a range that represents the start token.
     #[inline]
     #[must_use]

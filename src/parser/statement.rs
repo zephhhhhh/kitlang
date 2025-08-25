@@ -1,5 +1,7 @@
 use crate::{
-    ast::{Ident, Local, LocalKind, Mutability, Parameter, Statement, StatementKind, Ty},
+    ast::{
+        Ident, Local, LocalKind, Mutability, Parameter, SourceSpan, Statement, StatementKind, Ty,
+    },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
 };
@@ -11,18 +13,19 @@ pub struct VariablePattern {
     pub ident: Ident,
     pub ty: Ty,
     pub mutable: Mutability,
+    pub span: SourceSpan,
 }
 
 impl From<VariablePattern> for Parameter {
     fn from(value: VariablePattern) -> Self {
-        Self::new(value.ident, value.ty, value.mutable)
+        Self::new(value.ident, value.ty, value.mutable, value.span)
     }
 }
 
 impl VariablePattern {
     #[inline]
     pub fn into_param(self) -> Parameter {
-        Parameter::new(self.ident, self.ty, self.mutable)
+        Parameter::new(self.ident, self.ty, self.mutable, self.span)
     }
 }
 
@@ -52,6 +55,8 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_variable_pattern(&mut self) -> PResult<VariablePattern> {
+        let start_span = self.cursor.get_current_source_start();
+
         let mutable = self.parse_mutability()?;
         let ref_type = self.parse_ref_and_refmut()?;
 
@@ -93,10 +98,13 @@ impl Parser<'_, '_> {
             (ident, ty)
         };
 
+        let end_span = self.cursor.get_previous_source_end();
+
         Ok(VariablePattern {
             ident: var_ident.into(),
             ty: var_type,
             mutable,
+            span: SourceSpan::new(start_span, end_span),
         })
     }
 

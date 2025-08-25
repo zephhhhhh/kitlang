@@ -1,5 +1,7 @@
 use std::{fmt::Debug, ops::Range};
 
+use crate::token::Token;
+
 #[derive(Debug, Default, PartialEq)]
 pub struct ASTRoot {
     pub items: Vec<Item>,
@@ -14,6 +16,43 @@ impl ASTRoot {
     #[inline]
     pub fn push_item(&mut self, item: Item) {
         self.items.push(item);
+    }
+}
+
+/// Represents the span of bytes in the source string that the error originates from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SourceSpan {
+    pub start: u32,
+    pub end: u32,
+}
+
+impl SourceSpan {
+    pub fn new(start: u32, end: u32) -> Self {
+        Self { start, end }
+    }
+}
+
+impl From<(u32, u32)> for SourceSpan {
+    fn from(value: (u32, u32)) -> Self {
+        Self::new(value.0, value.1)
+    }
+}
+
+impl<T: Into<u32>> From<Range<T>> for SourceSpan {
+    fn from(value: Range<T>) -> SourceSpan {
+        Self::new(value.start.into(), value.end.into())
+    }
+}
+
+impl From<Token> for SourceSpan {
+    fn from(value: Token) -> Self {
+        Self::new(value.start, value.end)
+    }
+}
+
+impl From<&Token> for SourceSpan {
+    fn from(value: &Token) -> Self {
+        Self::new(value.start, value.end)
     }
 }
 
@@ -677,16 +716,18 @@ pub struct Parameter {
     pub ident: Ident,
     pub ty: Ty,
     pub mutable: Mutability,
+    pub span: SourceSpan,
 }
 
 impl Parameter {
     #[inline]
-    pub fn new(ident: Ident, ty: Ty, mutable: Mutability) -> Self {
+    pub fn new(ident: Ident, ty: Ty, mutable: Mutability, span: SourceSpan) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
             ident,
             ty,
             mutable,
+            span,
         }
     }
 }

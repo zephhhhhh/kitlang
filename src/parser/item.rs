@@ -15,7 +15,7 @@ impl Parser<'_, '_> {
         match token.kind {
             TokenKind::Keyword(Keyword::Use) => self.parse_use(),
             TokenKind::Keyword(Keyword::Const) => self.parse_const(),
-            TokenKind::Keyword(Keyword::Fn) => self.parse_function(),
+            TokenKind::Keyword(Keyword::Fn) => self.parse_function(false),
             TokenKind::Keyword(Keyword::Struct) => self.parse_struct(),
             TokenKind::Keyword(Keyword::Impl) => self.parse_implementation(),
             TokenKind::Keyword(Keyword::Enum) => self.parse_enum(),
@@ -27,7 +27,7 @@ impl Parser<'_, '_> {
         }
     }
 
-    pub fn parse_function(&mut self) -> PResult<Item> {
+    pub fn parse_function(&mut self, from_impl_block: bool) -> PResult<Item> {
         let public = self.parse_visibility()?;
         self.expect_keyword(Keyword::Fn)?;
         let func_name = self.expect_ident()?;
@@ -37,6 +37,22 @@ impl Parser<'_, '_> {
             self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
                 Ok(s.parse_variable_pattern()?.into_param())
             })?;
+
+        for (i, arg) in function_arguments.iter().enumerate() {
+            if arg.ident.0 == "self" {
+                if !from_impl_block {
+                    return Err(ParseError::new(
+                        ParseErrorKind::SelfMustBeUsedInAMethod,
+                        arg.span,
+                    ));
+                } else if i > 0 {
+                    return Err(ParseError::new(
+                        ParseErrorKind::SelfMustBeFirstArgument,
+                        arg.span,
+                    ));
+                }
+            }
+        }
 
         let return_type_token = self.peek_at(0)?;
         let func_return_type = match return_type_token.kind {
@@ -190,7 +206,7 @@ impl Parser<'_, '_> {
         let (_, token) = self.expect_next_significant_token()?;
         match token.kind {
             TokenKind::Keyword(Keyword::Const) => self.parse_const(),
-            TokenKind::Keyword(Keyword::Fn) => self.parse_function(),
+            TokenKind::Keyword(Keyword::Fn) => self.parse_function(true),
             _ => Err(ParseError::new(
                 ParseErrorKind::WrongTokenKind(token.kind.clone()),
                 token,

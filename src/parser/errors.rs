@@ -2,7 +2,10 @@ use ::std::ops::Range;
 
 use thiserror::Error;
 
-use crate::token::{Token, TokenKind};
+use crate::{
+    ast::SourceSpan,
+    token::{Token, TokenKind},
+};
 
 /// Parse error result, has [`ParseError`] as the error variant.
 pub type PResult<T> = Result<T, ParseError>;
@@ -33,6 +36,13 @@ pub enum ParseErrorKind {
     #[error("Expected identifier, but none was found")]
     ExpectedIdentifierFoundNone,
 
+    #[error("Parameter 'self' must be the first argument in the function parameters")]
+    SelfMustBeFirstArgument,
+    #[error(
+        "Parameter 'self' cannot be used in free functions, it must be used within an associated 'impl' block"
+    )]
+    SelfMustBeUsedInAMethod,
+
     #[error("Expected Semi-colon, expressions can only be at the end of a block")]
     ExpectedSemiColon,
 
@@ -52,43 +62,6 @@ pub enum ParseErrorKind {
     NoTokens,
     #[error("Unterminated string literal.")]
     UnterminatedStringLiteral,
-}
-
-/// Represents the span of bytes in the source string that the error originates from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SourceSpan {
-    pub start: u32,
-    pub end: u32,
-}
-
-impl SourceSpan {
-    pub fn new(start: u32, end: u32) -> Self {
-        Self { start, end }
-    }
-}
-
-impl From<(u32, u32)> for SourceSpan {
-    fn from(value: (u32, u32)) -> Self {
-        Self::new(value.0, value.1)
-    }
-}
-
-impl<T: Into<u32>> From<Range<T>> for SourceSpan {
-    fn from(value: Range<T>) -> SourceSpan {
-        Self::new(value.start.into(), value.end.into())
-    }
-}
-
-impl From<Token> for SourceSpan {
-    fn from(value: Token) -> Self {
-        Self::new(value.start, value.end)
-    }
-}
-
-impl From<&Token> for SourceSpan {
-    fn from(value: &Token) -> Self {
-        Self::new(value.start, value.end)
-    }
 }
 
 /// Counts the number of newline (`\n`) characters in a string slice.
