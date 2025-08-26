@@ -31,7 +31,7 @@ impl VariablePattern {
 
 impl Parser<'_, '_> {
     pub fn parse_statement(&mut self) -> PResult<Statement> {
-        let start_span = self.cursor.position();
+        let start_span = self.cursor.get_current_source_start();
         let (_, token) = self.expect_next_significant_token()?;
         let kind = match &token.kind {
             c if c.can_start_item() => StatementKind::Item(Box::new(self.parse_item()?)),
@@ -51,7 +51,8 @@ impl Parser<'_, '_> {
                 }
             }
         };
-        Ok(Statement::new(kind, start_span..self.cursor.position()))
+        let end_span = self.cursor.get_previous_source_end();
+        Ok(Statement::new(kind, start_span..end_span))
     }
 
     pub fn parse_variable_pattern(&mut self) -> PResult<VariablePattern> {

@@ -2,10 +2,7 @@ use ::std::ops::Range;
 
 use thiserror::Error;
 
-use crate::{
-    ast::SourceSpan,
-    token::{Token, TokenKind},
-};
+use crate::{ast::SourceSpan, token::TokenKind};
 
 /// Parse error result, has [`ParseError`] as the error variant.
 pub type PResult<T> = Result<T, ParseError>;

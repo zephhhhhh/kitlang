@@ -739,11 +739,6 @@ impl ::std::fmt::Debug for Parameter {
             "Parameter {{ name: {:?}, type: {:?}, mutable: {:?} }}",
             self.ident, self.ty, self.mutable
         )
-        // f.debug_struct("Parameter")
-        //     .field("name", &self.ident)
-        //     .field("type", &self.ty)
-        //     .field("mutable", &self.mutable)
-        //     .finish()
     }
 }
 
