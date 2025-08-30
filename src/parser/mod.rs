@@ -218,6 +218,8 @@ pub struct TokenStream(pub Vec<Token>);
 #[derive(Debug)]
 pub struct ParserContext {}
 
+/// Contains the state needed to parse an input file, as well as methods to parse different [`Item`]s,
+/// [`Expression`]s and [`Statement`]s.
 #[derive(Debug)]
 pub(crate) struct Parser<'a, 'b> {
     context: &'a ParserContext,
@@ -239,10 +241,15 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 }
 
+/// Describes a type of reference.
+/// Contains the result of parsing `&` or `&mut` from the [`TokenStream`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RefType {
+    /// No specified reference.
     None,
+    /// An immutable reference.
     Ref,
+    /// A mutable reference.
     RefMut,
 }
 
@@ -265,15 +272,23 @@ impl RefType {
 }
 
 impl Parser<'_, '_> {
-    fn is_double_colon(&self) -> PResult<bool> {
-        Ok(
-            self.peek_at(0)?.kind == TokenKind::Punctuation(Punctuation::Colon)
-                && self.peek_at(1)?.kind == TokenKind::Punctuation(Punctuation::Colon),
-        )
+    /// Returns true if the next 2 tokens from the cursor position are [`Punctuation::Colon`].
+    fn is_double_colon(&self) -> bool {
+        self.check_kind_at(0, Punctuation::Colon) && self.check_kind_at(1, Punctuation::Colon)
     }
 
+    /// Parses a double colon `"::"` or the "path" separator from the cursor position.
+    ///
+    /// This function advances the cursor position by the length of the path separator (2) if the
+    /// double colon is found.
+    /// # Returns
+    /// *   `Ok(true)` if a double colon was found and the cursor was advanced.
+    /// *   `Ok(false)` if a double colon wasn't found, but the token at the current cursor position
+    ///     _was not_ a single colon `':'`, and the cursor was not advanced.
+    /// *   `Err(ParseErrorKind::InvalidPath)` if the double colon was not found, but a single
+    ///     colon was, indicating a malformed path.
     fn parse_double_colon(&mut self, path_start: u32) -> PResult<bool> {
-        if self.is_double_colon()? {
+        if self.is_double_colon() {
             self.cursor.advance_by(2);
             Ok(true)
         } else {
@@ -287,7 +302,8 @@ impl Parser<'_, '_> {
         }
     }
 
-    /// Parse a 'path' (I.e. `std::math::powf`) into a single string.
+    /// Parse a 'path' (I.e. `std::math::powf`) from the current cursor position,
+    /// into a path segment representation.
     /// # Notes
     /// Always expects atleast one `identifier`, can optionally start with '::', to force the path
     /// to reference absolutely from the 'base'.
@@ -309,7 +325,7 @@ impl Parser<'_, '_> {
         Ok(IdentPath::from_segments(path_segments, root_relative))
     }
 
-    /// Parses a '&' and '&mut'
+    /// Parses a `&` and `&mut`
     pub fn parse_ref_and_refmut(&mut self) -> PResult<RefType> {
         if self.check_kind_advance(Punctuation::Ampersand) {
             if self.check_kind_advance(Keyword::Mut) {
@@ -323,9 +339,9 @@ impl Parser<'_, '_> {
         }
     }
 
-    /// Parse a `Ty` from the current cursor position.
-    /// # Notes<F11>
-    /// Always expects atleast one `identifier`.
+    /// Parse a [`Ty`] from the current cursor position.
+    /// # Notes
+    /// Always expects atleast one `Identifier`.
     pub fn parse_ty(&mut self) -> PResult<Ty> {
         let ref_type = self.parse_ref_and_refmut()?;
         let path = self.parse_path()?;
@@ -353,6 +369,8 @@ impl Parser<'_, '_> {
         ))
     }
 
+    /// Parse the 'root' AST, starting from the beginning of the file.
+    /// This is the function you want to call to fully parse a token stream.
     pub fn parse_root(&mut self) -> PResult<ASTRoot> {
         let mut root_ast = ASTRoot::default();
 
@@ -446,6 +464,11 @@ impl Parser<'_, '_> {
         }
     }
 
+    /// Get a sequence of [`Punctuation`] tokens of length `N` from a specified offset from the current cursor
+    /// position.
+    /// # Returns
+    /// *   `Some(arr)` if the next `N` tokens from the specified offset are all [`Punctuation`] token kinds.
+    /// *   `None` if any of the next `N` tokens from the specified offset are _not_ of kind [`Punctuation`].
     #[inline]
     fn get_punctuation_sequence<const N: usize>(&self, offset: u32) -> Option<[Punctuation; N]> {
         let mut result = [Punctuation::Tilde; N];
@@ -464,6 +487,15 @@ impl Parser<'_, '_> {
 
 // Expect..
 impl Parser<'_, '_> {
+    /// Expect that the token at the current cursor position is of a specified [`TokenKind`].
+    ///
+    /// This function will advance the cursor by one position if the `expected_kind` is found.
+    /// # Returns
+    /// *   `Ok(())` if the token at the cursor position is of the `expected_kind`.
+    /// *   `Err(ParseErrorKind::ExpectedToken)` if the token found at the current cursor position
+    ///     does not match the `expected_kind`.
+    /// *   `Err(ParseErrorKind::ExpectedTokenFoundNone)` if there are no more tokens in the
+    ///     stream, but it was expected that there were.
     #[inline]
     fn expect_kind<T: Into<TokenKind>>(&mut self, expected_kind: T) -> PResult<()> {
         let expected = expected_kind.into();
@@ -482,6 +514,15 @@ impl Parser<'_, '_> {
         }
     }
 
+    /// Expect that the token at the current cursor position is an `Identifier`.
+    ///
+    /// This function will advance the cursor by one position if an `Identifier` is found.
+    /// # Returns
+    /// *   `Ok(ident_str)` if the token at the cursor position is an `Identifier`.
+    /// *   `Err(ParseErrorKind::ExpectedIdentifier)` if the token found at the current cursor position
+    ///     was not an `Identifier`.
+    /// *   `Err(ParseErrorKind::ExpectedIdentifierFoundNone)` if there are no more tokens in the
+    ///     stream, but it was expected that there were.
     #[inline]
     fn expect_ident(&mut self) -> PResult<String> {
         self.check_ident_advance().ok_or_else(|| {

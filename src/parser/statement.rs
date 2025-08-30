@@ -8,11 +8,17 @@ use crate::{
 
 use super::{Parser, errors::PResult};
 
+/// Output from parsing a variable pattern from the [`TokenStream`].
+/// Describes the declaration of a variable, as a parameter or similar.
 #[derive(Debug, Clone)]
 pub struct VariablePattern {
+    /// Variable name.
     pub ident: Ident,
+    /// Variable type.
     pub ty: Ty,
+    /// If the variable can be mutated.
     pub mutable: Mutability,
+    /// The span of bytes in the source string the declaration occupies.
     pub span: SourceSpan,
 }
 
