@@ -2,19 +2,26 @@ use std::{fmt::Debug, ops::Range};
 
 use crate::token::Token;
 
+/// This is the output of the `Parser` stage.
+/// Currently this only stores the AST from a single "root" module/project.
+/// In future this will store multiple modules for multiple file compilations.
 #[derive(Debug, Default, PartialEq)]
 pub struct ASTRoot {
     pub items: Vec<Item>,
 }
 
 impl ASTRoot {
+    /// Pushes an item into the list of items for the current module.
     #[inline]
     pub fn push_item(&mut self, item: Item) {
         self.items.push(item);
     }
 }
 
-/// Represents the span of bytes in the source string that the error originates from.
+/// Represents the span of bytes in the source string that the error originates from. This span is
+/// described as an exclusive span.
+/// # Note
+/// This span is in `bytes` and _not_ `characters`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SourceSpan {
     pub start: u32,
@@ -54,13 +61,23 @@ impl From<&Token> for SourceSpan {
 pub type IdentPathSegment = String;
 pub type IdentPathSegments = Vec<IdentPathSegment>;
 
+/// A "path" consisting of `Identifiers`. You can think of this as a file system path like:
+/// "Users/Username/Downloads", except this describes paths between different modules/files in our code,
+/// and instead of slashes we use the sequence of characters "::" as our seperator. So in our case
+/// this would be represented as "Users::Username::Downloads".
+/// # Notes
+/// A path can be defined as relative to the root "module" instead of the current scope by starting the path
+/// with the seperator, such as: `::Struct::Function`.
 #[derive(Clone, PartialEq, PartialOrd, Hash)]
 pub enum IdentPath {
+    /// The path is relative to the root "module"
     RootRelative(IdentPathSegments),
+    /// The path is relative to the current scope.
     Relative(IdentPathSegments),
 }
 
 impl IdentPath {
+    /// Separator used to separate path segments.
     pub const PATH_SEP: &str = "::";
 
     /// This seems like it *could* fail, but I don't think it can.
@@ -82,6 +99,8 @@ impl IdentPath {
         Self::from_segments(segments, root_relative)
     }
 
+    /// Constructs a path from already parsed segments, with `root_relative` describing if the path
+    /// should be constructed as relative to the root or relative to the current scope.
     pub fn from_segments(segments: IdentPathSegments, root_relative: bool) -> Self {
         if root_relative {
             Self::RootRelative(segments)
@@ -106,18 +125,25 @@ impl IdentPath {
         self.rebase_from_path(&base_path)
     }
 
+    /// Convert the path into a string and present it as an `Identifier`.
     pub fn to_ident(&self) -> Ident {
         Ident::new(self.to_string())
     }
 
+    /// Returns true if the path is relative to the root "module".
     pub fn is_root_relative(&self) -> bool {
         matches!(self, IdentPath::RootRelative(_))
     }
 
+    /// Returns true if the path only has exactly _one_ segment, and is not relative to the root
+    /// "module". I.e. The path only consists of exactly one `Identifier`.
     pub fn is_only_ident(&self) -> bool {
         self.get_segments().len() == 1 && !self.is_root_relative()
     }
 
+    /// Returns `Some(ident)` if the path has exactly _one_ segment, and is not relative to the
+    /// root "module". I.e. The path only consists of exactly one `Identifier`, otherwise returns
+    /// `None`
     pub fn get_only_ident(&self) -> Option<String> {
         if self.is_only_ident() {
             Some(self.get_segments()[0].clone())
@@ -126,12 +152,16 @@ impl IdentPath {
         }
     }
 
+    /// Returns the "stem" of the path, I.e. The _last_ segment of the path.
+    /// # Panics
+    /// This function will panic if there are _no_ segments in the path.
     pub fn path_stem(&self) -> &str {
         self.get_segments()
             .last()
             .expect("Path must have atleast one segment!")
     }
 
+    /// Returns a slice of all segments in the path.
     pub fn get_segments(&self) -> &[IdentPathSegment] {
         match self {
             IdentPath::RootRelative(items) | IdentPath::Relative(items) => items,
@@ -165,6 +195,7 @@ impl ::std::fmt::Debug for IdentPath {
     }
 }
 
+/// Describes whether an [`Item`] is able to be accessed/referenced from other modules/scopes.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
 pub enum Visibility {
     Public,
@@ -185,6 +216,7 @@ impl Visibility {
     }
 }
 
+/// Describes the mutability of a reference or variable.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
 pub enum Mutability {
     Mutable,
@@ -205,32 +237,55 @@ impl Mutability {
     }
 }
 
+/// Kinds of "Unary" operations. A unary operation is an operation that acts on a _single_ value.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub enum UnaryOpKind {
+    /// Dereference a reference or pointer. (`*variable`)
     Dereference,
+    /// The "NOT" operation. (`!variable`)
     Not,
+    /// Negation operation. (`-variable`)
     Negate,
 }
 
+/// Kinds of "Binary" operations. A binary operation is an operation that acts on _two_ values.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub enum BinaryOpKind {
+    /// Addition. (`a + b`)
     Add,
+    /// Subtraction. (`a - b`)
     Sub,
+    /// Multiplication. (`a * b`)
     Mul,
+    /// Division. (`a / b`)
     Div,
+    /// Modulus. (`a % b`)
     Mod,
+    /// Logical AND. (`a && b`)
     And,
+    /// Logical OR. (`a || b`)
     Or,
+    /// Bitwise XOR. (`a ^ b`)
     BitwiseXOR,
+    /// Bitwise AND. (`a & b`)
     BitwiseAND,
+    /// Bitwise OR. (`a | b`)
     BitwiseOR,
+    /// Bitwise shift left. (`a << b`)
     ShiftLeft,
+    /// Bitwise shift right. (`a >> b`)
     ShiftRight,
+    /// Equality comparison. (`a == b`)
     Equal,
+    /// Negated equality comparison. (`a != b`)
     NotEqual,
+    /// Less than comparison. (`a < b`)
     LessThan,
+    /// Greater than comparison. (`a > b`)
     GreaterThan,
+    /// Less than or equal to comparison. (`a >= b`)
     LessThanOrEqual,
+    /// Greater than or equal to comparison. (`a <= b`)
     GreaterThanOrEqual,
 }
 
@@ -253,18 +308,33 @@ impl BinaryOpKind {
     }
 }
 
+/// Describes each possible kind of an [`Item`] in the AST.
+/// # Notes
+/// Examples of an [`Item`] would include a function, struct or constant.
 #[derive(Clone, PartialEq)]
 pub enum ItemKind {
+    /// A `use` declaration, akin to an import.
     Use(UseImport),
+    /// A `const` expression.
+    /// # Example
+    /// `pub const PI: f32 = 3.141;`
     Const(Box<Constant>),
+    /// Function declaration with an optional function body.
     Fn(Box<Function>),
+    /// Module declaration.
     Mod(Box<Module>),
+    /// Enumeration declaration, contains information about it's possible variants.
     Enum(Box<Enum>),
+    /// Structure declaration, contains information about it's fields.
     Struct(Box<Struct>),
+    /// Implementation block, contains either constant definitions or function definitions.
     Impl(Box<Impl>),
 }
 
 impl ItemKind {
+    /// Get the human readable name _only_ of the [`ItemKind`].
+    /// # Example
+    /// `ItemKind::Fn(..).get_name()` = "Function"
     #[inline]
     pub fn get_name(&self) -> &'static str {
         match self {
@@ -293,27 +363,53 @@ impl ::std::fmt::Debug for ItemKind {
     }
 }
 
+/// An `Identifier`. This is is defined as a unique type so it does not get confused as to what it
+/// describes.
 #[derive(Clone, PartialEq, PartialOrd, Hash)]
 pub struct Ident(pub String);
 
 impl Ident {
+    /// Create a new identifier from a source string.
     #[inline]
     pub fn new(src: impl AsRef<str>) -> Self {
         Self(src.as_ref().to_string())
     }
 }
 
+impl<T: AsRef<str>> From<T> for Ident {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
+impl ::std::fmt::Debug for Ident {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Ident({})", self.0)
+    }
+}
+
+/// Describes a `Type`. This structure is `self-referential`, I.e. an array will be described as a
+/// `Ty::Array(Ty::Type(Identifier))`.
 #[derive(Clone, PartialEq, PartialOrd, Hash)]
 pub enum Ty {
+    /// The type is not specified, and has to be inferred.
     Infer,
+    /// `Self`.
     This,
+    /// A reference to a [`Ty`], with a description of if it is `mutable` or not.
     Ref(Box<Ty>, Mutability),
+    /// Just a plain type, no reference or anything else.
     Type(IdentPath),
+    /// An array of a specified [`Ty`].
     Array(Box<Ty>),
+    /// A tuple of multiple [`Ty`]'s.
     Tuple(Vec<Box<Ty>>),
 }
 
 impl Ty {
+    /// Construct a [`Ty`] from a path.
+    /// # Returns
+    /// `Ty::Type(src)`
     #[inline]
     pub fn new(src: IdentPath) -> Self {
         Self::Type(src)
@@ -334,30 +430,6 @@ impl Ty {
             Ty::Array(ty) => ty.get_type_ident(),
             Ty::Tuple(_items) => None, // TODO: ?
         }
-    }
-}
-
-impl<T> From<T> for Ident
-where
-    T: AsRef<str>,
-{
-    fn from(value: T) -> Self {
-        Self::new(value)
-    }
-}
-
-// impl<T> From<T> for Ty
-// where
-//     T: AsRef<str>,
-// {
-//     fn from(value: T) -> Self {
-//         Self::new(value)
-//     }
-// }
-
-impl ::std::fmt::Debug for Ident {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Ident({})", self.0)
     }
 }
 
@@ -390,10 +462,13 @@ impl ::std::fmt::Debug for Ty {
     }
 }
 
+/// A unique ID for an AST node. Honestly I might just remove this, I thought I would need this in
+/// future but I don't see a need for it.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ASTNodeID(pub u32);
 
+/// A sentinel value for an AST node that has not yet been assigned an ID.
 pub const PLACEHOLDER_NODE_ID: ASTNodeID = ASTNodeID(u32::MAX);
 
 impl Default for ASTNodeID {
@@ -414,6 +489,9 @@ impl From<&u32> for ASTNodeID {
     }
 }
 
+/// A "top-level" item in the AST.
+/// # Examples
+/// Functions, Constants, Structs, etc..
 #[derive(Clone, PartialEq)]
 pub struct Item {
     pub id: ASTNodeID,
@@ -442,38 +520,43 @@ impl ::std::fmt::Debug for Item {
     }
 }
 
+/// Describes the "order" or "precedence" of each type of expression.
+/// This is implemented as an enum with an ordering derive, so that the enum can be compared with
+/// itself to determine which of the expressions has higher precendence.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum ExpressionOrder {
-    /// return, break..
+    /// `return`, `break`, etc..
     Jump,
-    /// = += -= *= /= %= &= |= ^= <<= >>=
+    /// `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `>>=`, `<<=`, etc..
     Assign,
-    /// ||
+    /// `||`
     LogicalOr,
-    /// &&
+    /// `&&`
     LogicalAnd,
-    /// == != < > <= >=
+    /// `==`, `!=`, `<`, `>`, `<=`, `>=`
     Compare,
-    /// |
+    /// `|`
     BitwiseOr,
-    /// ^
+    /// `^`
     BitwiseXor,
-    /// &
+    /// `&`
     BitwiseAnd,
-    /// << >>
+    /// `<<`, `>>`
     Shift,
-    /// + -
+    /// `+`, `-`
     Sum,
-    /// * / %
+    /// `*`, `/`, `%`
     Product,
     /// as
     Cast,
-    /// unary - * ! & &mut
+    /// Unary operations. `-`, `*`, `!`, `&`, `&mut`
     Prefix,
     /// Loops, function calls, array indexing, field expressions, method calls, values, etc..
     Unambiguous,
 }
 
+/// Describes the association of an expression. I.e. If the left-hand side or the right-hand side
+/// should be evaluated first.
 #[derive(PartialEq, Debug)]
 pub enum ExpressionAssociation {
     /// Left-associative
@@ -530,27 +613,115 @@ impl BinaryOpKind {
     }
 }
 
+/// Describes each possible kind of expressions.
 #[derive(Clone, PartialEq)]
 pub enum ExpressionKind {
+    /// A "block" of code.
+    /// # Example
+    /// ```
+    /// <Expression>;
+    /// // Outer block..
+    /// let x = 20;
+    /// {
+    ///     // Inside of block..
+    ///     let y = 20;
+    /// }
+    /// ```
     Block(Box<Block>),
+    /// A [`Literal`] value, of either a number, boolean or string type.
+    /// # Example
+    /// `20`, `"Hello!"`, `true`.
     Literal(Literal),
+    /// Binary operation between two expressions.
+    /// # Notes
+    /// The tuple values are: ([`BinaryOpKind`], lhs, rhs).
+    /// # Example
+    /// `20 + 70`, `42 == 42`, `random_number() + 42`.
     BinaryOp(BinaryOpKind, Box<Expression>, Box<Expression>),
+    /// A unary operation on an expression.
+    /// # Example
+    /// `!variable`.
     Unary(UnaryOpKind, Box<Expression>),
+    /// If statement, with a block or "body", and an optional "else" case block.
+    /// # Notes
+    /// The tuple values are: (condition_expression, if_true_block, else_block).
+    /// # Example
+    /// ```
+    /// if random_number() == 20 {
+    ///     <Expression>;
+    /// }
+    /// ```
     If(Box<Expression>, Box<Block>, Option<Box<Expression>>),
+    /// While loop, with a block or "body", and an optional "else" case block.
+    /// # Notes
+    /// The tuple values are: (condition_expression, loop_block).
+    /// # Example
+    /// ```
+    /// while i > 0 {
+    ///     i = i - 1
+    /// }
+    /// ```
     While(Box<Expression>, Box<Block>),
+    /// Assignment of an already declared value.
+    /// # Notes
+    /// The tuple values are: (variable_to_be_assigned_to, new_value)
+    /// # Examples
+    /// `x = x + 1`
     Assign(Box<Expression>, Box<Expression>),
+    /// Calling a free function, or using the call operator of an object.
+    /// # Notes
+    /// The tuple values are: (call_target, parameters)
+    /// # Example
+    /// ```
+    /// random_number(0, 20)
+    /// ```
     Call(Box<Expression>, Vec<Box<Expression>>),
+    /// Call a method function of an object, or the 'dot' operator.
+    /// # Example
+    /// ```
+    /// vec2.to_string()
+    /// ```
     MethodCall(Box<MethodCall>),
+    /// Index into an array or an object that implements the indexing operator.
+    /// # Notes
+    /// The tuple values are: (object_to_be_indexed, index)
+    /// # Example
+    /// ```
+    /// list_of_names[2]
+    /// ```
     Index(Box<Expression>, Box<Expression>),
+    /// Access a data field on an object.
+    /// # Notes
+    /// The tuple values are: (object_to_access, field_to_access)
+    /// # Examples
+    /// ```
+    /// vec2.x
+    /// ```
     FieldAccess(Box<Expression>, Ident),
+    /// Initialise a struct with specified field values.
+    /// # Examples
+    /// ```
+    /// Vec2 {
+    ///     x: 10,
+    ///     y: 20
+    /// }
+    /// ```
     StructInit(Box<StructInitialisation>),
+    /// An `Identifier` or `Path`.
+    /// # Example
+    /// `Module::Path::To::Function`, `x`.
     IdentPath(IdentPath),
+    /// Skip the rest of the loop code and proceed to the next iteration early.
     Continue,
+    /// Break out of the contained loop.
     Break,
+    /// Return from the function, with an optional expression to use as the return value.
     Return(Option<Box<Expression>>),
 }
 
 impl ExpressionKind {
+    /// Returns `true` if the expression is allowed to omit the trailing semi-colon without being
+    /// the last statement in a block.
     #[inline]
     pub fn can_be_non_semi(&self) -> bool {
         matches!(
@@ -559,6 +730,7 @@ impl ExpressionKind {
         )
     }
 
+    /// Get the "precendence" of the expression.
     #[inline]
     pub fn get_order(&self) -> ExpressionOrder {
         match self {
@@ -572,6 +744,7 @@ impl ExpressionKind {
         }
     }
 
+    /// Get the "association" of the expression.
     #[inline]
     pub fn get_association(&self) -> ExpressionAssociation {
         match self {
@@ -620,6 +793,7 @@ impl ::std::fmt::Debug for ExpressionKind {
     }
 }
 
+/// An expression node in the AST.
 #[derive(Clone, PartialEq)]
 pub struct Expression {
     pub id: ASTNodeID,
@@ -641,11 +815,13 @@ impl Expression {
         Box::new(Self::new(kind))
     }
 
+    /// Get the "precendence" of the expression.
     #[inline]
     pub fn get_order(&self) -> ExpressionOrder {
         self.kind.get_order()
     }
 
+    /// Get the "association" of the expression.
     #[inline]
     pub fn get_association(&self) -> ExpressionAssociation {
         self.kind.get_association()
@@ -658,6 +834,7 @@ impl ::std::fmt::Debug for Expression {
     }
 }
 
+/// Describes all possible kinds of statement in the AST.
 #[derive(Clone, PartialEq)]
 pub enum StatementKind {
     /// Variable declaration.
@@ -684,6 +861,7 @@ impl ::std::fmt::Debug for StatementKind {
     }
 }
 
+/// A statement node within the AST.
 #[derive(Clone, PartialEq)]
 pub struct Statement {
     pub id: ASTNodeID,
@@ -708,6 +886,7 @@ impl ::std::fmt::Debug for Statement {
     }
 }
 
+/// Describes a kind of literal, with it's associated parsed value.
 #[derive(Clone, PartialEq, PartialOrd)]
 pub enum Literal {
     String(String),
@@ -727,12 +906,15 @@ impl ::std::fmt::Debug for Literal {
     }
 }
 
+/// Describes whether a local variable is just a declaration, or an assignment too.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LocalKind {
     Declaration,
     Initialise(Box<Expression>),
 }
 
+/// A type of statement that declares a local variable, and optionally assigns it an
+/// initial value.
 #[derive(Clone, PartialEq)]
 pub struct Local {
     pub id: ASTNodeID,
@@ -778,6 +960,7 @@ impl ::std::fmt::Debug for Local {
     }
 }
 
+/// A declaration of a constant, with the expression it should be evaluated to.
 #[derive(Clone, PartialEq)]
 pub struct Constant {
     pub id: ASTNodeID,
@@ -813,6 +996,7 @@ impl ::std::fmt::Debug for Constant {
     }
 }
 
+/// A declaration of a block, with a list of all statements inside the block.
 #[derive(Clone, PartialEq)]
 pub struct Block {
     pub id: ASTNodeID,
@@ -836,6 +1020,8 @@ impl Block {
     }
 }
 
+/// An individual parameter to a function, includes the name `Identifier`, the [`Ty`] of the
+/// parameter, as well as if it is declared as `mutable` or not.
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct Parameter {
     pub id: ASTNodeID,
@@ -868,6 +1054,9 @@ impl ::std::fmt::Debug for Parameter {
     }
 }
 
+/// The return type of a function. If not specified this will default to
+/// `FunctionReturnTy::Default` which is the unit type `()`, otherwise this holds the specified
+/// return type.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum FunctionReturnTy {
     /// No return type specified.
@@ -876,12 +1065,16 @@ pub enum FunctionReturnTy {
     Ty(Box<Ty>),
 }
 
+/// The "signature" of a function, holds the return type and the parameters.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct FunctionSig {
     pub parameters: Vec<Parameter>,
     pub output: FunctionReturnTy,
 }
 
+/// A function [`Item`] declaration, holds information on the name of the function, all parameter
+/// info and the return type, with an optional body to the function, this is `None` if the
+/// function is just a declaration.
 #[derive(Clone, PartialEq)]
 pub struct Function {
     pub id: ASTNodeID,
@@ -912,6 +1105,7 @@ impl ::std::fmt::Debug for Function {
     }
 }
 
+/// A field of a struct, containing the name of the field and it's associated [`Ty`].
 #[derive(Clone, PartialEq)]
 pub struct StructField {
     pub id: ASTNodeID,
@@ -942,6 +1136,7 @@ impl ::std::fmt::Debug for StructField {
     }
 }
 
+/// A `Struct` [`Item`] in the AST, with an `Identifier` for it's name, with all it's associated fields.
 #[derive(Clone, PartialEq)]
 pub struct Struct {
     pub id: ASTNodeID,
@@ -974,6 +1169,20 @@ impl ::std::fmt::Debug for Struct {
     }
 }
 
+/// The kind of variant of an [`Enum`].
+/// # Example
+/// ```
+/// enum Person {
+///     Alive(u32),
+///     Dead {
+///          age_at_death: u32
+///     },
+///     None
+/// }
+/// ```
+/// *   `Alive` is a `Tuple`-type enum variant.
+/// *   `Dead` is a `Struct`-type enum variant.
+/// *   `None` is a `unit`-type enum variant.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariantData {
     Struct(Vec<StructField>),
@@ -981,6 +1190,8 @@ pub enum VariantData {
     Unit,
 }
 
+/// Describes one of the variants of an [`Enum`], includes the name/`Identifier` of the variant and
+/// what kind of variant it is: `Tuple`, `Struct` or `Unit`.
 #[derive(Clone, PartialEq)]
 pub struct EnumVariant {
     pub id: ASTNodeID,
@@ -1008,6 +1219,8 @@ impl ::std::fmt::Debug for EnumVariant {
     }
 }
 
+/// Enumeration [`Item`] in the AST, with a specified name `Identifier`, and all possible `variants`
+/// of the [`Enum`].
 #[derive(Clone, PartialEq)]
 pub struct Enum {
     pub id: ASTNodeID,
@@ -1052,12 +1265,16 @@ impl ::std::fmt::Debug for Enum {
     }
 }
 
+/// Describes the possible kinds of a "module".
+/// This can either just be the declaration of a module, or a module [`Item`] with a body.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleKind {
     Declaration,
     Definition(Vec<Item>),
 }
 
+/// A `Module` [`Item`] in the AST, contains the name/`Identifier` of the module, as well as an
+/// optional body.
 #[derive(Clone, PartialEq)]
 pub struct Module {
     pub id: ASTNodeID,
@@ -1090,6 +1307,8 @@ impl ::std::fmt::Debug for Module {
     }
 }
 
+/// An `Implementation` block [`Item`] in the AST, contains for which [`Ty`] the `impl` block is
+/// for, as well as a list of all [`Item`]'s contained within.
 #[derive(Clone, PartialEq)]
 pub struct Impl {
     pub id: ASTNodeID,
@@ -1122,6 +1341,8 @@ impl ::std::fmt::Debug for Impl {
     }
 }
 
+/// Describes a method call expression, contains the target of the method call, the `Identifier`
+/// specified which method to call, and the parameters to pass it.
 #[derive(Clone, PartialEq)]
 pub struct MethodCall {
     pub id: ASTNodeID,
@@ -1165,6 +1386,9 @@ impl ::std::fmt::Debug for MethodCall {
     }
 }
 
+/// Describes the initialisation of a field within a [`StructInitialisation`] expression, contains
+/// the name/`Identifier` of the field to initialise, and an expression that will be the value of
+/// the field.
 #[derive(Clone, PartialEq)]
 pub struct FieldInitialisation {
     pub id: ASTNodeID,
@@ -1192,6 +1416,8 @@ impl ::std::fmt::Debug for FieldInitialisation {
     }
 }
 
+/// Describes an expression that initialises an instance of a [`Struct`], contains the [`Ty`] of
+/// [`Struct`] to initialise, as well as the values to initialise all of the fields to.
 #[derive(Clone, PartialEq)]
 pub struct StructInitialisation {
     pub id: ASTNodeID,
@@ -1225,8 +1451,11 @@ impl ::std::fmt::Debug for StructInitialisation {
 }
 
 // TODO: Re-do this after redoing the path system.
+
+/// Describes a `use` [`Item`] in the AST.
 #[derive(Clone, PartialEq)]
 pub struct UseImport {
+    /// Path to import.
     pub path: IdentPath,
 }
 
