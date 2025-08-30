@@ -44,7 +44,7 @@ impl Parser<'_, '_> {
             // statement fails.
             _ => {
                 let expr = self.parse_expression()?;
-                if self.check_punctuation_advance(Punctuation::SemiColon) {
+                if self.check_kind_advance(Punctuation::SemiColon) {
                     StatementKind::Semi(expr)
                 } else {
                     StatementKind::Expr(expr)
@@ -61,9 +61,8 @@ impl Parser<'_, '_> {
         let mutable = self.parse_mutability()?;
         let ref_type = self.parse_ref_and_refmut()?;
 
-        let (var_ident, var_type) = if self.check_keyword_advance(Keyword::This) {
-            let ident = "self".to_string();
-            let ty = if self.check_punctuation_advance(Punctuation::Colon) {
+        let (var_ident, var_type) = if self.check_kind_advance(Keyword::This) {
+            let ty = if self.check_kind_advance(Punctuation::Colon) {
                 if ref_type.is_ref() {
                     let token = self.peek()?;
                     return Err(ParseError::new(
@@ -79,7 +78,7 @@ impl Parser<'_, '_> {
                 Ty::This
             };
 
-            (ident, ty)
+            ("self".to_string(), ty)
         } else {
             if ref_type.is_ref() {
                 let token = self.peek()?;
@@ -93,7 +92,7 @@ impl Parser<'_, '_> {
             }
 
             let ident = self.expect_ident()?;
-            self.expect_punctuation(Punctuation::Colon)?;
+            self.expect_kind(Punctuation::Colon)?;
             let ty = self.parse_ty()?;
 
             (ident, ty)
@@ -110,19 +109,19 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_let_local(&mut self) -> PResult<Box<Local>> {
-        self.expect_keyword(Keyword::Let)?;
+        self.expect_kind(Keyword::Let)?;
         let mutable = self.parse_mutability()?;
         let var_ident = self.expect_ident()?;
-        let var_type = if self.check_punctuation_advance(Punctuation::Colon) {
+        let var_type = if self.check_kind_advance(Punctuation::Colon) {
             self.parse_ty()?
         } else {
             Ty::Infer
         };
-        self.expect_punctuation(Punctuation::Eq)?;
+        self.expect_kind(Punctuation::Eq)?;
 
         let expr = self.parse_expression()?;
 
-        self.expect_punctuation(Punctuation::SemiColon)?;
+        self.expect_kind(Punctuation::SemiColon)?;
 
         Ok(Local::new_boxed(
             var_ident.into(),

@@ -29,9 +29,9 @@ impl Parser<'_, '_> {
 
     pub fn parse_function(&mut self, from_impl_block: bool) -> PResult<Item> {
         let public = self.parse_visibility()?;
-        self.expect_keyword(Keyword::Fn)?;
+        self.expect_kind(Keyword::Fn)?;
         let func_name = self.expect_ident()?;
-        self.expect_punctuation(Punctuation::OpenParen)?;
+        self.expect_kind(Punctuation::OpenParen)?;
 
         let function_arguments =
             self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
@@ -59,7 +59,7 @@ impl Parser<'_, '_> {
             TokenKind::Punctuation(Punctuation::OpenBrace) => FunctionReturnTy::Default,
             TokenKind::Punctuation(Punctuation::Minus) => {
                 self.cursor.advance();
-                self.expect_punctuation(Punctuation::GreaterThan)?;
+                self.expect_kind(Punctuation::GreaterThan)?;
                 FunctionReturnTy::Ty(Box::new(self.parse_ty()?))
             }
             _ => {
@@ -90,7 +90,7 @@ impl Parser<'_, '_> {
         let public = if allow_vis_specifier {
             self.parse_visibility()?
         } else {
-            if self.check_keyword(Keyword::Pub) {
+            if self.check_kind(Keyword::Pub) {
                 return Err(self.make_error(ParseErrorKind::UnexpectedToken(
                     self.peek_at(0)?.kind.clone(),
                 )));
@@ -98,7 +98,7 @@ impl Parser<'_, '_> {
             Visibility::Public
         };
         let var_ident = self.expect_ident()?;
-        self.expect_punctuation(Punctuation::Colon)?;
+        self.expect_kind(Punctuation::Colon)?;
         let ty = self.parse_ty()?;
 
         Ok(StructField::new(var_ident.into(), ty, public))
@@ -106,11 +106,11 @@ impl Parser<'_, '_> {
 
     pub fn parse_struct(&mut self) -> PResult<Item> {
         let public = self.parse_visibility()?;
-        self.expect_keyword(Keyword::Struct)?;
+        self.expect_kind(Keyword::Struct)?;
 
         let struct_ident = self.expect_ident()?;
 
-        if self.check_punctuation_advance(Punctuation::SemiColon) {
+        if self.check_kind_advance(Punctuation::SemiColon) {
             // Unit struct
             return Ok(Item::new(
                 ItemKind::Struct(Struct::new_boxed(struct_ident.into(), vec![])),
@@ -118,7 +118,7 @@ impl Parser<'_, '_> {
             ));
         }
 
-        self.expect_punctuation(Punctuation::OpenBrace)?;
+        self.expect_kind(Punctuation::OpenBrace)?;
 
         let fields = self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
             s.parse_struct_field_definition(true)
@@ -133,7 +133,7 @@ impl Parser<'_, '_> {
     fn parse_enum_variant(&mut self) -> PResult<EnumVariant> {
         let variant_ident = self.expect_ident()?;
 
-        if self.check_punctuation_advance(Punctuation::OpenBrace) {
+        if self.check_kind_advance(Punctuation::OpenBrace) {
             // 'Struct' style enum..
             let struct_fields =
                 self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
@@ -144,7 +144,7 @@ impl Parser<'_, '_> {
                 variant_ident.into(),
                 VariantData::Struct(struct_fields),
             ))
-        } else if self.check_punctuation_advance(Punctuation::OpenParen) {
+        } else if self.check_kind_advance(Punctuation::OpenParen) {
             // 'Tuple' style enum..
             let tuple_tys =
                 self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
@@ -162,11 +162,11 @@ impl Parser<'_, '_> {
 
     pub fn parse_enum(&mut self) -> PResult<Item> {
         let public = self.parse_visibility()?;
-        self.expect_keyword(Keyword::Enum)?;
+        self.expect_kind(Keyword::Enum)?;
 
         let enum_ident = self.expect_ident()?;
 
-        if self.check_punctuation_advance(Punctuation::SemiColon) {
+        if self.check_kind_advance(Punctuation::SemiColon) {
             // Enum with 0 variants.. (Unit enum)
             return Ok(Item::new(
                 ItemKind::Enum(Enum::new_boxed(enum_ident.into(), vec![])),
@@ -174,7 +174,7 @@ impl Parser<'_, '_> {
             ));
         }
 
-        self.expect_punctuation(Punctuation::OpenBrace)?;
+        self.expect_kind(Punctuation::OpenBrace)?;
 
         let variants = self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
             s.parse_enum_variant()
@@ -188,13 +188,13 @@ impl Parser<'_, '_> {
 
     pub fn parse_const(&mut self) -> PResult<Item> {
         let public = self.parse_visibility()?;
-        self.expect_keyword(Keyword::Const)?;
+        self.expect_kind(Keyword::Const)?;
         let var_ident = self.expect_ident()?;
-        self.expect_punctuation(Punctuation::Colon)?;
+        self.expect_kind(Punctuation::Colon)?;
         let ty = self.parse_ty()?;
-        self.expect_punctuation(Punctuation::Eq)?;
+        self.expect_kind(Punctuation::Eq)?;
         let expr = self.parse_expression()?;
-        self.expect_punctuation(Punctuation::SemiColon)?;
+        self.expect_kind(Punctuation::SemiColon)?;
 
         Ok(Item::new(
             ItemKind::Const(Constant::new_boxed(var_ident.into(), ty, expr)),
@@ -215,17 +215,17 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_implementation(&mut self) -> PResult<Item> {
-        self.expect_keyword(Keyword::Impl)?;
+        self.expect_kind(Keyword::Impl)?;
         let ty = self.parse_path()?;
 
         // Parse module body..
-        self.expect_punctuation(Punctuation::OpenBrace)?;
+        self.expect_kind(Punctuation::OpenBrace)?;
 
         let items =
             self.parse_block_like_no_delimiter(Punctuation::CloseBrace, |s| s.parse_impl_item())?;
 
         Ok(Item::new(
-            ItemKind::Impl(Impl::new_boxed(ty.into(), items)),
+            ItemKind::Impl(Impl::new_boxed(ty, items)),
             Visibility::Public,
         ))
     }
@@ -247,26 +247,23 @@ impl Parser<'_, '_> {
 
     pub fn parse_use(&mut self) -> PResult<Item> {
         let public = self.parse_visibility()?;
-        self.expect_keyword(Keyword::Use)?;
+        self.expect_kind(Keyword::Use)?;
         let path = self.parse_path()?;
 
         self.expect_kind(Punctuation::SemiColon)?;
 
-        Ok(Item::new(
-            ItemKind::Use(UseImport::new(path.into())),
-            public,
-        ))
+        Ok(Item::new(ItemKind::Use(UseImport::new(path)), public))
     }
 
     pub fn parse_mod(&mut self) -> PResult<Item> {
         let public = self.parse_visibility()?;
-        self.expect_keyword(Keyword::Mod)?;
-        let module_path = self.parse_path()?;
+        self.expect_kind(Keyword::Mod)?;
+        let module_ident = self.expect_ident()?;
 
-        if self.check_punctuation_advance(Punctuation::SemiColon) {
+        if self.check_kind_advance(Punctuation::SemiColon) {
             return Ok(Item::new(
                 ItemKind::Mod(Module::new_boxed(
-                    module_path.into(),
+                    module_ident.into(),
                     ModuleKind::Declaration,
                 )),
                 public,
@@ -274,14 +271,14 @@ impl Parser<'_, '_> {
         }
 
         // Parse module body..
-        self.expect_punctuation(Punctuation::OpenBrace)?;
+        self.expect_kind(Punctuation::OpenBrace)?;
 
         let items =
             self.parse_block_like_no_delimiter(Punctuation::CloseBrace, |s| s.parse_mod_item())?;
 
         Ok(Item::new(
             ItemKind::Mod(Module::new_boxed(
-                module_path.into(),
+                module_ident.into(),
                 ModuleKind::Definition(items),
             )),
             public,

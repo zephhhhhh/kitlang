@@ -9,11 +9,6 @@ pub struct ASTRoot {
 
 impl ASTRoot {
     #[inline]
-    pub fn new() -> Self {
-        Self { items: Vec::new() }
-    }
-
-    #[inline]
     pub fn push_item(&mut self, item: Item) {
         self.items.push(item);
     }
@@ -53,6 +48,120 @@ impl From<Token> for SourceSpan {
 impl From<&Token> for SourceSpan {
     fn from(value: &Token) -> Self {
         Self::new(value.start, value.end)
+    }
+}
+
+pub type IdentPathSegment = String;
+pub type IdentPathSegments = Vec<IdentPathSegment>;
+
+#[derive(Clone, PartialEq, PartialOrd, Hash)]
+pub enum IdentPath {
+    RootRelative(IdentPathSegments),
+    Relative(IdentPathSegments),
+}
+
+impl IdentPath {
+    pub const PATH_SEP: &str = "::";
+
+    /// This seems like it *could* fail, but I don't think it can.
+    /// The string cannot be empty, and it has to be read as a valid path thanks to the parser.
+    /// But it means these invariants must be upheld by the caller, or expect garbage output.
+    pub fn new(str: impl AsRef<str>) -> Self {
+        let mut source_string = str.as_ref();
+
+        let root_relative = source_string.starts_with(Self::PATH_SEP);
+        if root_relative {
+            source_string = &source_string[Self::PATH_SEP.len()..];
+        }
+
+        let segments = source_string
+            .split(Self::PATH_SEP)
+            .map(str::to_string)
+            .collect::<IdentPathSegments>();
+
+        Self::from_segments(segments, root_relative)
+    }
+
+    pub fn from_segments(segments: IdentPathSegments, root_relative: bool) -> Self {
+        if root_relative {
+            Self::RootRelative(segments)
+        } else {
+            Self::Relative(segments)
+        }
+    }
+
+    pub fn rebase_from_path(&self, base_path: &Self) -> Option<Self> {
+        if self.is_root_relative() {
+            return None;
+        }
+
+        let mut segments = base_path.get_segments().to_vec();
+        segments.extend_from_slice(self.get_segments());
+
+        Some(Self::from_segments(segments, base_path.is_root_relative()))
+    }
+
+    pub fn rebase_from_string(&self, base_str: impl AsRef<str>) -> Option<Self> {
+        let base_path = Self::new(base_str);
+        self.rebase_from_path(&base_path)
+    }
+
+    pub fn to_ident(&self) -> Ident {
+        Ident::new(self.to_string())
+    }
+
+    pub fn is_root_relative(&self) -> bool {
+        matches!(self, IdentPath::RootRelative(_))
+    }
+
+    pub fn is_only_ident(&self) -> bool {
+        self.get_segments().len() == 1 && !self.is_root_relative()
+    }
+
+    pub fn get_only_ident(&self) -> Option<String> {
+        if self.is_only_ident() {
+            Some(self.get_segments()[0].clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn path_stem(&self) -> &str {
+        self.get_segments()
+            .last()
+            .expect("Path must have atleast one segment!")
+    }
+
+    pub fn get_segments(&self) -> &[IdentPathSegment] {
+        match self {
+            IdentPath::RootRelative(items) | IdentPath::Relative(items) => items,
+        }
+    }
+}
+
+impl ::std::fmt::Display for IdentPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if matches!(self, IdentPath::RootRelative(_)) {
+            write!(f, "{}", Self::PATH_SEP)?;
+        }
+        for (i, segment) in self.get_segments().iter().enumerate() {
+            if i != 0 {
+                write!(f, "{}", Self::PATH_SEP)?;
+            }
+            write!(f, "{}", segment)?;
+        }
+        Ok(())
+    }
+}
+
+impl ::std::fmt::Debug for IdentPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let path_str = self.to_string();
+        if self.is_root_relative() {
+            write!(f, "RootPath('{}')", path_str)
+        } else {
+            write!(f, "Path('{}')", path_str)
+        }
     }
 }
 
@@ -199,15 +308,32 @@ pub enum Ty {
     Infer,
     This,
     Ref(Box<Ty>, Mutability),
-    Type(String),
+    Type(IdentPath),
     Array(Box<Ty>),
     Tuple(Vec<Box<Ty>>),
 }
 
 impl Ty {
     #[inline]
-    pub fn new(src: impl AsRef<str>) -> Self {
-        Self::Type(src.as_ref().to_string())
+    pub fn new(src: IdentPath) -> Self {
+        Self::Type(src)
+    }
+
+    /// Returns the underlying type, if possible.
+    /// I.e.
+    /// *   `Ty::Ref(Ty::Type(i32), Mutability::Mutable)`, returns `Some("i32")`.
+    /// *   `Ty::Infer`, returns `None`.
+    /// *   `Ty::This`, returns `None`, since we need to have context about it to deduce the type.
+    #[inline]
+    pub fn get_type_ident(&self) -> Option<String> {
+        match self {
+            Ty::Infer => None,
+            Ty::This => None,
+            Ty::Ref(ty, _) => ty.get_type_ident(),
+            Ty::Type(t) => Some(t.to_string()),
+            Ty::Array(ty) => ty.get_type_ident(),
+            Ty::Tuple(_items) => None, // TODO: ?
+        }
     }
 }
 
@@ -220,14 +346,14 @@ where
     }
 }
 
-impl<T> From<T> for Ty
-where
-    T: AsRef<str>,
-{
-    fn from(value: T) -> Self {
-        Self::new(value)
-    }
-}
+// impl<T> From<T> for Ty
+// where
+//     T: AsRef<str>,
+// {
+//     fn from(value: T) -> Self {
+//         Self::new(value)
+//     }
+// }
 
 impl ::std::fmt::Debug for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -418,7 +544,7 @@ pub enum ExpressionKind {
     Index(Box<Expression>, Box<Expression>),
     FieldAccess(Box<Expression>, Ident),
     StructInit(Box<StructInitialisation>),
-    Ident(Ident),
+    IdentPath(IdentPath),
     Continue,
     Break,
     Return(Option<Box<Expression>>),
@@ -486,7 +612,7 @@ impl ::std::fmt::Debug for ExpressionKind {
                 .field(arg1)
                 .finish(),
             Self::StructInit(arg0) => arg0.fmt(f),
-            Self::Ident(arg0) => arg0.fmt(f),
+            Self::IdentPath(arg0) => arg0.fmt(f),
             Self::Continue => write!(f, "Continue"),
             Self::Break => write!(f, "Break"),
             Self::Return(arg0) => f.debug_tuple("Return").field(arg0).finish(),
@@ -967,30 +1093,30 @@ impl ::std::fmt::Debug for Module {
 #[derive(Clone, PartialEq)]
 pub struct Impl {
     pub id: ASTNodeID,
-    pub target_ident: Ident,
+    pub target_path: IdentPath,
     pub items: Vec<Item>,
 }
 
 impl Impl {
     #[inline]
-    pub fn new(target_ident: Ident, items: Vec<Item>) -> Self {
+    pub fn new(target_path: IdentPath, items: Vec<Item>) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
-            target_ident,
+            target_path,
             items,
         }
     }
 
     #[inline]
-    pub fn new_boxed(target_ident: Ident, items: Vec<Item>) -> Box<Self> {
-        Box::new(Self::new(target_ident, items))
+    pub fn new_boxed(target_path: IdentPath, items: Vec<Item>) -> Box<Self> {
+        Box::new(Self::new(target_path, items))
     }
 }
 
 impl ::std::fmt::Debug for Impl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Impl")
-            .field("target_ident", &self.target_ident)
+            .field("target_ident", &self.target_path)
             .field("items", &self.items)
             .finish()
     }
@@ -1069,30 +1195,30 @@ impl ::std::fmt::Debug for FieldInitialisation {
 #[derive(Clone, PartialEq)]
 pub struct StructInitialisation {
     pub id: ASTNodeID,
-    pub ident: Ident,
+    pub path: IdentPath,
     pub fields: Vec<FieldInitialisation>,
 }
 
 impl StructInitialisation {
     #[inline]
-    pub fn new(ident: Ident, fields: Vec<FieldInitialisation>) -> Self {
+    pub fn new(path: IdentPath, fields: Vec<FieldInitialisation>) -> Self {
         Self {
             id: PLACEHOLDER_NODE_ID,
-            ident,
+            path,
             fields,
         }
     }
 
     #[inline]
-    pub fn new_boxed(ident: Ident, fields: Vec<FieldInitialisation>) -> Box<Self> {
-        Box::new(Self::new(ident, fields))
+    pub fn new_boxed(path: IdentPath, fields: Vec<FieldInitialisation>) -> Box<Self> {
+        Box::new(Self::new(path, fields))
     }
 }
 
 impl ::std::fmt::Debug for StructInitialisation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StructInitialisation")
-            .field("ident", &self.ident)
+            .field("ident", &self.path)
             .field("fields", &self.fields)
             .finish()
     }
@@ -1101,20 +1227,20 @@ impl ::std::fmt::Debug for StructInitialisation {
 // TODO: Re-do this after redoing the path system.
 #[derive(Clone, PartialEq)]
 pub struct UseImport {
-    pub ident: Ident,
+    pub path: IdentPath,
 }
 
 impl UseImport {
     #[inline]
-    pub fn new(ident: Ident) -> Self {
-        Self { ident }
+    pub fn new(path: IdentPath) -> Self {
+        Self { path }
     }
 }
 
 impl ::std::fmt::Debug for UseImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UseImport")
-            .field("ident", &self.ident)
+            .field("path", &self.path)
             .finish()
     }
 }

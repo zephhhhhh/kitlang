@@ -1,8 +1,8 @@
 use crate::{
     ast::{
         BinaryOpKind, Block, Expression, ExpressionAssociation, ExpressionKind, ExpressionOrder,
-        FieldInitialisation, Literal, MethodCall, Statement, StatementKind, StructInitialisation,
-        UnaryOpKind,
+        FieldInitialisation, IdentPath, Literal, MethodCall, Statement, StatementKind,
+        StructInitialisation, UnaryOpKind,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, LiteralKind, Punctuation, TokenKind},
@@ -103,10 +103,10 @@ impl Parser<'_, '_> {
             },
             TokenKind::Ident(_) | TokenKind::Punctuation(Punctuation::Colon) => {
                 let path = self.parse_path()?;
-                if self.check_punctuation(Punctuation::OpenBrace) {
+                if self.check_kind(Punctuation::OpenBrace) {
                     self.parse_struct_initialiser(path)
                 } else {
-                    Ok(Expression::new_boxed(ExpressionKind::Ident(path.into())))
+                    Ok(Expression::new_boxed(ExpressionKind::IdentPath(path)))
                 }
             }
             TokenKind::Punctuation(Punctuation::OpenBrace) => self.parse_block_as_expression(),
@@ -123,9 +123,9 @@ impl Parser<'_, '_> {
     }
 
     fn parse_parens_expr(&mut self) -> PResult<Box<Expression>> {
-        self.expect_punctuation(Punctuation::OpenParen)?;
+        self.expect_kind(Punctuation::OpenParen)?;
         let expr = self.parse_expression()?;
-        self.expect_punctuation(Punctuation::CloseParen)?;
+        self.expect_kind(Punctuation::CloseParen)?;
         Ok(expr)
     }
 
@@ -146,12 +146,12 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_block_expression(&mut self) -> PResult<Box<Block>> {
-        self.expect_punctuation(Punctuation::OpenBrace)?;
+        self.expect_kind(Punctuation::OpenBrace)?;
 
         let mut statements: Vec<Statement> = Vec::new();
 
         while !self.cursor.is_end() {
-            if self.check_punctuation_advance(Punctuation::CloseBrace) {
+            if self.check_kind_advance(Punctuation::CloseBrace) {
                 break;
             }
 
@@ -206,7 +206,7 @@ impl Parser<'_, '_> {
     }
 
     fn parse_assign_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
-        self.expect_punctuation(Punctuation::Eq)?;
+        self.expect_kind(Punctuation::Eq)?;
 
         let value_expr = self.parse_expression()?;
 
@@ -252,7 +252,7 @@ impl Parser<'_, '_> {
         let Some(binary_op) = self.is_binary_op(0)? else {
             return Err(ParseError::new(
                 ParseErrorKind::InvalidBinaryOperator,
-                self.cursor.pos_span(),
+                self.cursor.current_span(),
             ));
         };
         let binary_op_order = binary_op.get_order();
@@ -296,7 +296,7 @@ impl Parser<'_, '_> {
     }
 
     fn parse_call_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
-        self.expect_punctuation(Punctuation::OpenParen)?;
+        self.expect_kind(Punctuation::OpenParen)?;
 
         let args = self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
             s.parse_expression()
@@ -306,11 +306,11 @@ impl Parser<'_, '_> {
     }
 
     fn parse_if(&mut self) -> PResult<Box<Expression>> {
-        self.expect_keyword(Keyword::If)?;
+        self.expect_kind(Keyword::If)?;
         let condition = self.parse_expression()?;
         let body = self.parse_block_expression()?;
-        let else_body = if self.check_keyword_advance(Keyword::Else) {
-            if self.check_keyword(Keyword::If) {
+        let else_body = if self.check_kind_advance(Keyword::Else) {
+            if self.check_kind(Keyword::If) {
                 Some(self.parse_if()?)
             } else {
                 Some(self.parse_block_as_expression()?)
@@ -325,7 +325,7 @@ impl Parser<'_, '_> {
     }
 
     fn parse_while(&mut self) -> PResult<Box<Expression>> {
-        self.expect_keyword(Keyword::While)?;
+        self.expect_kind(Keyword::While)?;
         let condition = self.parse_expression()?;
         let body = self.parse_block_expression()?;
 
@@ -335,17 +335,15 @@ impl Parser<'_, '_> {
     }
 
     fn parse_continue(&mut self) -> PResult<Box<Expression>> {
-        self.expect_keyword(Keyword::Continue)?;
+        self.expect_kind(Keyword::Continue)?;
         Ok(Expression::new_boxed(ExpressionKind::Continue))
     }
 
     fn parse_return(&mut self) -> PResult<Box<Expression>> {
-        self.expect_keyword(Keyword::Return)?;
+        self.expect_kind(Keyword::Return)?;
 
         // After a return the only valid values are either: ';', '}' or an `expression`.
-        if self.check_punctuation(Punctuation::SemiColon)
-            || self.check_punctuation(Punctuation::CloseBrace)
-        {
+        if self.check_kind(Punctuation::SemiColon) || self.check_kind(Punctuation::CloseBrace) {
             Ok(Expression::new_boxed(ExpressionKind::Return(None)))
         } else {
             let return_expr = self.parse_expression()?;
@@ -356,9 +354,9 @@ impl Parser<'_, '_> {
     }
 
     fn parse_array_index(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
-        self.expect_punctuation(Punctuation::OpenBracket)?;
+        self.expect_kind(Punctuation::OpenBracket)?;
         let index_expr = self.parse_expression()?;
-        self.expect_punctuation(Punctuation::CloseBracket)?;
+        self.expect_kind(Punctuation::CloseBracket)?;
 
         Ok(Expression::new_boxed(ExpressionKind::Index(
             lhs, index_expr,
@@ -366,7 +364,7 @@ impl Parser<'_, '_> {
     }
 
     fn parse_member_access(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
-        self.expect_punctuation(Punctuation::Dot)?;
+        self.expect_kind(Punctuation::Dot)?;
         let member_name = self.expect_ident()?;
 
         Ok(Expression::new_boxed(ExpressionKind::FieldAccess(
@@ -376,9 +374,9 @@ impl Parser<'_, '_> {
     }
 
     fn parse_member_call(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
-        self.expect_punctuation(Punctuation::Dot)?;
+        self.expect_kind(Punctuation::Dot)?;
         let method_ident = self.expect_ident()?;
-        self.expect_punctuation(Punctuation::OpenParen)?;
+        self.expect_kind(Punctuation::OpenParen)?;
 
         let args = self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
             s.parse_expression()
@@ -390,28 +388,30 @@ impl Parser<'_, '_> {
     }
 
     fn parse_self(&mut self) -> PResult<Box<Expression>> {
-        self.expect_keyword(Keyword::This)?;
+        self.expect_kind(Keyword::This)?;
 
-        Ok(Expression::new_boxed(ExpressionKind::Ident("self".into())))
+        Ok(Expression::new_boxed(ExpressionKind::IdentPath(
+            IdentPath::new("self"),
+        )))
     }
 
     fn parse_field_initialisation(&mut self) -> PResult<FieldInitialisation> {
         let ident = self.expect_ident()?;
-        self.expect_punctuation(Punctuation::Colon)?;
+        self.expect_kind(Punctuation::Colon)?;
         let value = self.parse_expression()?;
 
         Ok(FieldInitialisation::new(ident.into(), value))
     }
 
-    fn parse_struct_initialiser(&mut self, lhs: String) -> PResult<Box<Expression>> {
-        self.expect_punctuation(Punctuation::OpenBrace)?;
+    fn parse_struct_initialiser(&mut self, lhs: IdentPath) -> PResult<Box<Expression>> {
+        self.expect_kind(Punctuation::OpenBrace)?;
 
         let fields = self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
             s.parse_field_initialisation()
         })?;
 
         Ok(Expression::new_boxed(ExpressionKind::StructInit(
-            StructInitialisation::new_boxed(lhs.into(), fields),
+            StructInitialisation::new_boxed(lhs, fields),
         )))
     }
 }

@@ -1,3 +1,8 @@
+pub mod errors;
+pub mod hir;
+pub mod resolver;
+pub mod type_check;
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitInt {
     ISize,

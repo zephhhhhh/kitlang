@@ -1,5 +1,5 @@
 use crate::{
-    ast::{ASTRoot, Mutability, Ty, Visibility},
+    ast::{ASTRoot, IdentPath, IdentPathSegments, Mutability, Ty, Visibility},
     lexer::tokenise_stripped,
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, Token, TokenKind},
@@ -128,7 +128,7 @@ impl TokenCursor<'_> {
     /// Returns a range that represents the start token.
     #[inline]
     #[must_use]
-    pub fn start_span(&self) -> ::std::ops::Range<u32> {
+    pub fn first_span(&self) -> ::std::ops::Range<u32> {
         if let Some(token) = self.tokens.first() {
             token.start..token.end
         } else {
@@ -150,7 +150,7 @@ impl TokenCursor<'_> {
     /// Returns a range that represents the current token index.
     #[inline]
     #[must_use]
-    pub fn pos_span(&self) -> ::std::ops::Range<u32> {
+    pub fn current_span(&self) -> ::std::ops::Range<u32> {
         if let Some(token) = self.get(self.position()) {
             token.start..token.end
         } else {
@@ -277,7 +277,7 @@ impl Parser<'_, '_> {
             self.cursor.advance_by(2);
             Ok(true)
         } else {
-            if self.check_punctuation(Punctuation::Colon) {
+            if self.check_kind(Punctuation::Colon) {
                 return Err(ParseError::new(
                     ParseErrorKind::InvalidPath,
                     path_start..self.cursor.get_current_source_end(),
@@ -291,31 +291,28 @@ impl Parser<'_, '_> {
     /// # Notes
     /// Always expects atleast one `identifier`, can optionally start with '::', to force the path
     /// to reference absolutely from the 'base'.
-    pub fn parse_path(&mut self) -> PResult<String> {
+    pub fn parse_path(&mut self) -> PResult<IdentPath> {
         let path_start = self.cursor.get_current_source_start();
-        let mut full_path = String::from(if self.parse_double_colon(path_start)? {
-            "::"
-        } else {
-            ""
-        });
-        full_path += &(self.expect_ident()?);
+        let mut path_segments = IdentPathSegments::new();
+        let root_relative = self.parse_double_colon(path_start)?;
+
+        path_segments.push(self.expect_ident()?);
 
         while !self.cursor.is_end() {
             if !self.parse_double_colon(path_start)? {
                 break;
             }
 
-            full_path += "::";
-            full_path += &(self.expect_ident()?);
+            path_segments.push(self.expect_ident()?);
         }
 
-        Ok(full_path)
+        Ok(IdentPath::from_segments(path_segments, root_relative))
     }
 
     /// Parses a '&' and '&mut'
     pub fn parse_ref_and_refmut(&mut self) -> PResult<RefType> {
-        if self.check_punctuation_advance(Punctuation::Ampersand) {
-            if self.check_keyword_advance(Keyword::Mut) {
+        if self.check_kind_advance(Punctuation::Ampersand) {
+            if self.check_kind_advance(Keyword::Mut) {
                 Ok(RefType::RefMut)
             } else {
                 Ok(RefType::Ref)
@@ -327,7 +324,7 @@ impl Parser<'_, '_> {
     }
 
     /// Parse a `Ty` from the current cursor position.
-    /// # Notes
+    /// # Notes<F11>
     /// Always expects atleast one `identifier`.
     pub fn parse_ty(&mut self) -> PResult<Ty> {
         let ref_type = self.parse_ref_and_refmut()?;
@@ -344,7 +341,7 @@ impl Parser<'_, '_> {
     /// otherwise `Ok(Visibility::Private)`, If there are no tokens, return `Err`.
     pub fn parse_visibility(&mut self) -> PResult<Visibility> {
         Ok(Visibility::from_is_public(
-            self.check_keyword_advance(Keyword::Pub),
+            self.check_kind_advance(Keyword::Pub),
         ))
     }
 
@@ -352,7 +349,7 @@ impl Parser<'_, '_> {
     /// otherwise `Ok(Mutability::Immutable)`, If there are no tokens, return `Err`.
     pub fn parse_mutability(&mut self) -> PResult<Mutability> {
         Ok(Mutability::from_is_mutable(
-            self.check_keyword_advance(Keyword::Mut),
+            self.check_kind_advance(Keyword::Mut),
         ))
     }
 
@@ -385,7 +382,7 @@ impl Parser<'_, '_> {
     /// Peek at the current token, return `true` if the [`TokenKind`] of the [`Token`] matches the
     /// `expected_kind`
     #[inline]
-    fn check_kind(&self, expected_kind: impl Into<TokenKind>) -> bool {
+    fn check_kind<T: Into<TokenKind>>(&self, expected_kind: T) -> bool {
         let expected = expected_kind.into();
         if let Some(t) = self.cursor.peek() {
             t.kind == expected
@@ -397,7 +394,7 @@ impl Parser<'_, '_> {
     /// Peek at the specified `offset`, return `true` if the [`TokenKind`] of the [`Token`] matches the
     /// `expected_kind`
     #[inline]
-    fn check_kind_at(&self, offset: u32, expected_kind: impl Into<TokenKind>) -> bool {
+    fn check_kind_at<T: Into<TokenKind>>(&self, offset: u32, expected_kind: T) -> bool {
         let expected = expected_kind.into();
         if let Some(t) = self.cursor.peek_at(offset) {
             t.kind == expected
@@ -409,53 +406,8 @@ impl Parser<'_, '_> {
     /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
     /// matches the `expected_kind`
     #[inline]
-    fn check_kind_advance(&mut self, expected_kind: impl Into<TokenKind>) -> bool {
+    fn check_kind_advance<T: Into<TokenKind>>(&mut self, expected_kind: T) -> bool {
         if self.check_kind(expected_kind) {
-            self.cursor.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Peek at the current token, return `true` if the [`TokenKind`] of the [`Token`] is a
-    /// [`Keyword`] and that keyword matches the `expected_keyword`.
-    #[inline]
-    fn check_keyword(&self, expected_keyword: Keyword) -> bool {
-        self.check_kind(expected_keyword)
-    }
-
-    /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
-    /// is a [`Keyword`] and that keyword matches the `expected_keyword`
-    #[inline]
-    fn check_keyword_advance(&mut self, expected_keyword: Keyword) -> bool {
-        if self.check_keyword(expected_keyword) {
-            self.cursor.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Peek at the current token, return `true` and if the [`TokenKind`] of the [`Token`]
-    /// is [`Punctuation`] and that the punctuation matches the `expected_punctuation`
-    #[inline]
-    fn check_punctuation(&self, expected_punctuation: Punctuation) -> bool {
-        self.check_kind(expected_punctuation)
-    }
-
-    /// Peek at the specified `offset`, return `true` and if the [`TokenKind`] of the [`Token`]
-    /// is [`Punctuation`] and that the punctuation matches the `expected_punctuation`
-    #[inline]
-    fn check_punctuation_at(&self, offset: u32, expected_punctuation: Punctuation) -> bool {
-        self.check_kind_at(offset, expected_punctuation)
-    }
-
-    /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
-    /// is [`Punctuation`] and that the punctuation matches the `expected_punctuation`
-    #[inline]
-    fn check_punctuation_advance(&mut self, expected_punctuation: Punctuation) -> bool {
-        if self.check_punctuation(expected_punctuation) {
             self.cursor.advance();
             true
         } else {
@@ -495,22 +447,6 @@ impl Parser<'_, '_> {
     }
 
     #[inline]
-    #[allow(dead_code)]
-    fn check_punctuation_sequence(&self, offset: u32, sequence: &[Punctuation]) -> bool {
-        for (si, punct) in sequence.iter().enumerate() {
-            let Some(token) = self.cursor.peek_at(offset + si as u32) else {
-                return false;
-            };
-
-            if token.kind != TokenKind::Punctuation(*punct) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    #[inline]
     fn get_punctuation_sequence<const N: usize>(&self, offset: u32) -> Option<[Punctuation; N]> {
         let mut result = [Punctuation::Tilde; N];
         for (i, out_p) in result.iter_mut().enumerate() {
@@ -529,7 +465,7 @@ impl Parser<'_, '_> {
 // Expect..
 impl Parser<'_, '_> {
     #[inline]
-    fn expect_kind(&mut self, expected_kind: impl Into<TokenKind>) -> PResult<()> {
+    fn expect_kind<T: Into<TokenKind>>(&mut self, expected_kind: T) -> PResult<()> {
         let expected = expected_kind.into();
         if self.check_kind_advance(expected.clone()) {
             Ok(())
@@ -544,16 +480,6 @@ impl Parser<'_, '_> {
                 self.cursor.eof_span(),
             ))
         }
-    }
-
-    #[inline]
-    fn expect_keyword(&mut self, expected_keyword: Keyword) -> PResult<()> {
-        self.expect_kind(expected_keyword)
-    }
-
-    #[inline]
-    fn expect_punctuation(&mut self, expected_punctuation: Punctuation) -> PResult<()> {
-        self.expect_kind(expected_punctuation)
     }
 
     #[inline]
@@ -681,11 +607,11 @@ impl Parser<'_, '_> {
     ) -> PResult<Vec<T>> {
         let mut elements = Vec::new();
 
-        if !self.check_punctuation_advance(close) {
+        if !self.check_kind_advance(close) {
             elements.push(f(self)?);
 
             while !self.cursor.is_end() {
-                if self.check_punctuation_advance(close) {
+                if self.check_kind_advance(close) {
                     break;
                 }
                 elements.push(f(self)?);
@@ -721,21 +647,18 @@ impl Parser<'_, '_> {
     ) -> PResult<Vec<T>> {
         let mut elements = Vec::new();
 
-        if !self.check_punctuation_advance(close) {
+        if !self.check_kind_advance(close) {
             elements.push(f(self)?);
 
             while !self.cursor.is_end() {
-                if self.check_punctuation_advance(close) {
+                if self.check_kind_advance(close) {
                     break;
                 }
-                if TRAIL_DELIM
-                    && self.check_punctuation(delimiter)
-                    && self.check_punctuation_at(1, close)
-                {
+                if TRAIL_DELIM && self.check_kind(delimiter) && self.check_kind_at(1, close) {
                     self.cursor.advance_by(2);
                     break;
                 }
-                self.expect_punctuation(delimiter)?;
+                self.expect_kind(delimiter)?;
 
                 elements.push(f(self)?);
             }
@@ -809,7 +732,7 @@ impl Parser<'_, '_> {
     /// to by the cursor.
     #[inline]
     fn make_error(&self, kind: ParseErrorKind) -> ParseError {
-        ParseError::new(kind, self.cursor.pos_span())
+        ParseError::new(kind, self.cursor.current_span())
     }
 
     /// Returns an error representing that the token stream ended unexpectedly.
