@@ -1,6 +1,7 @@
 use crate::{
     ast::{
-        Ident, Local, LocalKind, Mutability, Parameter, SourceSpan, Statement, StatementKind, Ty,
+        Local, LocalKind, Mutability, Parameter, SourceSpan, SpannedIdent, Statement,
+        StatementKind, Ty,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, TokenKind},
@@ -13,7 +14,7 @@ use super::{Parser, errors::PResult};
 #[derive(Debug, Clone)]
 pub struct VariablePattern {
     /// Variable name.
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     /// Variable type.
     pub ty: Ty,
     /// If the variable can be mutated.
@@ -37,7 +38,8 @@ impl VariablePattern {
 
 impl Parser<'_, '_> {
     pub fn parse_statement(&mut self) -> PResult<Statement> {
-        let start_span = self.cursor.get_current_source_start();
+        let start_span = self.begin_span();
+
         let (_, token) = self.expect_next_significant_token()?;
         let kind = match &token.kind {
             c if c.can_start_item() => StatementKind::Item(Box::new(self.parse_item()?)),
@@ -57,17 +59,19 @@ impl Parser<'_, '_> {
                 }
             }
         };
-        let end_span = self.cursor.get_previous_source_end();
-        Ok(Statement::new(kind, start_span..end_span))
+
+        Ok(Statement::new(kind, self.finish_span(start_span)))
     }
 
     pub fn parse_variable_pattern(&mut self) -> PResult<VariablePattern> {
-        let start_span = self.cursor.get_current_source_start();
+        let start_span = self.begin_span();
 
         let mutable = self.parse_mutability()?;
         let ref_type = self.parse_ref_and_refmut()?;
 
+        let var_ident_span = self.begin_span();
         let (var_ident, var_type) = if self.check_kind_advance(Keyword::This) {
+            let ident_span = self.finish_span(var_ident_span);
             let ty = if self.check_kind_advance(Punctuation::Colon) {
                 if ref_type.is_ref() {
                     let token = self.peek()?;
@@ -84,7 +88,7 @@ impl Parser<'_, '_> {
                 Ty::This
             };
 
-            ("self".to_string(), ty)
+            (SpannedIdent::new("self", ident_span), ty)
         } else {
             if ref_type.is_ref() {
                 let token = self.peek()?;
@@ -97,27 +101,25 @@ impl Parser<'_, '_> {
                 ));
             }
 
-            let ident = self.expect_ident()?;
+            let ident = self.expect_ident_spanned()?;
             self.expect_kind(Punctuation::Colon)?;
             let ty = self.parse_ty()?;
 
             (ident, ty)
         };
 
-        let end_span = self.cursor.get_previous_source_end();
-
         Ok(VariablePattern {
-            ident: var_ident.into(),
+            ident: var_ident,
             ty: var_type,
             mutable,
-            span: SourceSpan::new(start_span, end_span),
+            span: self.finish_span(start_span),
         })
     }
 
     pub fn parse_let_local(&mut self) -> PResult<Box<Local>> {
         self.expect_kind(Keyword::Let)?;
         let mutable = self.parse_mutability()?;
-        let var_ident = self.expect_ident()?;
+        let spanned_ident = self.expect_ident_spanned()?;
         let var_type = if self.check_kind_advance(Punctuation::Colon) {
             self.parse_ty()?
         } else {
@@ -130,7 +132,7 @@ impl Parser<'_, '_> {
         self.expect_kind(Punctuation::SemiColon)?;
 
         Ok(Local::new_boxed(
-            var_ident.into(),
+            spanned_ident,
             var_type,
             LocalKind::Initialise(expr),
             mutable,

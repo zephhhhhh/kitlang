@@ -1,5 +1,7 @@
 use crate::{
-    ast::{ASTRoot, IdentPath, IdentPathSegments, Mutability, Ty, Visibility},
+    ast::{
+        ASTRoot, IdentPath, IdentPathSegments, Mutability, SourceSpan, SpannedIdent, Ty, Visibility,
+    },
     lexer::tokenise_stripped,
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, Punctuation, Token, TokenKind},
@@ -222,6 +224,8 @@ pub struct ParserContext {}
 /// [`Expression`]s and [`Statement`]s.
 #[derive(Debug)]
 pub(crate) struct Parser<'a, 'b> {
+    // TODO: Add functionality to this.
+    #[allow(dead_code)]
     context: &'a ParserContext,
 
     cursor: TokenCursor<'b>,
@@ -538,6 +542,38 @@ impl Parser<'_, '_> {
                 )
             }
         })
+    }
+
+    /// Expect that the token at the current cursor position is an `Identifier`.
+    ///
+    /// This function will advance the cursor by one position if an `Identifier` is found.
+    /// # Returns
+    /// *   `Ok((ident_str, span))` if the token at the cursor position is an `Identifier`.
+    /// *   `Err(ParseErrorKind::ExpectedIdentifier)` if the token found at the current cursor position
+    ///     was not an `Identifier`.
+    /// *   `Err(ParseErrorKind::ExpectedIdentifierFoundNone)` if there are no more tokens in the
+    ///     stream, but it was expected that there were.
+    #[inline]
+    fn expect_ident_spanned(&mut self) -> PResult<SpannedIdent> {
+        let span_start = self.begin_span();
+        let ident = self.expect_ident()?;
+        Ok(SpannedIdent::new(ident, self.finish_span(span_start)))
+    }
+}
+
+// Spans..
+impl Parser<'_, '_> {
+    /// Start a span at the beginning of the current token.
+    /// Shorthand for `self.cursor.get_current_source_start`.
+    pub fn begin_span(&self) -> u32 {
+        self.cursor.get_current_source_start()
+    }
+
+    /// Construct a span by using a supplied beginning position, and the end of the previous token
+    /// as the end position.
+    /// Shorthand for `self.cursor.get_current_source_start`.
+    pub fn finish_span(&self, begin: u32) -> SourceSpan {
+        (begin..self.cursor.get_previous_source_end()).into()
     }
 }
 

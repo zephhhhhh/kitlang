@@ -28,9 +28,11 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_function(&mut self, from_impl_block: bool) -> PResult<Item> {
+        let span_start = self.begin_span();
+
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Fn)?;
-        let func_name = self.expect_ident()?;
+        let func_name = self.expect_ident_spanned()?;
         self.expect_kind(Punctuation::OpenParen)?;
 
         let function_arguments =
@@ -39,7 +41,7 @@ impl Parser<'_, '_> {
             })?;
 
         for (i, arg) in function_arguments.iter().enumerate() {
-            if arg.ident.0 == "self" {
+            if arg.ident.str() == "self" {
                 if !from_impl_block {
                     return Err(ParseError::new(
                         ParseErrorKind::SelfMustBeUsedInAMethod,
@@ -78,15 +80,17 @@ impl Parser<'_, '_> {
         };
 
         let item_kind = ItemKind::Fn(Box::new(Function::new(
-            func_name.into(),
+            func_name,
             function_sig,
             Some(function_body),
         )));
 
-        Ok(Item::new(item_kind, public))
+        Ok(Item::new(item_kind, public, self.finish_span(span_start)))
     }
 
     fn parse_struct_field_definition(&mut self, allow_vis_specifier: bool) -> PResult<StructField> {
+        let span_start = self.begin_span();
+
         let public = if allow_vis_specifier {
             self.parse_visibility()?
         } else {
@@ -97,24 +101,32 @@ impl Parser<'_, '_> {
             }
             Visibility::Public
         };
-        let var_ident = self.expect_ident()?;
+        let var_ident = self.expect_ident_spanned()?;
         self.expect_kind(Punctuation::Colon)?;
         let ty = self.parse_ty()?;
 
-        Ok(StructField::new(var_ident.into(), ty, public))
+        Ok(StructField::new(
+            var_ident,
+            ty,
+            public,
+            self.finish_span(span_start),
+        ))
     }
 
     pub fn parse_struct(&mut self) -> PResult<Item> {
+        let span_start = self.begin_span();
+
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Struct)?;
 
-        let struct_ident = self.expect_ident()?;
+        let struct_ident = self.expect_ident_spanned()?;
 
         if self.check_kind_advance(Punctuation::SemiColon) {
             // Unit struct
             return Ok(Item::new(
-                ItemKind::Struct(Struct::new_boxed(struct_ident.into(), vec![])),
+                ItemKind::Struct(Struct::new_boxed(struct_ident, vec![])),
                 public,
+                self.finish_span(span_start),
             ));
         }
 
@@ -125,8 +137,9 @@ impl Parser<'_, '_> {
         })?;
 
         Ok(Item::new(
-            ItemKind::Struct(Struct::new_boxed(struct_ident.into(), fields)),
+            ItemKind::Struct(Struct::new_boxed(struct_ident, fields)),
             public,
+            self.finish_span(span_start),
         ))
     }
 
@@ -161,6 +174,8 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_enum(&mut self) -> PResult<Item> {
+        let span_start = self.begin_span();
+
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Enum)?;
 
@@ -171,6 +186,7 @@ impl Parser<'_, '_> {
             return Ok(Item::new(
                 ItemKind::Enum(Enum::new_boxed(enum_ident.into(), vec![])),
                 public,
+                self.finish_span(span_start),
             ));
         }
 
@@ -183,13 +199,16 @@ impl Parser<'_, '_> {
         Ok(Item::new(
             ItemKind::Enum(Enum::new_boxed(enum_ident.into(), variants)),
             public,
+            self.finish_span(span_start),
         ))
     }
 
     pub fn parse_const(&mut self) -> PResult<Item> {
+        let span_start = self.begin_span();
+
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Const)?;
-        let var_ident = self.expect_ident()?;
+        let var_ident = self.expect_ident_spanned()?;
         self.expect_kind(Punctuation::Colon)?;
         let ty = self.parse_ty()?;
         self.expect_kind(Punctuation::Eq)?;
@@ -197,8 +216,9 @@ impl Parser<'_, '_> {
         self.expect_kind(Punctuation::SemiColon)?;
 
         Ok(Item::new(
-            ItemKind::Const(Constant::new_boxed(var_ident.into(), ty, expr)),
+            ItemKind::Const(Constant::new_boxed(var_ident, ty, expr)),
             public,
+            self.finish_span(span_start),
         ))
     }
 
@@ -215,6 +235,8 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_implementation(&mut self) -> PResult<Item> {
+        let span_start = self.begin_span();
+
         self.expect_kind(Keyword::Impl)?;
         let ty = self.parse_path()?;
 
@@ -227,6 +249,7 @@ impl Parser<'_, '_> {
         Ok(Item::new(
             ItemKind::Impl(Impl::new_boxed(ty, items)),
             Visibility::Public,
+            self.finish_span(span_start),
         ))
     }
 
@@ -246,27 +269,33 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_use(&mut self) -> PResult<Item> {
+        let span_start = self.begin_span();
+
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Use)?;
         let path = self.parse_path()?;
 
         self.expect_kind(Punctuation::SemiColon)?;
 
-        Ok(Item::new(ItemKind::Use(UseImport::new(path)), public))
+        Ok(Item::new(
+            ItemKind::Use(UseImport::new(path)),
+            public,
+            self.finish_span(span_start),
+        ))
     }
 
     pub fn parse_mod(&mut self) -> PResult<Item> {
+        let span_start = self.begin_span();
+
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Mod)?;
-        let module_ident = self.expect_ident()?;
+        let module_ident = self.expect_ident_spanned()?;
 
         if self.check_kind_advance(Punctuation::SemiColon) {
             return Ok(Item::new(
-                ItemKind::Mod(Module::new_boxed(
-                    module_ident.into(),
-                    ModuleKind::Declaration,
-                )),
+                ItemKind::Mod(Module::new_boxed(module_ident, ModuleKind::Declaration)),
                 public,
+                self.finish_span(span_start),
             ));
         }
 
@@ -278,10 +307,11 @@ impl Parser<'_, '_> {
 
         Ok(Item::new(
             ItemKind::Mod(Module::new_boxed(
-                module_ident.into(),
+                module_ident,
                 ModuleKind::Definition(items),
             )),
             public,
+            self.finish_span(span_start),
         ))
     }
 }

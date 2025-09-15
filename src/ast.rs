@@ -99,6 +99,15 @@ impl IdentPath {
         Self::from_segments(segments, root_relative)
     }
 
+    /// Constructs an empty identifier path.
+    pub fn new_empty(root_relative: bool) -> Self {
+        if root_relative {
+            Self::RootRelative(vec![])
+        } else {
+            Self::Relative(vec![])
+        }
+    }
+
     /// Constructs a path from already parsed segments, with `root_relative` describing if the path
     /// should be constructed as relative to the root or relative to the current scope.
     pub fn from_segments(segments: IdentPathSegments, root_relative: bool) -> Self {
@@ -109,13 +118,19 @@ impl IdentPath {
         }
     }
 
+    /// Constructs a path from already parsed segments, with `root_relative` describing if the path
+    /// should be constructed as relative to the root or relative to the current scope.
+    pub fn from_segments_slice(segments: &[IdentPathSegment], root_relative: bool) -> Self {
+        Self::from_segments(segments.to_vec(), root_relative)
+    }
+
     pub fn rebase_from_path(&self, base_path: &Self) -> Option<Self> {
         if self.is_root_relative() {
             return None;
         }
 
-        let mut segments = base_path.get_segments().to_vec();
-        segments.extend_from_slice(self.get_segments());
+        let mut segments = base_path.segments().to_vec();
+        segments.extend_from_slice(self.segments());
 
         Some(Self::from_segments(segments, base_path.is_root_relative()))
     }
@@ -138,7 +153,7 @@ impl IdentPath {
     /// Returns true if the path only has exactly _one_ segment, and is not relative to the root
     /// "module". I.e. The path only consists of exactly one `Identifier`.
     pub fn is_only_ident(&self) -> bool {
-        self.get_segments().len() == 1 && !self.is_root_relative()
+        self.segments().len() == 1 && !self.is_root_relative()
     }
 
     /// Returns `Some(ident)` if the path has exactly _one_ segment, and is not relative to the
@@ -146,7 +161,7 @@ impl IdentPath {
     /// `None`
     pub fn get_only_ident(&self) -> Option<String> {
         if self.is_only_ident() {
-            Some(self.get_segments()[0].clone())
+            Some(self.segments()[0].clone())
         } else {
             None
         }
@@ -156,15 +171,55 @@ impl IdentPath {
     /// # Panics
     /// This function will panic if there are _no_ segments in the path.
     pub fn path_stem(&self) -> &str {
-        self.get_segments()
+        self.segments()
             .last()
             .expect("Path must have atleast one segment!")
     }
 
+    /// How many segments are in the path.
+    pub fn len(&self) -> usize {
+        self.segments().len()
+    }
+
     /// Returns a slice of all segments in the path.
-    pub fn get_segments(&self) -> &[IdentPathSegment] {
+    pub fn segments(&self) -> &[IdentPathSegment] {
         match self {
             IdentPath::RootRelative(items) | IdentPath::Relative(items) => items,
+        }
+    }
+
+    /// Returns a slice of all segments in the path.
+    pub fn get_segments_vec_mut(&mut self) -> &mut Vec<IdentPathSegment> {
+        match self {
+            IdentPath::RootRelative(items) | IdentPath::Relative(items) => items,
+        }
+    }
+
+    /// Returns true if the path has 0 segments.
+    pub fn is_empty(&self) -> bool {
+        self.segments().is_empty()
+    }
+
+    /// Pop the last segment off the path.
+    pub fn pop(&mut self) {
+        let segments_mut = self.get_segments_vec_mut();
+        if !segments_mut.is_empty() {
+            segments_mut.pop();
+        }
+    }
+
+    /// Push a segment onto the end of the path.
+    pub fn push(&mut self, segment: &str) {
+        self.get_segments_vec_mut().push(segment.to_string());
+    }
+
+    /// Push a series of path segments from another path onto this one, if the other path is not
+    /// relative to the root.
+    pub fn push_path(&mut self, path: &Self) {
+        if !path.is_root_relative() {
+            for segment in path.segments() {
+                self.push(segment);
+            }
         }
     }
 }
@@ -174,7 +229,7 @@ impl ::std::fmt::Display for IdentPath {
         if matches!(self, IdentPath::RootRelative(_)) {
             write!(f, "{}", Self::PATH_SEP)?;
         }
-        for (i, segment) in self.get_segments().iter().enumerate() {
+        for (i, segment) in self.segments().iter().enumerate() {
             if i != 0 {
                 write!(f, "{}", Self::PATH_SEP)?;
             }
@@ -347,6 +402,19 @@ impl ItemKind {
             ItemKind::Impl(_) => "Impl",
         }
     }
+
+    /// Returns the `Identifier` of the item kind, if applicable.
+    #[inline]
+    pub fn ident(&self) -> Option<String> {
+        match self {
+            ItemKind::Const(constant) => Some(constant.ident.string()),
+            ItemKind::Fn(function) => Some(function.ident.string()),
+            ItemKind::Mod(module) => Some(module.ident.string()),
+            ItemKind::Enum(e) => Some(e.ident.string()),
+            ItemKind::Struct(s) => Some(s.ident.string()),
+            _ => None,
+        }
+    }
 }
 
 impl ::std::fmt::Debug for ItemKind {
@@ -374,6 +442,16 @@ impl Ident {
     pub fn new(src: impl AsRef<str>) -> Self {
         Self(src.as_ref().to_string())
     }
+
+    /// Clones the inner string.
+    pub fn string(&self) -> String {
+        self.0.clone()
+    }
+
+    /// Reference to the inner string as a slice.
+    pub fn str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl<T: AsRef<str>> From<T> for Ident {
@@ -385,6 +463,59 @@ impl<T: AsRef<str>> From<T> for Ident {
 impl ::std::fmt::Debug for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Ident({})", self.0)
+    }
+}
+
+/// An identifier with an associated `Span` describing the range of bytes in the source code the
+/// identifier occupies.
+#[derive(Clone, PartialEq, PartialOrd, Hash)]
+pub struct SpannedIdent {
+    pub ident: Ident,
+    pub span: SourceSpan,
+}
+
+impl SpannedIdent {
+    pub fn new(ident: impl AsRef<str>, span: SourceSpan) -> Self {
+        Self {
+            ident: Ident::new(ident),
+            span,
+        }
+    }
+
+    /// Clones the inner string.
+    pub fn string(&self) -> String {
+        self.ident.string()
+    }
+
+    /// Reference to the inner string as a slice.
+    pub fn str(&self) -> &str {
+        self.ident.str()
+    }
+
+    /// Clones `self.ident`.
+    pub fn ident(&self) -> Ident {
+        self.ident.clone()
+    }
+}
+
+impl From<(String, SourceSpan)> for SpannedIdent {
+    fn from(value: (String, SourceSpan)) -> Self {
+        Self {
+            ident: value.0.into(),
+            span: value.1,
+        }
+    }
+}
+
+impl ::std::fmt::Debug for SpannedIdent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SpannedIdent {{ {}, {}..{} }}",
+            self.ident.str(),
+            self.span.start,
+            self.span.end
+        )
     }
 }
 
@@ -462,52 +593,22 @@ impl ::std::fmt::Debug for Ty {
     }
 }
 
-/// A unique ID for an AST node. Honestly I might just remove this, I thought I would need this in
-/// future but I don't see a need for it.
-#[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ASTNodeID(pub u32);
-
-/// A sentinel value for an AST node that has not yet been assigned an ID.
-pub const PLACEHOLDER_NODE_ID: ASTNodeID = ASTNodeID(u32::MAX);
-
-impl Default for ASTNodeID {
-    fn default() -> Self {
-        PLACEHOLDER_NODE_ID
-    }
-}
-
-impl From<u32> for ASTNodeID {
-    fn from(value: u32) -> Self {
-        Self(value)
-    }
-}
-
-impl From<&u32> for ASTNodeID {
-    fn from(value: &u32) -> Self {
-        Self(*value)
-    }
-}
+// TODO: Add a `SourceSpan` to everything.
 
 /// A "top-level" item in the AST.
 /// # Examples
 /// Functions, Constants, Structs, etc..
 #[derive(Clone, PartialEq)]
 pub struct Item {
-    pub id: ASTNodeID,
     pub vis: Visibility,
     pub kind: ItemKind,
-    // Maybe span?
+    pub span: SourceSpan,
 }
 
 impl Item {
     #[inline]
-    pub fn new(kind: ItemKind, vis: Visibility) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            vis,
-            kind,
-        }
+    pub fn new(kind: ItemKind, vis: Visibility, span: SourceSpan) -> Self {
+        Self { vis, kind, span }
     }
 }
 
@@ -796,23 +897,19 @@ impl ::std::fmt::Debug for ExpressionKind {
 /// An expression node in the AST.
 #[derive(Clone, PartialEq)]
 pub struct Expression {
-    pub id: ASTNodeID,
     pub kind: ExpressionKind,
-    // Maybe span?
+    pub span: SourceSpan,
 }
 
 impl Expression {
     #[inline]
-    pub fn new(kind: ExpressionKind) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            kind,
-        }
+    pub fn new(kind: ExpressionKind, span: SourceSpan) -> Self {
+        Self { kind, span }
     }
 
     #[inline]
-    pub fn new_boxed(kind: ExpressionKind) -> Box<Self> {
-        Box::new(Self::new(kind))
+    pub fn new_boxed(kind: ExpressionKind, span: SourceSpan) -> Box<Self> {
+        Box::new(Self::new(kind, span))
     }
 
     /// Get the "precendence" of the expression.
@@ -864,18 +961,16 @@ impl ::std::fmt::Debug for StatementKind {
 /// A statement node within the AST.
 #[derive(Clone, PartialEq)]
 pub struct Statement {
-    pub id: ASTNodeID,
     pub kind: StatementKind,
-    pub source_span: Range<u32>, // Maybe span?
+    pub span: SourceSpan,
 }
 
 impl Statement {
     #[inline]
-    pub fn new(kind: StatementKind, source_span: Range<u32>) -> Self {
+    pub fn new(kind: StatementKind, source_span: SourceSpan) -> Self {
         Self {
-            id: PLACEHOLDER_NODE_ID,
             kind,
-            source_span,
+            span: source_span,
         }
     }
 }
@@ -917,8 +1012,7 @@ pub enum LocalKind {
 /// initial value.
 #[derive(Clone, PartialEq)]
 pub struct Local {
-    pub id: ASTNodeID,
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     pub ty: Ty,
     pub kind: LocalKind,
     pub mutable: Mutability,
@@ -926,9 +1020,8 @@ pub struct Local {
 
 impl Local {
     #[inline]
-    pub fn new(ident: Ident, ty: Ty, kind: LocalKind, mutable: Mutability) -> Self {
+    pub fn new(ident: SpannedIdent, ty: Ty, kind: LocalKind, mutable: Mutability) -> Self {
         Self {
-            id: PLACEHOLDER_NODE_ID,
             ident,
             ty,
             kind,
@@ -937,7 +1030,12 @@ impl Local {
     }
 
     #[inline]
-    pub fn new_boxed(ident: Ident, ty: Ty, kind: LocalKind, mutable: Mutability) -> Box<Self> {
+    pub fn new_boxed(
+        ident: SpannedIdent,
+        ty: Ty,
+        kind: LocalKind,
+        mutable: Mutability,
+    ) -> Box<Self> {
         Box::new(Self::new(ident, ty, kind, mutable))
     }
 
@@ -963,25 +1061,19 @@ impl ::std::fmt::Debug for Local {
 /// A declaration of a constant, with the expression it should be evaluated to.
 #[derive(Clone, PartialEq)]
 pub struct Constant {
-    pub id: ASTNodeID,
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     pub ty: Ty,
     pub expr: Box<Expression>,
 }
 
 impl Constant {
     #[inline]
-    pub fn new(ident: Ident, ty: Ty, expr: Box<Expression>) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            ident,
-            ty,
-            expr,
-        }
+    pub fn new(ident: SpannedIdent, ty: Ty, expr: Box<Expression>) -> Self {
+        Self { ident, ty, expr }
     }
 
     #[inline]
-    pub fn new_boxed(ident: Ident, ty: Ty, expr: Box<Expression>) -> Box<Self> {
+    pub fn new_boxed(ident: SpannedIdent, ty: Ty, expr: Box<Expression>) -> Box<Self> {
         Box::new(Self::new(ident, ty, expr))
     }
 }
@@ -999,9 +1091,7 @@ impl ::std::fmt::Debug for Constant {
 /// A declaration of a block, with a list of all statements inside the block.
 #[derive(Clone, PartialEq)]
 pub struct Block {
-    pub id: ASTNodeID,
     pub statements: Vec<Statement>,
-    // Maybe span
 }
 
 impl ::std::fmt::Debug for Block {
@@ -1013,10 +1103,7 @@ impl ::std::fmt::Debug for Block {
 impl Block {
     #[inline]
     pub fn new(statements: Vec<Statement>) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            statements,
-        }
+        Self { statements }
     }
 }
 
@@ -1024,8 +1111,7 @@ impl Block {
 /// parameter, as well as if it is declared as `mutable` or not.
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct Parameter {
-    pub id: ASTNodeID,
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     pub ty: Ty,
     pub mutable: Mutability,
     pub span: SourceSpan,
@@ -1033,9 +1119,8 @@ pub struct Parameter {
 
 impl Parameter {
     #[inline]
-    pub fn new(ident: Ident, ty: Ty, mutable: Mutability, span: SourceSpan) -> Self {
+    pub fn new(ident: SpannedIdent, ty: Ty, mutable: Mutability, span: SourceSpan) -> Self {
         Self {
-            id: PLACEHOLDER_NODE_ID,
             ident,
             ty,
             mutable,
@@ -1077,28 +1162,22 @@ pub struct FunctionSig {
 /// function is just a declaration.
 #[derive(Clone, PartialEq)]
 pub struct Function {
-    pub id: ASTNodeID,
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     pub sig: FunctionSig,
     pub body: Option<Box<Block>>,
 }
 
 impl Function {
     #[inline]
-    pub fn new(ident: Ident, sig: FunctionSig, body: Option<Box<Block>>) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            ident,
-            sig,
-            body,
-        }
+    pub fn new(ident: SpannedIdent, sig: FunctionSig, body: Option<Box<Block>>) -> Self {
+        Self { ident, sig, body }
     }
 }
 
 impl ::std::fmt::Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Function")
-            .field("ident", &self.ident.0)
+            .field("ident", &self.ident.str())
             .field("sig", &self.sig)
             .field("body", &self.body)
             .finish()
@@ -1108,20 +1187,20 @@ impl ::std::fmt::Debug for Function {
 /// A field of a struct, containing the name of the field and it's associated [`Ty`].
 #[derive(Clone, PartialEq)]
 pub struct StructField {
-    pub id: ASTNodeID,
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     pub ty: Ty,
     pub vis: Visibility,
+    pub span: SourceSpan,
 }
 
 impl StructField {
     #[inline]
-    pub fn new(ident: Ident, ty: Ty, vis: Visibility) -> Self {
+    pub fn new(ident: SpannedIdent, ty: Ty, vis: Visibility, span: SourceSpan) -> Self {
         Self {
-            id: PLACEHOLDER_NODE_ID,
             ident,
             ty,
             vis,
+            span,
         }
     }
 }
@@ -1139,23 +1218,18 @@ impl ::std::fmt::Debug for StructField {
 /// A `Struct` [`Item`] in the AST, with an `Identifier` for it's name, with all it's associated fields.
 #[derive(Clone, PartialEq)]
 pub struct Struct {
-    pub id: ASTNodeID,
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     pub fields: Vec<StructField>,
 }
 
 impl Struct {
     #[inline]
-    pub fn new(ident: Ident, fields: Vec<StructField>) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            ident,
-            fields,
-        }
+    pub fn new(ident: SpannedIdent, fields: Vec<StructField>) -> Self {
+        Self { ident, fields }
     }
 
     #[inline]
-    pub fn new_boxed(ident: Ident, fields: Vec<StructField>) -> Box<Self> {
+    pub fn new_boxed(ident: SpannedIdent, fields: Vec<StructField>) -> Box<Self> {
         Box::new(Self::new(ident, fields))
     }
 }
@@ -1194,7 +1268,6 @@ pub enum VariantData {
 /// what kind of variant it is: `Tuple`, `Struct` or `Unit`.
 #[derive(Clone, PartialEq)]
 pub struct EnumVariant {
-    pub id: ASTNodeID,
     pub ident: Ident,
     pub data: VariantData,
 }
@@ -1202,11 +1275,7 @@ pub struct EnumVariant {
 impl EnumVariant {
     #[inline]
     pub fn new(ident: Ident, data: VariantData) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            ident,
-            data,
-        }
+        Self { ident, data }
     }
 }
 
@@ -1223,7 +1292,6 @@ impl ::std::fmt::Debug for EnumVariant {
 /// of the [`Enum`].
 #[derive(Clone, PartialEq)]
 pub struct Enum {
-    pub id: ASTNodeID,
     pub ident: Ident,
     pub variants: Vec<EnumVariant>,
 }
@@ -1231,11 +1299,7 @@ pub struct Enum {
 impl Enum {
     #[inline]
     pub fn new(ident: Ident, variants: Vec<EnumVariant>) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            ident,
-            variants,
-        }
+        Self { ident, variants }
     }
 
     #[inline]
@@ -1277,23 +1341,18 @@ pub enum ModuleKind {
 /// optional body.
 #[derive(Clone, PartialEq)]
 pub struct Module {
-    pub id: ASTNodeID,
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     pub kind: ModuleKind,
 }
 
 impl Module {
     #[inline]
-    pub fn new(ident: Ident, kind: ModuleKind) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            ident,
-            kind,
-        }
+    pub fn new(ident: SpannedIdent, kind: ModuleKind) -> Self {
+        Self { ident, kind }
     }
 
     #[inline]
-    pub fn new_boxed(ident: Ident, kind: ModuleKind) -> Box<Self> {
+    pub fn new_boxed(ident: SpannedIdent, kind: ModuleKind) -> Box<Self> {
         Box::new(Self::new(ident, kind))
     }
 }
@@ -1311,7 +1370,6 @@ impl ::std::fmt::Debug for Module {
 /// for, as well as a list of all [`Item`]'s contained within.
 #[derive(Clone, PartialEq)]
 pub struct Impl {
-    pub id: ASTNodeID,
     pub target_path: IdentPath,
     pub items: Vec<Item>,
 }
@@ -1319,11 +1377,7 @@ pub struct Impl {
 impl Impl {
     #[inline]
     pub fn new(target_path: IdentPath, items: Vec<Item>) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            target_path,
-            items,
-        }
+        Self { target_path, items }
     }
 
     #[inline]
@@ -1345,9 +1399,8 @@ impl ::std::fmt::Debug for Impl {
 /// specified which method to call, and the parameters to pass it.
 #[derive(Clone, PartialEq)]
 pub struct MethodCall {
-    pub id: ASTNodeID,
     pub target_expr: Box<Expression>,
-    pub method_ident: Ident,
+    pub method_ident: SpannedIdent,
     pub args: Vec<Box<Expression>>,
 }
 
@@ -1355,11 +1408,10 @@ impl MethodCall {
     #[inline]
     pub fn new(
         target_expr: Box<Expression>,
-        method_ident: Ident,
+        method_ident: SpannedIdent,
         args: Vec<Box<Expression>>,
     ) -> Self {
         Self {
-            id: PLACEHOLDER_NODE_ID,
             target_expr,
             method_ident,
             args,
@@ -1369,7 +1421,7 @@ impl MethodCall {
     #[inline]
     pub fn new_boxed(
         target_expr: Box<Expression>,
-        method_ident: Ident,
+        method_ident: SpannedIdent,
         args: Vec<Box<Expression>>,
     ) -> Box<Self> {
         Box::new(Self::new(target_expr, method_ident, args))
@@ -1391,19 +1443,15 @@ impl ::std::fmt::Debug for MethodCall {
 /// the field.
 #[derive(Clone, PartialEq)]
 pub struct FieldInitialisation {
-    pub id: ASTNodeID,
     pub ident: Ident,
     pub expr: Box<Expression>,
+    pub span: SourceSpan,
 }
 
 impl FieldInitialisation {
     #[inline]
-    pub fn new(ident: Ident, expr: Box<Expression>) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            ident,
-            expr,
-        }
+    pub fn new(ident: Ident, expr: Box<Expression>, span: SourceSpan) -> Self {
+        Self { ident, expr, span }
     }
 }
 
@@ -1420,7 +1468,6 @@ impl ::std::fmt::Debug for FieldInitialisation {
 /// [`Struct`] to initialise, as well as the values to initialise all of the fields to.
 #[derive(Clone, PartialEq)]
 pub struct StructInitialisation {
-    pub id: ASTNodeID,
     pub path: IdentPath,
     pub fields: Vec<FieldInitialisation>,
 }
@@ -1428,11 +1475,7 @@ pub struct StructInitialisation {
 impl StructInitialisation {
     #[inline]
     pub fn new(path: IdentPath, fields: Vec<FieldInitialisation>) -> Self {
-        Self {
-            id: PLACEHOLDER_NODE_ID,
-            path,
-            fields,
-        }
+        Self { path, fields }
     }
 
     #[inline]

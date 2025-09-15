@@ -67,17 +67,27 @@ impl Parser<'_, '_> {
         self.check_kind_at(0, Punctuation::Eq) && self.check_kind_at(1, Punctuation::Eq)
     }
 
-    fn process_atom(&mut self, mut atom: Box<Expression>) -> PResult<Box<Expression>> {
+    fn process_atom(
+        &mut self,
+        mut atom: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
         while !self.cursor.is_end() {
             atom = match self.peek_at(0)?.kind {
-                TokenKind::Punctuation(Punctuation::OpenParen) => self.parse_call_continued(atom),
-                TokenKind::Punctuation(Punctuation::OpenBracket) => self.parse_array_index(atom),
+                TokenKind::Punctuation(Punctuation::OpenParen) => {
+                    self.parse_call_continued(atom, span_start)
+                }
+                TokenKind::Punctuation(Punctuation::OpenBracket) => {
+                    self.parse_array_index(atom, span_start)
+                }
                 TokenKind::Punctuation(Punctuation::Dot) => match self.peek_at(2)?.kind {
-                    TokenKind::Punctuation(Punctuation::OpenParen) => self.parse_member_call(atom),
-                    _ => self.parse_member_access(atom),
+                    TokenKind::Punctuation(Punctuation::OpenParen) => {
+                        self.parse_member_call(atom, span_start)
+                    }
+                    _ => self.parse_member_access(atom, span_start),
                 },
                 ref c if !self.is_double_eq() && c == &TokenKind::Punctuation(Punctuation::Eq) => {
-                    self.parse_assign_continued(atom)
+                    self.parse_assign_continued(atom, span_start)
                 }
                 _ => return Ok(atom),
             }?;
@@ -86,6 +96,8 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_expr_atom(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         let token = self.peek_at(0)?;
         let atom = match &token.kind {
             TokenKind::StringLiteral(_) | TokenKind::Literal(_) => self.parse_literal(),
@@ -102,11 +114,15 @@ impl Parser<'_, '_> {
                 }
             },
             TokenKind::Ident(_) | TokenKind::Punctuation(Punctuation::Colon) => {
+                let span_start = self.begin_span();
                 let path = self.parse_path()?;
                 if self.check_kind(Punctuation::OpenBrace) {
                     self.parse_struct_initialiser(path)
                 } else {
-                    Ok(Expression::new_boxed(ExpressionKind::IdentPath(path)))
+                    Ok(Expression::new_boxed(
+                        ExpressionKind::IdentPath(path),
+                        self.finish_span(span_start),
+                    ))
                 }
             }
             TokenKind::Punctuation(Punctuation::OpenBrace) => self.parse_block_as_expression(),
@@ -119,7 +135,7 @@ impl Parser<'_, '_> {
                 token,
             )),
         }?;
-        self.process_atom(atom)
+        self.process_atom(atom, span_start)
     }
 
     fn parse_parens_expr(&mut self) -> PResult<Box<Expression>> {
@@ -130,19 +146,23 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_expression(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         let expr = self.parse_expr_atom()?;
 
         if self.is_binary_op(0)?.is_some() {
-            self.parse_binary_op_continued(expr)
+            self.parse_binary_op_continued(expr, span_start)
         } else {
             Ok(expr)
         }
     }
 
     pub fn parse_block_as_expression(&mut self) -> PResult<Box<Expression>> {
-        Ok(Expression::new_boxed(ExpressionKind::Block(
-            self.parse_block_expression()?,
-        )))
+        let span_start = self.begin_span();
+        Ok(Expression::new_boxed(
+            ExpressionKind::Block(self.parse_block_expression()?),
+            self.finish_span(span_start),
+        ))
     }
 
     pub fn parse_block_expression(&mut self) -> PResult<Box<Block>> {
@@ -164,7 +184,7 @@ impl Parser<'_, '_> {
                     if !e.kind.can_be_non_semi() {
                         return Err(ParseError::new(
                             ParseErrorKind::ExpectedSemiColon,
-                            last.source_span.clone(),
+                            last.span,
                         ));
                     }
                 }
@@ -176,6 +196,7 @@ impl Parser<'_, '_> {
     }
 
     fn parse_literal(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
         let token = self.peek_at(0)?;
         let kind = match &token.kind {
             TokenKind::Keyword(Keyword::True) => {
@@ -202,20 +223,30 @@ impl Parser<'_, '_> {
             _ => todo!(),
         };
 
-        Ok(Expression::new_boxed(ExpressionKind::Literal(kind)))
+        Ok(Expression::new_boxed(
+            ExpressionKind::Literal(kind),
+            self.finish_span(span_start),
+        ))
     }
 
-    fn parse_assign_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
+    fn parse_assign_continued(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::Eq)?;
 
         let value_expr = self.parse_expression()?;
 
-        Ok(Expression::new_boxed(ExpressionKind::Assign(
-            lhs, value_expr,
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::Assign(lhs, value_expr),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_unary_op(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         let token = self.peek_at(0)?;
         let TokenKind::Punctuation(punct) = token.kind else {
             return Err(ParseError::new(
@@ -238,16 +269,17 @@ impl Parser<'_, '_> {
 
         let target_expr = self.parse_expr_atom()?;
 
-        Ok(Expression::new_boxed(ExpressionKind::Unary(
-            unary,
-            target_expr,
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::Unary(unary, target_expr),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_binary_op_continued_ordered(
         &mut self,
         lhs: Box<Expression>,
         min_order: ExpressionOrderBound,
+        span_start: u32,
     ) -> PResult<Box<Expression>> {
         let Some(binary_op) = self.is_binary_op(0)? else {
             return Err(ParseError::new(
@@ -277,35 +309,55 @@ impl Parser<'_, '_> {
                     ExpressionOrderBound::Included(binary_op_order)
                 };
 
-                rhs = self.parse_binary_op_continued_ordered(rhs, new_min)?;
+                rhs = self.parse_binary_op_continued_ordered(rhs, new_min, span_start)?;
             } else {
-                let result = Expression::new_boxed(ExpressionKind::BinaryOp(binary_op, lhs, rhs));
+                let result = Expression::new_boxed(
+                    ExpressionKind::BinaryOp(binary_op, lhs, rhs),
+                    self.finish_span(span_start),
+                );
 
-                return self
-                    .parse_binary_op_continued_ordered(result, ExpressionOrderBound::Unbounded);
+                return self.parse_binary_op_continued_ordered(
+                    result,
+                    ExpressionOrderBound::Unbounded,
+                    span_start,
+                );
             }
         }
 
-        Ok(Expression::new_boxed(ExpressionKind::BinaryOp(
-            binary_op, lhs, rhs,
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::BinaryOp(binary_op, lhs, rhs),
+            self.finish_span(span_start),
+        ))
     }
 
-    fn parse_binary_op_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
-        self.parse_binary_op_continued_ordered(lhs, ExpressionOrderBound::Unbounded)
+    fn parse_binary_op_continued(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
+        self.parse_binary_op_continued_ordered(lhs, ExpressionOrderBound::Unbounded, span_start)
     }
 
-    fn parse_call_continued(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
+    fn parse_call_continued(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::OpenParen)?;
 
         let args = self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
             s.parse_expression()
         })?;
 
-        Ok(Expression::new_boxed(ExpressionKind::Call(lhs, args)))
+        Ok(Expression::new_boxed(
+            ExpressionKind::Call(lhs, args),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_if(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         self.expect_kind(Keyword::If)?;
         let condition = self.parse_expression()?;
         let body = self.parse_block_expression()?;
@@ -319,99 +371,140 @@ impl Parser<'_, '_> {
             None
         };
 
-        Ok(Expression::new_boxed(ExpressionKind::If(
-            condition, body, else_body,
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::If(condition, body, else_body),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_while(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         self.expect_kind(Keyword::While)?;
         let condition = self.parse_expression()?;
         let body = self.parse_block_expression()?;
 
-        Ok(Expression::new_boxed(ExpressionKind::While(
-            condition, body,
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::While(condition, body),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_continue(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         self.expect_kind(Keyword::Continue)?;
-        Ok(Expression::new_boxed(ExpressionKind::Continue))
+        Ok(Expression::new_boxed(
+            ExpressionKind::Continue,
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_return(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         self.expect_kind(Keyword::Return)?;
 
         // After a return the only valid values are either: ';', '}' or an `expression`.
         if self.check_kind(Punctuation::SemiColon) || self.check_kind(Punctuation::CloseBrace) {
-            Ok(Expression::new_boxed(ExpressionKind::Return(None)))
+            Ok(Expression::new_boxed(
+                ExpressionKind::Return(None),
+                self.finish_span(span_start),
+            ))
         } else {
             let return_expr = self.parse_expression()?;
-            Ok(Expression::new_boxed(ExpressionKind::Return(Some(
-                return_expr,
-            ))))
+            Ok(Expression::new_boxed(
+                ExpressionKind::Return(Some(return_expr)),
+                self.finish_span(span_start),
+            ))
         }
     }
 
-    fn parse_array_index(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
+    fn parse_array_index(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::OpenBracket)?;
         let index_expr = self.parse_expression()?;
         self.expect_kind(Punctuation::CloseBracket)?;
 
-        Ok(Expression::new_boxed(ExpressionKind::Index(
-            lhs, index_expr,
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::Index(lhs, index_expr),
+            self.finish_span(span_start),
+        ))
     }
 
-    fn parse_member_access(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
+    fn parse_member_access(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::Dot)?;
         let member_name = self.expect_ident()?;
 
-        Ok(Expression::new_boxed(ExpressionKind::FieldAccess(
-            lhs,
-            member_name.into(),
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::FieldAccess(lhs, member_name.into()),
+            self.finish_span(span_start),
+        ))
     }
 
-    fn parse_member_call(&mut self, lhs: Box<Expression>) -> PResult<Box<Expression>> {
+    fn parse_member_call(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::Dot)?;
-        let method_ident = self.expect_ident()?;
+        let method_ident = self.expect_ident_spanned()?;
         self.expect_kind(Punctuation::OpenParen)?;
 
         let args = self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
             s.parse_expression()
         })?;
 
-        Ok(Expression::new_boxed(ExpressionKind::MethodCall(
-            MethodCall::new_boxed(lhs, method_ident.into(), args),
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::MethodCall(MethodCall::new_boxed(lhs, method_ident, args)),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_self(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         self.expect_kind(Keyword::This)?;
 
-        Ok(Expression::new_boxed(ExpressionKind::IdentPath(
-            IdentPath::new("self"),
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::IdentPath(IdentPath::new("self")),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_field_initialisation(&mut self) -> PResult<FieldInitialisation> {
+        let span_start = self.begin_span();
+
         let ident = self.expect_ident()?;
         self.expect_kind(Punctuation::Colon)?;
         let value = self.parse_expression()?;
 
-        Ok(FieldInitialisation::new(ident.into(), value))
+        Ok(FieldInitialisation::new(
+            ident.into(),
+            value,
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_struct_initialiser(&mut self, lhs: IdentPath) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
         self.expect_kind(Punctuation::OpenBrace)?;
 
         let fields = self.parse_block_like(Punctuation::Comma, Punctuation::CloseBrace, |s| {
             s.parse_field_initialisation()
         })?;
 
-        Ok(Expression::new_boxed(ExpressionKind::StructInit(
-            StructInitialisation::new_boxed(lhs, fields),
-        )))
+        Ok(Expression::new_boxed(
+            ExpressionKind::StructInit(StructInitialisation::new_boxed(lhs, fields)),
+            self.finish_span(span_start),
+        ))
     }
 }

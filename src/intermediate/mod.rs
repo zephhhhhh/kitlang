@@ -1,4 +1,3 @@
-pub mod errors;
 pub mod hir;
 pub mod resolver;
 pub mod type_check;
