@@ -1,5 +1,5 @@
 use crate::{
-    ast,
+    ast::{self, Visibility},
     intermediate::hir::errors::{LoweringError, LoweringErrorKind},
 };
 
@@ -263,80 +263,6 @@ impl HLIR {
     }
 }
 
-// /// Trait for implementing a way of walking the HIR.
-// /// # Notes
-// /// Each function returns a bool indicating if the walking should continue.
-// /// The functions to be overriden are the `visit_` functions,
-// /// functions beginning with `super_` are the default implementations
-// pub trait HLIRVisitor {
-//     fn visit_module(&mut self, module: &nodes::Module) -> bool { true }
-//     fn visit_item(&mut self, item: &Item) -> bool { true }
-//     fn visit_function(&mut self, func: &nodes::Function) -> bool { true }
-//     fn visit_block(&mut self, block: &nodes::Block) -> bool { true }
-//     fn visit_statement(&mut self, statement: &statements::Statement) -> bool { true }
-//     fn visit_expr(&mut self, expr: &exprs::Expr) -> bool { true }
-//     fn visit_impl(&mut self, imp: &nodes::Impl) -> bool { true }
-//     fn visit_struct(&mut self, struct_info: &nodes::Struct) { }
-//     fn visit_enum(&mut self, enum_info: &nodes::Enum) { }
-// }
-
-// pub fn walk_hlir_root(hlir: &HLIR, mut visitor: &mut impl HLIRVisitor)
-
-// impl HLIR {
-//     // fn walk_module(&self, module: OwnerDefId, visitor: &mut impl HLIRVisitor) -> Option<bool> {
-//     //     let root = self.root_module()?.hir_module_ref()?;
-//     //     let continue_walk = visitor.visit_module(root);
-//     //     Some(visitor.visit_module(root))
-//     // }
-//
-//     fn walk_items(&self, items: &[OwnerDefId], visitor: &mut impl HLIRVisitor) -> Option<()> {
-//         for item_id in items {
-//             if let Some(node) = self.owning_node(*item_id) {
-//                 if let OwningNodeKind::Item(item) = &node.kind {
-//                     if !visitor.visit_item(item) {
-//                         continue;
-//                     }
-//                     match &item.kind {
-//                         ItemKind::Module(_) => self.walk_module(item.owner_id, visitor)?,
-//                         ItemKind::Function(_) => self.walk_function(item.owner_id, visitor)?,
-//                         ItemKind::Struct(s) => visitor.visit_struct(s),
-//                         ItemKind::Enum(e) => visitor.visit_enum(e),
-//                         ItemKind::Constant(constant) => todo!(),
-//                         ItemKind::Impl(_) => todo!(),
-//                         ItemKind::Use(use_path) => todo!(),
-//                     }
-//                 }
-//             }
-//         }
-//
-//         Some(())
-//     }
-//
-//     fn walk_function(&self, function_id: OwnerDefId, visitor: &mut impl HLIRVisitor) -> Option<()> {
-//         Some(())
-//     }
-//
-//     fn walk_module(&self, module_id: OwnerDefId, visitor: &mut impl HLIRVisitor) -> Option<()> {
-//         let module = self.owning_node(module_id)?.hir_module_ref()?;
-//
-//         let items_to_walk = if visitor.visit_module(module) {
-//             Some(module.item_ids.clone())
-//         } else {
-//             None
-//         };
-//
-//         if let Some(item_ids) = items_to_walk {
-//             self.walk_items(&item_ids, visitor)
-//         } else {
-//             Some(())
-//         }
-//     }
-//
-//     pub fn walk(&self, mut visitor: impl HLIRVisitor) -> Option<()> {
-//         self.walk_module(OwnerDefId::ROOT_NODE, &mut visitor)
-//     }
-// }
-
 impl ::std::fmt::Debug for HLIR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // let derp = self.owner_node_lut.iter().map(|cont| cont.node()).collect::<Vec<_>>();
@@ -358,8 +284,12 @@ impl HLIRLowerer<'_> {
         parent_node: OwnerDefId,
     ) -> LowerResult<OwnerDefId> {
         match &item.kind {
-            ast::ItemKind::Const(constant) => self.lower_const(constant, parent_node, true),
-            ast::ItemKind::Fn(function) => self.lower_function(function, parent_node, true),
+            ast::ItemKind::Const(constant) => {
+                self.lower_const(constant, parent_node, true, item.vis)
+            }
+            ast::ItemKind::Fn(function) => {
+                self.lower_function(function, parent_node, true, item.vis)
+            }
             _ => {
                 // This shouldn't be possible..
                 panic!("Non-allowed item type in impl block?");
@@ -373,11 +303,15 @@ impl HLIRLowerer<'_> {
         parent_node: OwnerDefId,
     ) -> LowerResult<OwnerDefId> {
         match &item.kind {
-            ast::ItemKind::Const(constant) => self.lower_const(constant, parent_node, false),
-            ast::ItemKind::Fn(function) => self.lower_function(function, parent_node, false),
-            ast::ItemKind::Mod(module) => self.lower_module(module, parent_node),
-            ast::ItemKind::Enum(e) => self.lower_enum(e, parent_node),
-            ast::ItemKind::Struct(s) => self.lower_struct(s, parent_node),
+            ast::ItemKind::Const(constant) => {
+                self.lower_const(constant, parent_node, false, item.vis)
+            }
+            ast::ItemKind::Fn(function) => {
+                self.lower_function(function, parent_node, false, item.vis)
+            }
+            ast::ItemKind::Mod(module) => self.lower_module(module, parent_node, item.vis),
+            ast::ItemKind::Enum(e) => self.lower_enum(e, parent_node, item.vis),
+            ast::ItemKind::Struct(s) => self.lower_struct(s, parent_node, item.vis),
             ast::ItemKind::Impl(im) => self.lower_impl(im, parent_node),
             ast::ItemKind::Use(useimport) => self.lower_use(useimport, parent_node),
         }
@@ -398,6 +332,7 @@ impl HLIRLowerer<'_> {
                 ItemKind::Module(nodes::Module {
                     owner_id: OwnerDefId::ROOT_NODE,
                     ident: "ModuleRoot".into(),
+                    vis: Visibility::Public,
                     item_ids: vec![],
                 }),
             ))));
@@ -414,12 +349,14 @@ impl HLIRLowerer<'_> {
         &mut self,
         m: &ast::Module,
         parent_node: OwnerDefId,
+        vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
         let module_ident = m.ident.string();
         let mod_id = self.hlir.next_owner_id();
         let item = Item::new(ItemKind::Module(nodes::Module {
             owner_id: mod_id,
             ident: module_ident.into(),
+            vis,
             item_ids: vec![],
         }));
         self.hlir.insert_owning_node_with_parent(
@@ -438,11 +375,13 @@ impl HLIRLowerer<'_> {
         f: &ast::Function,
         parent_node: OwnerDefId,
         impl_item: bool,
+        vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
         let fn_node_id = self.hlir.next_owner_id();
         let node_item = Item::new(ItemKind::Function(nodes::Function {
             owner_id: fn_node_id,
             ident: f.ident.ident(),
+            vis,
             sig: nodes::FunctionSig {
                 parameters: f.sig.parameters.iter().map(|p| p.ty.clone()).collect(),
                 output: if let ast::FunctionReturnTy::Ty(t) = &f.sig.output {
@@ -493,12 +432,13 @@ impl HLIRLowerer<'_> {
         &mut self,
         ast_struct: &ast::Struct,
         owner_node: OwnerDefId,
+        vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
         let struct_node_id = self.hlir.next_owner_id();
         let struct_item = Item::new(ItemKind::Struct(nodes::Struct {
             owner_id: struct_node_id,
             ident: ast_struct.ident.ident(),
-            vis: ast::Visibility::Public,
+            vis,
             fields: vec![],
         }));
         self.hlir.insert_owning_node_with_parent(
@@ -537,12 +477,13 @@ impl HLIRLowerer<'_> {
         &mut self,
         ast_enum: &ast::Enum,
         owner_node: OwnerDefId,
+        vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
         let enum_node_id = self.hlir.next_owner_id();
         let enum_item = Item::new(ItemKind::Enum(nodes::Enum {
             owner_id: enum_node_id,
             ident: ast_enum.ident.clone(),
-            vis: ast::Visibility::Public,
+            vis,
         }));
         self.hlir.insert_owning_node_with_parent(
             OwningNode::new(OwningNodeKind::Item(enum_item)),
@@ -557,13 +498,14 @@ impl HLIRLowerer<'_> {
         ast_const: &ast::Constant,
         owner_node: OwnerDefId,
         impl_item: bool,
+        vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
         let const_node_id = self.hlir.next_owner_id();
         let const_item = Item::new(ItemKind::Constant(nodes::Constant {
             owner_id: const_node_id,
             ident: ast_const.ident.ident(),
             ty: ast_const.ty.clone(),
-            vis: ast::Visibility::Public,
+            vis,
             expr: HirId::PLACEHOLDER_ID,
         }));
         self.hlir.insert_owning_node_with_parent(

@@ -3,7 +3,7 @@ use super::{
     exprs::{Expr, RefPath, ResolvedID},
     statements::Statement,
 };
-use crate::ast;
+use crate::ast::{self, Visibility};
 use paste::paste;
 
 // FIXME: Create HIR::Ty type.
@@ -196,6 +196,7 @@ impl_item_kind_shorthand!(impl, ItemKind::Impl(i) => i, Impl);
 pub struct Module {
     pub owner_id: OwnerDefId,
     pub ident: ast::Ident,
+    pub vis: Visibility,
     pub item_ids: Vec<OwnerDefId>,
 }
 
@@ -253,6 +254,7 @@ pub struct FunctionBody {
 pub struct Function {
     pub owner_id: OwnerDefId,
     pub ident: ast::Ident,
+    pub vis: Visibility,
     pub sig: FunctionSig,
     pub body: Option<FunctionBody>,
 }
@@ -262,12 +264,14 @@ impl Function {
     pub fn new(
         owner_id: OwnerDefId,
         ident: ast::Ident,
+        vis: Visibility,
         sig: FunctionSig,
         body: Option<FunctionBody>,
     ) -> Self {
         Self {
             owner_id,
             ident,
+            vis,
             sig,
             body,
         }
@@ -279,6 +283,7 @@ impl ::std::fmt::Debug for Function {
         f.debug_struct("Function")
             .field("ident", &self.ident.0)
             .field("sig", &self.sig)
+            .field("vis", &self.vis)
             .field("body", &self.body)
             .finish()
     }
@@ -297,8 +302,8 @@ pub struct StructField {
 pub struct Struct {
     pub owner_id: OwnerDefId,
     pub ident: ast::Ident,
+    pub vis: Visibility,
     pub fields: Vec<HirId>,
-    pub vis: ast::Visibility,
 }
 
 #[derive(Debug, Clone, PartialEq)]

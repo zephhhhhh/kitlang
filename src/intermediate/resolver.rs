@@ -451,7 +451,6 @@ impl HLIRVisitor for AssociatedReferenceMapper {
         let current_path = self.current_path().clone();
         let struct_ident = structure.ident.string();
         let local = self.should_be_local(&current_path);
-        let vis = structure.vis;
         self.get_namespace_mut(&current_path)
             .expect("Namespace path exists.")
             .items
@@ -460,7 +459,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 kind: NamespaceKind::Struct,
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(structure.owner_id),
-                vis,
+                vis: structure.vis,
                 local,
             });
     }
@@ -469,7 +468,6 @@ impl HLIRVisitor for AssociatedReferenceMapper {
         let current_path = self.current_path().clone();
         let struct_ident = enumeration.ident.string();
         let local = self.should_be_local(&current_path);
-        let vis = enumeration.vis;
         self.get_namespace_mut(&current_path)
             .expect("Namespace path exists.")
             .items
@@ -478,7 +476,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 kind: NamespaceKind::Enum,
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(enumeration.owner_id),
-                vis,
+                vis: enumeration.vis,
                 local,
             });
     }
@@ -487,7 +485,6 @@ impl HLIRVisitor for AssociatedReferenceMapper {
         let current_path = self.current_path().clone();
         let const_ident = constant.ident.string();
         let local = self.should_be_local(&current_path);
-        let vis = constant.vis;
         self.get_namespace_mut(&current_path)
             .expect("Namespace path exists.")
             .items
@@ -496,7 +493,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 kind: NamespaceKind::Constant,
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(constant.owner_id),
-                vis,
+                vis: constant.vis,
                 local,
             });
     }

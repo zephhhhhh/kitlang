@@ -35,6 +35,31 @@ or feeding into an interpreter for execution.
 - Implement array expressions/types.
 - Implement tuple expressions/types.
 - Implement type casting expressions.
+- Implement assign binary operations.
+
+## HIR
+### General
+- Carry over source span information for better error handling.
+### Resolver
+- Factor in "use" statements when resolving.
+- Correctly resolve local only references.
+
+## Type checking
+- Implement it.
+
+## Interpreter.
+- Implement it.
 
 ### Eventually:
 - Implement enums and match statements.
+
+# Timeline
+## High priority
+- Start work on interpreter.
+
+## Medium priority
+- Better error handling for HIR.
+
+## Low Priority
+- Type checker.
+- Update syntax docs.
