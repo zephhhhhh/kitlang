@@ -46,6 +46,29 @@ pub enum ResolvedID {
     OwnerDef(OwnerDefId),
 }
 
+impl ResolvedID {
+    pub fn hir_id(&self) -> Option<HirId> {
+        match self {
+            ResolvedID::Hir(hir_id) => Some(*hir_id),
+            _ => None,
+        }
+    }
+
+    pub fn def_id(&self) -> Option<DefId> {
+        match self {
+            ResolvedID::Def(def_id) => Some(*def_id),
+            _ => None,
+        }
+    }
+
+    pub fn owner_def_id(&self) -> Option<OwnerDefId> {
+        match self {
+            ResolvedID::OwnerDef(owner_def_id) => Some(*owner_def_id),
+            _ => None,
+        }
+    }
+}
+
 impl From<HirId> for ResolvedID {
     fn from(value: HirId) -> Self {
         Self::Hir(value)

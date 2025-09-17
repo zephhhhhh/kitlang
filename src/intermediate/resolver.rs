@@ -77,12 +77,12 @@ impl LocalScope {
     }
 }
 
-struct ScopeResolverNew {
+struct ScopeResolver {
     pub scope: Vec<LocalScope>,
     pub errors: Vec<LoweringError>,
 }
 
-impl ScopeResolverNew {
+impl ScopeResolver {
     pub fn new() -> Self {
         Self {
             scope: Vec::new(),
@@ -122,16 +122,18 @@ impl ScopeResolverNew {
     }
 }
 
-impl HLIRVisitorMut<'_> for ScopeResolverNew {
-    fn visit_expr_mut(&mut self, expr: &mut Expr, hlir: &mut HLIRDisjointMut<'_>) {
-        if let ExprKind::Block(block_id) = expr.kind {
-            if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(block_id) {
-                self.push_child_scope(None);
-                self.visit_block_mut(block, hlir);
-                self.pop_scope();
-            }
+impl HLIRVisitorMut<'_> for ScopeResolver {
+    fn visit_block_mut(
+        &mut self,
+        block: &mut super::hir::nodes::Block,
+        hlir: &mut HLIRDisjointMut<'_>,
+    ) {
+        if block.id.id.0 > 0 {
+            self.push_child_scope(None);
+            self.super_block_mut(block, hlir);
+            self.pop_scope();
         } else {
-            self.super_expr_mut(expr, hlir);
+            self.super_block_mut(block, hlir);
         }
     }
 
@@ -188,7 +190,7 @@ impl HLIRVisitorMut<'_> for ScopeResolverNew {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum NamespaceKind {
+pub enum NamespaceKind {
     Module,
     Function,
     Constant,
@@ -204,7 +206,7 @@ impl NamespaceKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Namespace {
+pub struct Namespace {
     pub ident: String,
     pub kind: NamespaceKind,
     pub items: HashMap<String, Namespace>,
@@ -313,7 +315,7 @@ impl AssociatedReferenceMapper {
         self.reset_path_to(IdentPath::from_segments(Vec::new(), true));
     }
 
-    pub fn map_references(&mut self, hlir: &mut HLIR) -> LowerResult<()> {
+    pub fn map_references(&mut self, hlir: &mut HLIR) -> LowerResult<Namespace> {
         // Map all except impls..
         self.visit_root(hlir);
         self.stage1_complete = true;
@@ -333,7 +335,7 @@ impl AssociatedReferenceMapper {
         self.reset_path();
         self.walk_mut(hlir);
 
-        Ok(())
+        Ok(self.root_namespace.clone())
     }
 }
 
@@ -633,18 +635,15 @@ impl UnresolvedReferenceChecker {
     }
 }
 
-fn resolve_associated_references(hlir: &mut HLIR) -> LowerResult<()> {
+fn resolve_associated_references(hlir: &mut HLIR) -> LowerResult<Namespace> {
     let mut resolver = AssociatedReferenceMapper::new();
-    resolver.map_references(hlir)?;
-    // let mut resolver = AssociatedReferenceResolver::new(hlir);
-    // resolver.resolve()?;
+    let namespaces = resolver.map_references(hlir)?;
 
-    //Ok(resolver.root_namespace)
-    Ok(())
+    Ok(namespaces)
 }
 
 fn resolve_scope_paths(hlir: &mut HLIR) -> LowerResult<()> {
-    let mut resolver = ScopeResolverNew::new();
+    let mut resolver = ScopeResolver::new();
     resolver.resolve(hlir)
 }
 
@@ -652,12 +651,12 @@ fn verify_references(hlir: &mut HLIR) -> LowerResult<()> {
     UnresolvedReferenceChecker::new().verify_references(hlir)
 }
 
-pub fn resolve_paths(hlir: &mut HLIR) -> LowerResult<()> {
+pub fn resolve_paths(hlir: &mut HLIR) -> LowerResult<Namespace> {
     resolve_scope_paths(hlir)?;
-    resolve_associated_references(hlir)?;
+    let namespaces = resolve_associated_references(hlir)?;
 
     // Verify all references have been resolved.
     verify_references(hlir)?;
 
-    Ok(())
+    Ok(namespaces)
 }

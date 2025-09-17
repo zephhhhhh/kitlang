@@ -1163,14 +1163,25 @@ pub struct FunctionSig {
 #[derive(Clone, PartialEq)]
 pub struct Function {
     pub ident: SpannedIdent,
+    pub native: bool,
     pub sig: FunctionSig,
     pub body: Option<Box<Block>>,
 }
 
 impl Function {
     #[inline]
-    pub fn new(ident: SpannedIdent, sig: FunctionSig, body: Option<Box<Block>>) -> Self {
-        Self { ident, sig, body }
+    pub fn new(
+        ident: SpannedIdent,
+        native: bool,
+        sig: FunctionSig,
+        body: Option<Box<Block>>,
+    ) -> Self {
+        Self {
+            ident,
+            native,
+            sig,
+            body,
+        }
     }
 }
 

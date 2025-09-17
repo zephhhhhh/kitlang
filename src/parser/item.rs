@@ -31,6 +31,7 @@ impl Parser<'_, '_> {
         let span_start = self.begin_span();
 
         let public = self.parse_visibility()?;
+        let native = self.check_kind_advance(Keyword::Native);
         self.expect_kind(Keyword::Fn)?;
         let func_name = self.expect_ident_spanned()?;
         self.expect_kind(Punctuation::OpenParen)?;
@@ -58,7 +59,8 @@ impl Parser<'_, '_> {
 
         let return_type_token = self.peek_at(0)?;
         let func_return_type = match return_type_token.kind {
-            TokenKind::Punctuation(Punctuation::OpenBrace) => FunctionReturnTy::Default,
+            TokenKind::Punctuation(Punctuation::OpenBrace)
+            | TokenKind::Punctuation(Punctuation::SemiColon) => FunctionReturnTy::Default,
             TokenKind::Punctuation(Punctuation::Minus) => {
                 self.cursor.advance();
                 self.expect_kind(Punctuation::GreaterThan)?;
@@ -72,7 +74,18 @@ impl Parser<'_, '_> {
             }
         };
 
-        let function_body = self.parse_block_expression()?;
+        let function_body = if self.check_kind_advance(Punctuation::SemiColon) {
+            None
+        } else {
+            let function_body = self.parse_block_expression()?;
+            if native {
+                return Err(ParseError::new(
+                    ParseErrorKind::NativeFunctionCannotDefineABody,
+                    func_name.span,
+                ));
+            }
+            Some(function_body)
+        };
 
         let function_sig = FunctionSig {
             parameters: function_arguments,
@@ -81,8 +94,9 @@ impl Parser<'_, '_> {
 
         let item_kind = ItemKind::Fn(Box::new(Function::new(
             func_name,
+            native,
             function_sig,
-            Some(function_body),
+            function_body,
         )));
 
         Ok(Item::new(item_kind, public, self.finish_span(span_start)))

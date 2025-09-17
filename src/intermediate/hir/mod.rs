@@ -134,7 +134,7 @@ impl ::std::fmt::Debug for HirId {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct HLIR {
     pub owner_nodes: Vec<OwningNode>,
 }
@@ -382,6 +382,7 @@ impl HLIRLowerer<'_> {
             owner_id: fn_node_id,
             ident: f.ident.ident(),
             vis,
+            native: f.native,
             sig: nodes::FunctionSig {
                 parameters: f.sig.parameters.iter().map(|p| p.ty.clone()).collect(),
                 output: if let ast::FunctionReturnTy::Ty(t) = &f.sig.output {
@@ -411,18 +412,20 @@ impl HLIRLowerer<'_> {
             param_ids.push(param_id);
         }
 
-        // Parse block expression..
-        if let Some(body_block) = &f.body {
-            let body_id = self.lower_block(body_block, fn_node_id)?;
+        if !f.native {
+            // Parse block expression..
+            if let Some(body_block) = &f.body {
+                let body_id = self.lower_block(body_block, fn_node_id)?;
 
-            self.hlir
-                .owning_node_mut_unchecked(fn_node_id)
-                .hir_function_mut()
-                .expect("Function exists.")
-                .body = Some(nodes::FunctionBody {
-                block: body_id,
-                params: param_ids,
-            });
+                self.hlir
+                    .owning_node_mut_unchecked(fn_node_id)
+                    .hir_function_mut()
+                    .expect("Function exists.")
+                    .body = Some(nodes::FunctionBody {
+                    block: body_id,
+                    params: param_ids,
+                });
+            }
         }
 
         Ok(fn_node_id)

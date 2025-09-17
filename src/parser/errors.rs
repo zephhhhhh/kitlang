@@ -59,6 +59,9 @@ pub enum ParseErrorKind {
     NoTokens,
     #[error("Unterminated string literal.")]
     UnterminatedStringLiteral,
+
+    #[error("A function marked 'native' cannot define a function body")]
+    NativeFunctionCannotDefineABody,
 }
 
 /// Counts the number of newline (`\n`) characters in a string slice.
@@ -156,13 +159,18 @@ impl ParseError {
         let line_num_prefix = format!("{line_number_str} | ");
         let blank_prefix = format!("{} | ", " ".repeat(line_number_str.len()));
 
+        println!(
+            "Before len: {}, PNLI: {}",
+            before.len(),
+            previous_newline_index
+        );
         let before_error_line_str = &before[(previous_newline_index.min(before.len()))..];
 
         let (err_span, err_line) = Self::format_source_line(
             &line_num_prefix,
             before_error_line_str,
             error,
-            &after[..next_newline_index],
+            &after[..next_newline_index.min(after.len())],
         );
         let highlight_str = Self::generate_highlight_line_str(&blank_prefix, err_span, "^");
 

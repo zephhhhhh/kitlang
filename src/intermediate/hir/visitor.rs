@@ -110,6 +110,8 @@ pub trait HLIRVisitor {
             ExprKind::Block(hir_id) => {
                 if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id) {
                     self.visit_block(block, hlir);
+                } else {
+                    eprintln!("Not a block");
                 }
             }
             ExprKind::BinaryOp(_, hir_id, hir_id1) => {
@@ -119,9 +121,11 @@ pub trait HLIRVisitor {
             ExprKind::UnaryOp(_, hir_id) => self.visit_expr_by_id(*hir_id, hlir),
             ExprKind::If(hir_id, hir_id1, hir_id2) => {
                 self.visit_expr_by_id(*hir_id, hlir);
-                self.visit_expr_by_id(*hir_id1, hlir);
-                if let Some(else_id) = hir_id2 {
-                    self.visit_expr_by_id(*else_id, hlir);
+                if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id1) {
+                    self.visit_block(block, hlir);
+                    if let Some(else_id) = hir_id2 {
+                        self.visit_expr_by_id(*else_id, hlir);
+                    }
                 }
             }
             ExprKind::While(hir_id, hir_id1) => {
@@ -433,9 +437,11 @@ pub trait HLIRVisitorMut<'a> {
             ExprKind::UnaryOp(_, hir_id) => self.visit_expr_by_id_mut(*hir_id, hlir),
             ExprKind::If(hir_id, hir_id1, hir_id2) => {
                 self.visit_expr_by_id_mut(*hir_id, hlir);
-                self.visit_expr_by_id_mut(*hir_id1, hlir);
-                if let Some(else_id) = hir_id2 {
-                    self.visit_expr_by_id_mut(*else_id, hlir);
+                if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(*hir_id1) {
+                    self.visit_block_mut(block, hlir);
+                    if let Some(else_id) = hir_id2 {
+                        self.visit_expr_by_id_mut(*else_id, hlir);
+                    }
                 }
             }
             ExprKind::While(hir_id, hir_id1) => {

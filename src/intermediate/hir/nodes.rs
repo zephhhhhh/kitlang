@@ -255,6 +255,7 @@ pub struct Function {
     pub owner_id: OwnerDefId,
     pub ident: ast::Ident,
     pub vis: Visibility,
+    pub native: bool,
     pub sig: FunctionSig,
     pub body: Option<FunctionBody>,
 }
@@ -265,6 +266,7 @@ impl Function {
         owner_id: OwnerDefId,
         ident: ast::Ident,
         vis: Visibility,
+        native: bool,
         sig: FunctionSig,
         body: Option<FunctionBody>,
     ) -> Self {
@@ -272,6 +274,7 @@ impl Function {
             owner_id,
             ident,
             vis,
+            native,
             sig,
             body,
         }

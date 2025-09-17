@@ -448,6 +448,17 @@ impl Parser<'_, '_> {
         }
     }
 
+    /// Peek at an offset from the current token, return `true` if the [`TokenKind`] of the [`Token`]
+    /// is an `Identifier`.
+    #[inline]
+    fn check_ident_at(&self, offset: u32) -> bool {
+        if let Some(t) = self.cursor.peek_at(offset) {
+            matches!(t.kind, TokenKind::Ident(_))
+        } else {
+            false
+        }
+    }
+
     /// Peek at the current token, check if the [`TokenKind`] of the [`Token`]
     /// is an `Identifier`.
     /// # Returns
