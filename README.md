@@ -22,12 +22,19 @@ values are valid. For example that they are referenced after declared and not be
 - After everything is resolved, we then do type checking. This ensures all operations on types are valid, function arguments are 
 supplied the expected type, the return type matches the declared type, assignments have the same type on both sides, etc.
 - This is also where type propagation is performed for "Infer" types.
-## Optionally: Optimisation / Lowering to LIR (Low-level intermediate respresentation)
+## Optionally: Optimisation / Lowering to MIR (Middle-level Intermediate Respresentation)
 - This stage would involve further lowering the representation to something closer to what a compiler would ultimately output in assembly,
 this form would be easier to optimise, but is optional.
 ## Code generation / Execution
-- Either the type-checking stage or the LIR output is a valid representation to start either generating assembly code output,
+- Either the type-checking stage or the MIR output is a valid representation to start either generating assembly code output,
 or feeding into an interpreter for execution.
+
+# Interpreter
+## Notes
+The current interpreter implementation is almost entirely subject to change, as it stands the interpreter will interpret the HIR directly,
+however this makes certain features and operations very annoying and difficult to actually execute, so the end goal will be to further
+lower the representation to MIR which will be much closer to instructions a CPU will execute and will be much more ergonomic to implement
+once completed.
 
 # To-do list
 ## Parser

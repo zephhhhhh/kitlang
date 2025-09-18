@@ -142,7 +142,8 @@ define_keywords!(
     (Impl, "impl"),
     (This, "self"),
     (True, "true"),
-    (False, "false")
+    (False, "false"),
+    (Larissa, "larissa")
 );
 
 impl Keyword {

@@ -150,6 +150,10 @@ impl HLIR {
         self.owner_nodes.len() as u32
     }
 
+    pub fn owner_id_iter(&self) -> impl Iterator<Item = OwnerDefId> {
+        (0..self.owner_node_count()).map(OwnerDefId)
+    }
+
     pub fn root_module(&self) -> Option<&OwningNode> {
         self.owning_node(OwnerDefId::ROOT_NODE)
     }

@@ -15,21 +15,37 @@ pub struct StructInitialisation {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
+    /// Block(HIRNode::Block).
     Block(HirId),
+    /// Literal(Literal)
     Literal(ast::Literal),
+    /// Binary Operation(Kind, lhs: HIRNode::Expr, rhs: HIRNode::Expr)
     BinaryOp(ast::BinaryOpKind, HirId, HirId),
+    /// Unary Operation(Kind, HIRNode::Expr)
     UnaryOp(ast::UnaryOpKind, HirId),
+    /// If(condition: HIRNode::Expr, true_block: HIRNode::Block, else: HIRNode::Expr)
     If(HirId, HirId, Option<HirId>),
+    /// While(condition: HIRNode::Expr, block: HIRNode::Block)
     While(HirId, HirId),
+    /// Assign(target: HIRNode::Expr, value: HIRNode::Expr)
     Assign(HirId, HirId),
+    /// Call(target: HIRNode::Expr, args: Vec<HIRNode::Expr>)
     Call(HirId, Vec<HirId>),
+    /// Method Call(target: HIRNode::Expr, method_name: Ident, args: Vec<HIRNode::Expr>)
     MethodCall(HirId, ast::Ident, Vec<HirId>),
+    /// Index(target: HIRNode::Expr, index: HIRNode::Expr)
     Index(HirId, HirId),
+    /// Field Access(target: HIRNode::Expr, field_name: Ident)
     FieldAccess(HirId, ast::Ident),
+    /// Struct Initialisation
     StructInit(StructInitialisation),
+    /// Path
     Path(RefPath),
+    /// Continue to next loop iteration
     Continue,
+    /// Break from loop
     Break,
+    /// Return from function(Option<HIRNode::Expr>)
     Return(Option<HirId>),
 }
 

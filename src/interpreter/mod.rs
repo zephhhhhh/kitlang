@@ -551,7 +551,6 @@ impl InterpreterState {
         let mut do_return = false;
         let ret_val = match &expr.kind {
             ExprKind::Block(hir_id) => {
-                //println!("Executing block");
                 return self.execute_block_from_id(program, *hir_id);
             }
             ExprKind::Literal(literal) => Some(literal.into()),
@@ -581,7 +580,29 @@ impl InterpreterState {
                     None
                 }
             }
-            ExprKind::While(hir_id, hir_id1) => todo!(),
+            ExprKind::While(hir_id, hir_id1) => {
+                const MAX_WHILE_LOOP_LIMIT: usize = 10000;
+                let (mut should_loop, _) = self.execute_expr_from_id(program, *hir_id)?;
+                if should_loop.bool().is_none() {
+                    eprintln!("While loop condition was not boolean!");
+                    return None;
+                }
+
+                let mut while_result = None;
+                for _i in 0..MAX_WHILE_LOOP_LIMIT {
+                    if !should_loop.bool()? {
+                        break;
+                    }
+                    while_result = Some(self.execute_block_from_id(program, *hir_id1)?);
+                    should_loop = self.execute_expr_from_id(program, *hir_id)?.0;
+                }
+
+                if while_result.is_none() {
+                    while_result = Some((Value::Unit, false));
+                }
+
+                return while_result;
+            },
             ExprKind::Assign(hir_id, hir_id1) => {
                 let (to_assign, _) = self.execute_expr_from_id_ext(program, *hir_id, false)?;
 
