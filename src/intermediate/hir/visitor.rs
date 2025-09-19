@@ -75,11 +75,11 @@ pub trait HLIRVisitor {
     fn super_block(&mut self, block: &Block, hlir: &HLIR) {
         for statement_id in &block.statements {
             if let Some(HIRNode::Statement(statement)) = hlir.get_hir_node(*statement_id) {
-                self.visit_statement(statement, hlir);
+                self.visit_statement(statement, block, hlir);
             }
         }
     }
-    fn super_statement(&mut self, statement: &Statement, hlir: &HLIR) {
+    fn super_statement(&mut self, statement: &Statement, _parent_block: &Block, hlir: &HLIR) {
         match &statement.kind {
             StatementKind::Let(let_statement) => {
                 self.visit_let_statement(statement.id, let_statement, hlir)
@@ -173,6 +173,11 @@ pub trait HLIRVisitor {
             self.visit_expr(expr, hlir);
         }
     }
+    fn visit_block_by_id(&mut self, block_id: HirId, hlir: &HLIR) {
+        if let Some(HIRNode::Block(block)) = hlir.get_hir_node(block_id) {
+            self.visit_block(block, hlir);
+        }
+    }
 
     fn visit_path(&mut self, hir_id: HirId, path: &RefPath, hlir: &HLIR) {
         self.super_path(hir_id, path, hlir)
@@ -186,8 +191,8 @@ pub trait HLIRVisitor {
     fn visit_let_statement(&mut self, id: HirId, let_statement: &LetStatement, hlir: &HLIR) {
         self.super_let_statement(id, let_statement, hlir);
     }
-    fn visit_statement(&mut self, statement: &Statement, hlir: &HLIR) {
-        self.super_statement(statement, hlir)
+    fn visit_statement(&mut self, statement: &Statement, parent_block: &Block, hlir: &HLIR) {
+        self.super_statement(statement, parent_block, hlir)
     }
     fn visit_block(&mut self, block: &Block, hlir: &HLIR) {
         self.super_block(block, hlir)
@@ -388,11 +393,16 @@ pub trait HLIRVisitorMut<'a> {
     fn super_block_mut(&mut self, block: &Block, hlir: &mut HLIRDisjointMut<'a>) {
         for statement_id in &block.statements {
             if let Some(HIRNode::Statement(statement)) = hlir.get_hir_node_mut(*statement_id) {
-                self.visit_statement_mut(statement, hlir);
+                self.visit_statement_mut(statement, block, hlir);
             }
         }
     }
-    fn super_statement_mut(&mut self, statement: &mut Statement, hlir: &mut HLIRDisjointMut<'a>) {
+    fn super_statement_mut(
+        &mut self,
+        statement: &mut Statement,
+        _parent_block: &Block,
+        hlir: &mut HLIRDisjointMut<'a>,
+    ) {
         match &mut statement.kind {
             StatementKind::Let(let_statement) => {
                 self.visit_let_statement_mut(statement.id, let_statement, hlir)
@@ -515,8 +525,13 @@ pub trait HLIRVisitorMut<'a> {
     ) {
         self.super_let_statement_mut(id, let_statement, hlir);
     }
-    fn visit_statement_mut(&mut self, statement: &mut Statement, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_statement_mut(statement, hlir)
+    fn visit_statement_mut(
+        &mut self,
+        statement: &mut Statement,
+        parent_block: &Block,
+        hlir: &mut HLIRDisjointMut<'a>,
+    ) {
+        self.super_statement_mut(statement, parent_block, hlir)
     }
     fn visit_block_mut(&mut self, block: &mut Block, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_block_mut(block, hlir)

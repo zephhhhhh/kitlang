@@ -1,4 +1,4 @@
-use crate::ast::{self, Ident};
+use crate::ast::{self, Ident, Mutability};
 
 use super::{HirId, OwnerDefId};
 
@@ -19,6 +19,7 @@ pub struct Statement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LetStatement {
     pub ident: Ident,
+    pub mutable: Mutability,
     pub ty: ast::Ty, // TODO: Change this.
     pub initial_value: Option<HirId>,
 }

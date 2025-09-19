@@ -108,6 +108,7 @@ impl Parser<'_, '_> {
                 Keyword::Continue => self.parse_continue(),
                 Keyword::Return => self.parse_return(),
                 Keyword::This => self.parse_self(),
+                Keyword::Break => self.parse_break(),
                 _ => {
                     println!("Not implemented: {:?}", kw);
                     todo!()
@@ -386,6 +387,16 @@ impl Parser<'_, '_> {
 
         Ok(Expression::new_boxed(
             ExpressionKind::While(condition, body),
+            self.finish_span(span_start),
+        ))
+    }
+
+    fn parse_break(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
+        self.expect_kind(Keyword::Break)?;
+        Ok(Expression::new_boxed(
+            ExpressionKind::Break,
             self.finish_span(span_start),
         ))
     }

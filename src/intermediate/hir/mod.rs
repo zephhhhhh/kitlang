@@ -588,8 +588,13 @@ impl HLIRLowerer<'_> {
         );
 
         let mut statement_node_ids = Vec::new();
-        for statement in &block.statements {
-            if let Some(statement_id) = self.lower_statement(statement, owner_node)? {
+        let statement_count = block.statements.len();
+        for (i, statement) in block.statements.iter().enumerate() {
+            if let Some(statement_id) = self.lower_statement(
+                statement,
+                owner_node,
+                i.saturating_add(1) == statement_count,
+            )? {
                 statement_node_ids.push(statement_id);
             }
         }
@@ -713,6 +718,7 @@ impl HLIRLowerer<'_> {
         &mut self,
         statement: &ast::Statement,
         owner_node: OwnerDefId,
+        is_last_statement: bool,
     ) -> LowerResult<Option<HirId>> {
         let lowered = match &statement.kind {
             ast::StatementKind::Let(local) => {
@@ -726,6 +732,7 @@ impl HLIRLowerer<'_> {
                     id: self.hlir.next_hir_id_on(owner_node),
                     kind: StatementKind::Let(LetStatement {
                         ident: local.ident.ident.clone(),
+                        mutable: local.mutable,
                         ty: local.ty.clone(),
                         initial_value: init_value,
                     }),
@@ -744,9 +751,20 @@ impl HLIRLowerer<'_> {
             }
             ast::StatementKind::Expr(expression) => {
                 let expr_id = self.lower_expression(expression, owner_node)?;
+                let is_control_flow =
+                    if let Some(HIRNode::Expr(e)) = self.hlir.get_hir_node(expr_id) {
+                        matches!(&e.kind, ExprKind::If(_, _, _) | ExprKind::While(_, _))
+                    } else {
+                        false
+                    };
                 let statement = Statement {
                     id: self.hlir.next_hir_id_on(owner_node),
-                    kind: StatementKind::Expr(expr_id),
+                    kind: if is_control_flow && !is_last_statement {
+                        StatementKind::Semi(expr_id)
+                    } else {
+                        StatementKind::Expr(expr_id)
+                    },
+                    // kind: StatementKind::Expr(expr_id),
                 };
                 self.hlir
                     .insert_hir_node(owner_node, HIRNode::Statement(statement))
