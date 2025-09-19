@@ -256,7 +256,6 @@ impl HIRToMIRFuncLowerer {
     }
 
     fn process_statement_expr(&mut self, _statement: &Statement, hlir: &HLIR, expr_id: HirId) {
-        self.state.parse_assign_target = true;
         self.visit_expr_by_id(expr_id, hlir);
     }
 
@@ -293,9 +292,10 @@ impl HIRToMIRFuncLowerer {
                     if self.state.parse_assign_target {
                         self.state.assign_target = Some(resolved_local)
                     } else {
-                        let local = self.new_temp_local();
-                        self.builder_mut_expect()
-                            .push_assign(local, RValue::Ref(resolved_local));
+                        // let local = self.new_temp_local();
+                        // self.builder_mut_expect()
+                        //     .push_assign(local, RValue::Ref(resolved_local));
+                        eprintln!("Resolved local: {:?} -> {:?}", resolved_local, hir_id);
                     }
                 } else {
                     eprintln!("No resolved local.");
@@ -312,8 +312,11 @@ impl HIRToMIRFuncLowerer {
         let before_locals = self.body.locals.len();
         self.visit_expr_by_id(expr_id, hlir);
         let after_locals = self.body.locals.len();
+
         if let Some(assign_target) = self.state.read_assign_target() {
             Some(assign_target)
+        } else if let Some(block_target) = self.state.read_last_block_target() {
+            Some(block_target)
         } else if after_locals > before_locals {
             Some(LocalId(after_locals.saturating_sub(1) as u32))
         } else {
@@ -457,6 +460,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                     }
 
                     if is_local_set {
+                        // println!("If local: {:?}", if_result_local);
                         self.state.last_block_target = Some(if_result_local);
                     }
                 }
@@ -534,6 +538,11 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
             }
             ExprKind::Assign(hir_id, hir_id1) => {
                 if let Some(target) = self.visit_expr_assigned(*hir_id, hlir) {
+                    if let Some(local) = self.body.local(target) {
+                        if !local.mutable.is_mutable() {
+                            eprintln!("Cannot assign to immutable variable!");
+                        }
+                    }
                     if let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) {
                         self.builder_mut_expect()
                             .push_assign(target, RValue::Unchanged(Operand::Copy(rhs_local)));
@@ -705,6 +714,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
 
     fn visit_function(&mut self, function: &Function, hlir: &HLIR) {
         if function.owner_id == self.func_owner_id {
+            self.state.parse_assign_target = true;
             self.create_block_builder();
             self.super_function(function, hlir);
             self.emit_final_block();

@@ -228,6 +228,11 @@ impl Value {
 
         fn perform_bool_op(lhs: bool, rhs: bool, op: BinaryOpKind) -> Option<Value> {
             match op {
+                BinaryOpKind::And => Some(Value::Boolean(lhs && rhs)),
+                BinaryOpKind::Or => Some(Value::Boolean(lhs || rhs)),
+                BinaryOpKind::BitwiseAND => Some(Value::Boolean(lhs & rhs)),
+                BinaryOpKind::BitwiseOR => Some(Value::Boolean(lhs | rhs)),
+                BinaryOpKind::BitwiseXOR => Some(Value::Boolean(lhs ^ rhs)),
                 BinaryOpKind::Equal => Some(Value::Boolean(lhs == rhs)),
                 BinaryOpKind::NotEqual => Some(Value::Boolean(lhs != rhs)),
                 BinaryOpKind::LessThan => Some(Value::Boolean(lhs < rhs)),
@@ -525,7 +530,11 @@ impl InterpreterState {
 
     fn eval_operand(&mut self, operand: &Operand) -> Option<Value> {
         match operand {
-            Operand::Copy(local_id) => self.execution_frame()?.local(*local_id).cloned(),
+            Operand::Copy(local_id) => self
+                .execution_frame()
+                .expect("Execution frame doesn't exist while evaluating operand?")
+                .local(*local_id)
+                .cloned(),
             Operand::Unit => Some(Value::Unit),
             Operand::Literal(literal) => Some(literal.into()),
             Operand::Const => {
@@ -541,6 +550,8 @@ impl InterpreterState {
             RValue::BinaryOp(binary_op_kind, (lhs, rhs)) => {
                 let lhs_value = self.eval_operand(lhs)?;
                 let rhs_value = self.eval_operand(rhs)?;
+
+                //println!("Bin op: {:?}, {:?} + {:?}", binary_op_kind, lhs_value, rhs_value);
 
                 lhs_value.perform_binary_op(&rhs_value, *binary_op_kind)
             }
