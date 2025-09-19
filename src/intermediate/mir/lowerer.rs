@@ -154,6 +154,7 @@ impl HIRToMIRFuncLowerer {
 
 impl HIRToMIRFuncLowerer {
     const DEBUG_BLOCK_CREATION: bool = false;
+    const DEBUG_LOOP_STATE: bool = false;
 
     fn create_block_builder(&mut self) {
         self.block_stack.push(HIRToMIRBlockBuilder::default());
@@ -469,7 +470,9 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                     let while_result_local = self.new_temp_local();
 
                     let condition_check_bb_id = self.body.next_block_id();
-                    println!("Pushed loop stack.");
+                    if Self::DEBUG_LOOP_STATE {
+                        println!("Pushed loop stack.");
+                    }
                     self.state
                         .loop_stack
                         .push(HIRToMIRLoopState::new(condition_check_bb_id));
@@ -508,14 +511,18 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                         if let Some(BlockExitKind::Goto(break_goto)) =
                             self.body.block_exit_kind_mut(*break_to_update)
                         {
-                            println!("Updated Goto.");
+                            if Self::DEBUG_LOOP_STATE {
+                                println!("Updated Goto.");
+                            }
                             *break_goto = final_loop_body_id.next();
                         } else {
                             eprintln!("Failed to get break goto block?");
                         }
                     }
 
-                    println!("Popped loop stack.");
+                    if Self::DEBUG_LOOP_STATE {
+                        println!("Popped loop stack.");
+                    }
                     self.state.loop_stack.pop();
 
                     self.builder_mut_expect()
@@ -708,23 +715,27 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
 #[derive(Debug, Clone)]
 pub struct MIR {
     pub bodies: HashMap<OwnerDefId, Body>,
+    pub native_function_links: HashMap<OwnerDefId, String>,
 }
 
 pub fn lower_hir_to_mir(hlir: &HLIR) -> LowerResult<MIR> {
     let mut bodies = HashMap::<OwnerDefId, Body>::new();
+    let mut native_function_links = HashMap::<OwnerDefId, String>::new();
 
     for i in hlir.owner_id_iter() {
         if let Some(node) = hlir.owning_node(i) {
             if let Some(func) = node.hir_function_ref() {
                 if func.native {
-                    continue;
-                }
-                if let Some(result_body) = HIRToMIRFuncLowerer::from_func_id(hlir, i) {
+                    native_function_links.insert(i, func.ident.string());
+                } else if let Some(result_body) = HIRToMIRFuncLowerer::from_func_id(hlir, i) {
                     bodies.insert(i, result_body);
                 }
             }
         }
     }
 
-    Ok(MIR { bodies })
+    Ok(MIR {
+        bodies,
+        native_function_links,
+    })
 }

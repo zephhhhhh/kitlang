@@ -8,6 +8,7 @@ pub struct BasicBlockId(pub u32);
 
 impl BasicBlockId {
     pub const PLACEHOLDER_ID: Self = Self(u32::MAX);
+    pub const ENTRY_BLOCK: Self = Self(0);
 
     pub fn is_placeholder(self) -> bool {
         self == Self::PLACEHOLDER_ID

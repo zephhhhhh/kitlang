@@ -11,6 +11,7 @@ use crate::{
         },
         resolver::{Namespace, NamespaceKind},
     },
+    interpreter::native_functions::{IntoHIRKitlangFn, KitlangHIRNativeFn},
 };
 
 #[derive(Debug, Clone)]
@@ -323,45 +324,13 @@ impl InterpreterPosition {
     }
 }
 
-pub type KitlangNativeFn = dyn Fn(&mut InterpreterState, &[Value]) -> Option<Value> + Send + Sync;
-
-pub trait IntoKitlangFn {
-    fn into_kitlang_fn(self) -> Arc<KitlangNativeFn>;
-}
-
-pub trait IntoReturn {
-    fn into_kitlang_return(self) -> Option<Value>;
-}
-
-impl<T: Into<Value>> IntoReturn for T {
-    fn into_kitlang_return(self) -> Option<Value> {
-        Some(self.into())
-    }
-}
-
-impl<T: Into<Value>> IntoReturn for Option<T> {
-    fn into_kitlang_return(self) -> Option<Value> {
-        Some(self?.into())
-    }
-}
-
-impl<R, F> IntoKitlangFn for F
-where
-    F: Fn(&mut InterpreterState, &[Value]) -> R + Send + Sync + 'static,
-    R: IntoReturn,
-{
-    fn into_kitlang_fn(self) -> Arc<KitlangNativeFn> {
-        Arc::new(move |state, args| self(state, args).into_kitlang_return())
-    }
-}
-
 #[derive(Clone)]
 pub struct InterpreterState {
     pub entry: OwnerDefId,
     pub position_stack: Vec<InterpreterPosition>,
     pub scopes: Vec<HashMap<HirId, Value>>,
 
-    pub native_functions: HashMap<String, Arc<KitlangNativeFn>>,
+    pub native_functions: HashMap<String, Arc<KitlangHIRNativeFn>>,
 }
 
 impl InterpreterState {
@@ -388,7 +357,7 @@ impl InterpreterState {
 }
 
 impl InterpreterState {
-    pub fn register_native_function<F: IntoKitlangFn>(&mut self, name: &str, func: F) {
+    pub fn register_native_function<F: IntoHIRKitlangFn>(&mut self, name: &str, func: F) {
         if !self.native_functions.contains_key(name) {
             self.native_functions
                 .insert(name.to_string(), func.into_kitlang_fn());
@@ -743,7 +712,7 @@ impl Interpreter {
         Some(())
     }
 
-    pub fn register_native_function<F: IntoKitlangFn>(&mut self, name: &str, func: F) {
+    pub fn register_native_function<F: IntoHIRKitlangFn>(&mut self, name: &str, func: F) {
         if let Some(state) = self.state.as_mut() {
             state.register_native_function(name, func);
         }
