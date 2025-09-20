@@ -1,8 +1,8 @@
 use crate::{
     ast::{
         BinaryOpKind, Block, Expression, ExpressionAssociation, ExpressionKind, ExpressionOrder,
-        FieldInitialisation, IdentPath, Literal, MethodCall, Statement, StatementKind,
-        StructInitialisation, UnaryOpKind,
+        FieldInitialisation, IdentPath, Literal, MethodCall, SpannedIdentPath, Statement,
+        StatementKind, StructInitialisation, UnaryOpKind,
     },
     parser::errors::{ParseError, ParseErrorKind},
     token::{Keyword, LiteralKind, Punctuation, TokenKind},
@@ -116,7 +116,7 @@ impl Parser<'_, '_> {
             },
             TokenKind::Ident(_) | TokenKind::Punctuation(Punctuation::Colon) => {
                 let span_start = self.begin_span();
-                let path = self.parse_path()?;
+                let path = self.parse_spanned_path()?;
                 if self.check_kind(Punctuation::OpenBrace) && self.check_ident_at(1) {
                     self.parse_struct_initialiser(path)
                 } else {
@@ -485,12 +485,14 @@ impl Parser<'_, '_> {
 
     fn parse_self(&mut self) -> PResult<Box<Expression>> {
         let span_start = self.begin_span();
-
         self.expect_kind(Keyword::This)?;
+        let span = self.finish_span(span_start);
+
+        let ident_path = IdentPath::new("self");
 
         Ok(Expression::new_boxed(
-            ExpressionKind::IdentPath(IdentPath::new("self")),
-            self.finish_span(span_start),
+            ExpressionKind::IdentPath(SpannedIdentPath::new(ident_path, span)),
+            span,
         ))
     }
 
@@ -508,7 +510,7 @@ impl Parser<'_, '_> {
         ))
     }
 
-    fn parse_struct_initialiser(&mut self, lhs: IdentPath) -> PResult<Box<Expression>> {
+    fn parse_struct_initialiser(&mut self, lhs: SpannedIdentPath) -> PResult<Box<Expression>> {
         let span_start = self.begin_span();
 
         self.expect_kind(Punctuation::OpenBrace)?;

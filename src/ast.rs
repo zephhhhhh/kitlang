@@ -265,6 +265,12 @@ pub struct SpannedIdentPath {
     pub span: SourceSpan,
 }
 
+impl SpannedIdentPath {
+    pub fn new(path: IdentPath, span: SourceSpan) -> Self {
+        Self { path, span }
+    }
+}
+
 impl ::std::ops::Deref for SpannedIdentPath {
     type Target = IdentPath;
 
@@ -858,7 +864,7 @@ pub enum ExpressionKind {
     /// An `Identifier` or `Path`.
     /// # Example
     /// `Module::Path::To::Function`, `x`.
-    IdentPath(IdentPath),
+    IdentPath(SpannedIdentPath),
     /// Skip the rest of the loop code and proceed to the next iteration early.
     Continue,
     /// Break out of the contained loop.
@@ -1531,18 +1537,18 @@ impl ::std::fmt::Debug for FieldInitialisation {
 /// [`Struct`] to initialise, as well as the values to initialise all of the fields to.
 #[derive(Clone, PartialEq)]
 pub struct StructInitialisation {
-    pub path: IdentPath,
+    pub path: SpannedIdentPath,
     pub fields: Vec<FieldInitialisation>,
 }
 
 impl StructInitialisation {
     #[inline]
-    pub fn new(path: IdentPath, fields: Vec<FieldInitialisation>) -> Self {
+    pub fn new(path: SpannedIdentPath, fields: Vec<FieldInitialisation>) -> Self {
         Self { path, fields }
     }
 
     #[inline]
-    pub fn new_boxed(path: IdentPath, fields: Vec<FieldInitialisation>) -> Box<Self> {
+    pub fn new_boxed(path: SpannedIdentPath, fields: Vec<FieldInitialisation>) -> Box<Self> {
         Box::new(Self::new(path, fields))
     }
 }

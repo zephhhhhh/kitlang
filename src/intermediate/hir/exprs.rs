@@ -1,5 +1,5 @@
 use super::{DefId, HirId, OwnerDefId};
-use crate::ast::{self, IdentPath, SourceSpan};
+use crate::ast::{self, IdentPath, SourceSpan, SpannedIdentPath};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructFieldInit {
@@ -124,15 +124,29 @@ impl From<&OwnerDefId> for ResolvedID {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RefPath {
-    Unresolved(IdentPath),
-    Resolved(IdentPath, ResolvedID),
+    Unresolved(SpannedIdentPath),
+    Resolved(SpannedIdentPath, ResolvedID),
 }
 
 impl RefPath {
-    pub fn ident_path(&self) -> &IdentPath {
+    pub fn spanned_ident_path(&self) -> &SpannedIdentPath {
         match self {
             RefPath::Unresolved(ident_path) => ident_path,
             RefPath::Resolved(ident_path, _) => ident_path,
+        }
+    }
+
+    pub fn ident_path(&self) -> &IdentPath {
+        match self {
+            RefPath::Unresolved(ident_path) => &ident_path.path,
+            RefPath::Resolved(ident_path, _) => &ident_path.path,
+        }
+    }
+
+    pub fn span(&self) -> SourceSpan {
+        match self {
+            RefPath::Unresolved(ident_path) => ident_path.span,
+            RefPath::Resolved(ident_path, _) => ident_path.span,
         }
     }
 
@@ -148,18 +162,18 @@ impl RefPath {
     }
 
     pub fn resolve_to(&mut self, id: ResolvedID) {
-        *self = RefPath::Resolved(self.ident_path().clone(), id);
+        *self = RefPath::Resolved(self.spanned_ident_path().clone(), id);
     }
 
     pub fn resolve_to_hir_id(&mut self, id: HirId) {
-        *self = RefPath::Resolved(self.ident_path().clone(), ResolvedID::Hir(id));
+        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::Hir(id));
     }
 
     pub fn resolve_to_owner_id(&mut self, id: OwnerDefId) {
-        *self = RefPath::Resolved(self.ident_path().clone(), ResolvedID::OwnerDef(id));
+        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::OwnerDef(id));
     }
 
     pub fn resolve_to_def_id(&mut self, id: DefId) {
-        *self = RefPath::Resolved(self.ident_path().clone(), ResolvedID::Def(id));
+        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::Def(id));
     }
 }

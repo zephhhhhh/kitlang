@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use crate::intermediate::{hir, resolver::UnresolvedReferences};
+use crate::{
+    intermediate::{hir, resolver::UnresolvedReferences},
+    spanned_error::SpannedErrorBuilder,
+};
 
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum LoweringErrorKind {
@@ -35,6 +38,25 @@ impl LoweringError {
         Self {
             error_kind: kind.into(),
             //span: span.into(),
+        }
+    }
+
+    pub fn format_as_error_message(&self, source_string: &str) -> String {
+        match &self.error_kind {
+            LoweringErrorKind::UnresolvedReferences(unresolved_references) => {
+                if let Some(first_error) = unresolved_references.references.first() {
+                    SpannedErrorBuilder::new(source_string, first_error.path.span)
+                        .print_header_line(format!(
+                            "Failed to resolve reference '{}'",
+                            first_error.path.path.to_ident().str()
+                        ))
+                        .generate_highlight()
+                        .generate_output()
+                } else {
+                    format!("Unresolved references: {:?}", unresolved_references)
+                }
+            }
+            e => format!("Failed to lower to HIR: {:?}", e),
         }
     }
 }

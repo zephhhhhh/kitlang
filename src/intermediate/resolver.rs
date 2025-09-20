@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{IdentPath, IdentPathSegment, Visibility},
+    ast::{IdentPath, IdentPathSegment, SpannedIdentPath, Visibility},
     intermediate::hir::{
         HLIR, HirId, OwnerDefId,
         errors::{LowerResult, LoweringError, LoweringErrorKind},
@@ -577,7 +577,7 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
 
 #[derive(Clone, PartialEq)]
 pub struct UnresolvedReference {
-    pub path: IdentPath,
+    pub path: SpannedIdentPath,
     pub id: HirId,
 }
 
