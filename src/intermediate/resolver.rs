@@ -1,3 +1,4 @@
+use ::std::fmt::Debug;
 use std::collections::HashMap;
 
 use crate::ast::{IdentPath, IdentPathSegment, SpannedIdentPath, Visibility};
@@ -577,7 +578,7 @@ pub struct UnresolvedReference {
     pub id: HirId,
 }
 
-impl ::std::fmt::Debug for UnresolvedReference {
+impl Debug for UnresolvedReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", &self.path)
     }
@@ -588,7 +589,7 @@ pub struct UnresolvedReferences {
     pub references: Vec<UnresolvedReference>,
 }
 
-impl ::std::fmt::Debug for UnresolvedReferences {
+impl Debug for UnresolvedReferences {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(&self.references).finish()
     }

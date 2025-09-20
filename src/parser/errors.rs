@@ -1,3 +1,5 @@
+use ::std::fmt::Display;
+
 use thiserror::Error;
 
 use crate::ast::SourceSpan;
@@ -99,7 +101,7 @@ impl ParseError {
     }
 }
 
-impl ::std::fmt::Display for ParseError {
+impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

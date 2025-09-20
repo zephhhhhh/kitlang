@@ -1,3 +1,4 @@
+use ::std::fmt::Debug;
 use std::collections::HashMap;
 
 use crate::ast::{BinaryOpKind, Ident, Literal, Mutability, UnaryOpKind};
@@ -20,7 +21,7 @@ impl BasicBlockId {
     }
 }
 
-impl ::std::fmt::Debug for BasicBlockId {
+impl Debug for BasicBlockId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BasicBlockId({})", self.0)
     }
@@ -46,7 +47,7 @@ impl LocalId {
     }
 }
 
-impl ::std::fmt::Debug for LocalId {
+impl Debug for LocalId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "LocalId({})", self.0)
     }
@@ -58,7 +59,7 @@ pub enum LocalInfo {
     Temp,
 }
 
-impl ::std::fmt::Debug for LocalInfo {
+impl Debug for LocalInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UserDeclared(arg0) => write!(f, "User({})", arg0.str()),
@@ -74,7 +75,7 @@ pub struct LocalDefinition {
     // pub ty: TODO..
 }
 
-impl ::std::fmt::Debug for LocalDefinition {
+impl Debug for LocalDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -92,7 +93,7 @@ pub enum Operand {
     Const, // Not sure yet
 }
 
-impl ::std::fmt::Debug for Operand {
+impl Debug for Operand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Copy(arg0) => write!(f, "Copy({:?})", arg0),
@@ -111,7 +112,7 @@ pub enum RValue {
     UnaryOp(UnaryOpKind, Operand),
 }
 
-impl ::std::fmt::Debug for RValue {
+impl Debug for RValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unchanged(arg0) => arg0.fmt(f),
@@ -139,7 +140,7 @@ pub enum StatementKind {
     Assign(LocalId, RValue),
 }
 
-impl ::std::fmt::Debug for StatementKind {
+impl Debug for StatementKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Assign(arg0, arg1) => write!(f, "Assign{{ {:?} = {:?} }}", arg0, arg1),
@@ -152,7 +153,7 @@ pub struct Statement {
     pub kind: StatementKind,
 }
 
-impl ::std::fmt::Debug for Statement {
+impl Debug for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.kind.fmt(f)
     }
@@ -166,7 +167,7 @@ pub enum BlockExitKind {
     Call(LocalId, OwnerDefId, Vec<Operand>, BasicBlockId),
 }
 
-impl ::std::fmt::Debug for BlockExitKind {
+impl Debug for BlockExitKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Goto(arg0) => write!(f, "Goto({:?})", arg0),
@@ -191,7 +192,7 @@ pub struct ExitDirective {
     pub kind: BlockExitKind,
 }
 
-impl ::std::fmt::Debug for ExitDirective {
+impl Debug for ExitDirective {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "ExitDirective::{:?}", self.kind)
     }

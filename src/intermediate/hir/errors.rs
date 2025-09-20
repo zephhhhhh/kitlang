@@ -1,3 +1,5 @@
+use ::std::fmt::Display;
+
 use thiserror::Error;
 
 use crate::intermediate::hir::HirId;
@@ -61,7 +63,7 @@ impl LoweringError {
     }
 }
 
-impl ::std::fmt::Display for LoweringError {
+impl Display for LoweringError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

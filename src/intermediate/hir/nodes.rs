@@ -1,3 +1,5 @@
+use ::std::fmt::Debug;
+
 use crate::intermediate::hir::{DefId, HirId, LocalDefId, OwnerDefId};
 
 use crate::ast::{
@@ -68,7 +70,7 @@ pub enum HIRNode {
     Path(RefPath),
 }
 
-impl ::std::fmt::Debug for HIRNode {
+impl Debug for HIRNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Param(arg0) => arg0.fmt(f),
@@ -271,7 +273,7 @@ impl Parameter {
     }
 }
 
-impl ::std::fmt::Debug for Parameter {
+impl Debug for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -318,7 +320,7 @@ pub struct Function {
     pub body: Option<FunctionBody>,
 }
 
-impl ::std::fmt::Debug for Function {
+impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Function")
             .field("ident", &self.ident.str())

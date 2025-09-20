@@ -1,3 +1,5 @@
+use ::std::fmt::{Debug, Display};
+
 // Implemented with a macro for flexibility and for it to be more declarative.
 macro_rules! define_punctuation {
     (
@@ -317,7 +319,7 @@ impl Token {
     }
 }
 
-impl ::std::fmt::Debug for Token {
+impl Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -327,7 +329,7 @@ impl ::std::fmt::Debug for Token {
     }
 }
 
-impl ::std::fmt::Display for Token {
+impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.kind)
     }

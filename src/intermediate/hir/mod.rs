@@ -1,7 +1,10 @@
+use ::std::fmt::Debug;
+
 use crate::ast;
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::nodes::{HIRNode, Item, OwningNode, OwningNodeKind};
+use crate::intermediate::resolver::{Namespace, resolve_paths};
 
 mod lowerer;
 
@@ -21,7 +24,7 @@ impl LocalDefId {
     }
 }
 
-impl ::std::fmt::Debug for LocalDefId {
+impl Debug for LocalDefId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "LocalDefId({})", self.0)
     }
@@ -40,7 +43,7 @@ impl OwnerDefId {
     }
 }
 
-impl ::std::fmt::Debug for OwnerDefId {
+impl Debug for OwnerDefId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "OwnerDefId({})", self.0)
     }
@@ -64,7 +67,7 @@ impl DefId {
     }
 }
 
-impl ::std::fmt::Debug for DefId {
+impl Debug for DefId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "DefId({} : {:?})", self.module_id, self.def_id)
     }
@@ -120,7 +123,7 @@ impl HirId {
     }
 }
 
-impl ::std::fmt::Debug for HirId {
+impl Debug for HirId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "HirId({:?} : {:?})", self.owner, self.id)
     }
@@ -259,7 +262,7 @@ impl HLIR {
     }
 }
 
-impl ::std::fmt::Debug for HLIR {
+impl Debug for HLIR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HLIR")
             .field("hir_nodes", &self.owner_nodes)
@@ -268,6 +271,24 @@ impl ::std::fmt::Debug for HLIR {
 }
 
 /// Lower the output of the parser stage to HIR.
+/// # Note
+/// This function does not do any later processing.
 pub fn lower_ast_to_hir(ast: &ast::ASTRoot) -> LowerResult<HLIR> {
     lowerer::lower_ast_to_hir(ast)
+}
+
+/// Lower the output of the parser state to HIR.
+/// # Note
+/// Unlike `lower_ast_to_hir`, this function does do all HIR processing.
+/// (Type checking, resolution, etc).
+pub fn parse_ast_to_hir_processed(ast: &ast::ASTRoot) -> LowerResult<(Namespace, HLIR)> {
+    let mut hlir = lower_ast_to_hir(ast)?;
+
+    // Resolution..
+    let namespaces = resolve_paths(&mut hlir)?;
+
+    // Type checking..
+    // TODO: Check da types !
+
+    Ok((namespaces, hlir))
 }

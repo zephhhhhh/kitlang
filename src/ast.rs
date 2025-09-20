@@ -1,4 +1,5 @@
-use std::{fmt::Debug, ops::Range};
+use ::std::fmt::{Debug, Display};
+use ::std::ops::Range;
 
 use crate::token::Token;
 
@@ -233,7 +234,7 @@ impl IdentPath {
     }
 }
 
-impl ::std::fmt::Display for IdentPath {
+impl Display for IdentPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if matches!(self, IdentPath::RootRelative(_)) {
             write!(f, "{}", Self::PATH_SEP)?;
@@ -248,7 +249,7 @@ impl ::std::fmt::Display for IdentPath {
     }
 }
 
-impl ::std::fmt::Debug for IdentPath {
+impl Debug for IdentPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let path_str = self.to_string();
         if self.is_root_relative() {
@@ -285,7 +286,7 @@ impl ::std::ops::DerefMut for SpannedIdentPath {
     }
 }
 
-impl ::std::fmt::Debug for SpannedIdentPath {
+impl Debug for SpannedIdentPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -297,9 +298,9 @@ impl ::std::fmt::Debug for SpannedIdentPath {
     }
 }
 
-impl ::std::fmt::Display for SpannedIdentPath {
+impl Display for SpannedIdentPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        ::std::fmt::Display::fmt(&self.path, f)
+        Display::fmt(&self.path, f)
     }
 }
 
@@ -470,7 +471,7 @@ impl ItemKind {
     }
 }
 
-impl ::std::fmt::Debug for ItemKind {
+impl Debug for ItemKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Use(arg0) => arg0.fmt(f),
@@ -513,7 +514,7 @@ impl<T: AsRef<str>> From<T> for Ident {
     }
 }
 
-impl ::std::fmt::Debug for Ident {
+impl Debug for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Ident({})", self.0)
     }
@@ -560,7 +561,7 @@ impl From<(String, SourceSpan)> for SpannedIdent {
     }
 }
 
-impl ::std::fmt::Debug for SpannedIdent {
+impl Debug for SpannedIdent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -617,7 +618,7 @@ impl Ty {
     }
 }
 
-impl ::std::fmt::Debug for Ty {
+impl Debug for Ty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Ty::Infer => write!(f, "Infer"),
@@ -665,7 +666,7 @@ impl Item {
     }
 }
 
-impl ::std::fmt::Debug for Item {
+impl Debug for Item {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Item")
             .field("vis", &self.vis)
@@ -910,7 +911,7 @@ impl ExpressionKind {
     }
 }
 
-impl ::std::fmt::Debug for ExpressionKind {
+impl Debug for ExpressionKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Block(arg0) => f.debug_tuple("Block").field(arg0).finish(),
@@ -939,7 +940,7 @@ impl ::std::fmt::Debug for ExpressionKind {
                 .field(arg1)
                 .finish(),
             Self::StructInit(arg0) => arg0.fmt(f),
-            Self::IdentPath(arg0) => arg0.fmt(f),
+            Self::IdentPath(arg0) => Debug::fmt(&arg0, f),
             Self::Continue => write!(f, "Continue"),
             Self::Break => write!(f, "Break"),
             Self::Return(arg0) => f.debug_tuple("Return").field(arg0).finish(),
@@ -978,7 +979,7 @@ impl Expression {
     }
 }
 
-impl ::std::fmt::Debug for Expression {
+impl Debug for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.kind.fmt(f)
     }
@@ -999,7 +1000,7 @@ pub enum StatementKind {
     Empty,
 }
 
-impl ::std::fmt::Debug for StatementKind {
+impl Debug for StatementKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Let(arg0) => arg0.fmt_with_name(f, "Let"),
@@ -1028,7 +1029,7 @@ impl Statement {
     }
 }
 
-impl ::std::fmt::Debug for Statement {
+impl Debug for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.kind.fmt(f)
     }
@@ -1043,7 +1044,7 @@ pub enum Literal {
     Boolean(bool),
 }
 
-impl ::std::fmt::Debug for Literal {
+impl Debug for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::String(arg0) => write!(f, "String(\"{}\")", arg0),
@@ -1105,7 +1106,7 @@ impl Local {
     }
 }
 
-impl ::std::fmt::Debug for Local {
+impl Debug for Local {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.fmt_with_name(f, "Local")
     }
@@ -1131,7 +1132,7 @@ impl Constant {
     }
 }
 
-impl ::std::fmt::Debug for Constant {
+impl Debug for Constant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Constant")
             .field("ident", &self.ident)
@@ -1148,7 +1149,7 @@ pub struct Block {
     pub span: SourceSpan,
 }
 
-impl ::std::fmt::Debug for Block {
+impl Debug for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(&self.statements).finish()
     }
@@ -1183,7 +1184,7 @@ impl Parameter {
     }
 }
 
-impl ::std::fmt::Debug for Parameter {
+impl Debug for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -1243,7 +1244,7 @@ impl Function {
     }
 }
 
-impl ::std::fmt::Debug for Function {
+impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Function")
             .field("ident", &self.ident.str())
@@ -1274,7 +1275,7 @@ impl StructField {
     }
 }
 
-impl ::std::fmt::Debug for StructField {
+impl Debug for StructField {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StructField")
             .field("ident", &self.ident)
@@ -1303,7 +1304,7 @@ impl Struct {
     }
 }
 
-impl ::std::fmt::Debug for Struct {
+impl Debug for Struct {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Struct")
             .field("ident", &self.ident)
@@ -1348,7 +1349,7 @@ impl EnumVariant {
     }
 }
 
-impl ::std::fmt::Debug for EnumVariant {
+impl Debug for EnumVariant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EnumVariant")
             .field("ident", &self.ident)
@@ -1389,7 +1390,7 @@ impl Enum {
     }
 }
 
-impl ::std::fmt::Debug for Enum {
+impl Debug for Enum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Enum")
             .field("ident", &self.ident)
@@ -1426,7 +1427,7 @@ impl Module {
     }
 }
 
-impl ::std::fmt::Debug for Module {
+impl Debug for Module {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Module")
             .field("ident", &self.ident)
@@ -1455,7 +1456,7 @@ impl Impl {
     }
 }
 
-impl ::std::fmt::Debug for Impl {
+impl Debug for Impl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Impl")
             .field("target_ident", &self.target_path)
@@ -1497,7 +1498,7 @@ impl MethodCall {
     }
 }
 
-impl ::std::fmt::Debug for MethodCall {
+impl Debug for MethodCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MethodCall")
             .field("target_expr", &self.target_expr)
@@ -1524,7 +1525,7 @@ impl FieldInitialisation {
     }
 }
 
-impl ::std::fmt::Debug for FieldInitialisation {
+impl Debug for FieldInitialisation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FieldInitialisation")
             .field("ident", &self.ident)
@@ -1553,7 +1554,7 @@ impl StructInitialisation {
     }
 }
 
-impl ::std::fmt::Debug for StructInitialisation {
+impl Debug for StructInitialisation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StructInitialisation")
             .field("ident", &self.path)
@@ -1578,7 +1579,7 @@ impl UseImport {
     }
 }
 
-impl ::std::fmt::Debug for UseImport {
+impl Debug for UseImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UseImport")
             .field("path", &self.path)
