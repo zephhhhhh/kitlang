@@ -5,8 +5,8 @@ use crate::{
     intermediate::{
         hir::OwnerDefId,
         mir::{
-            BasicBlockId, BlockExitKind, Body, LocalId, Operand, RValue, Statement, StatementKind,
-            lowerer::MIR,
+            BasicBlockId, BlockExitKind, Body, LocalId, MIR, Operand, RValue, Statement,
+            StatementKind,
         },
         resolver::{Namespace, NamespaceKind},
     },
@@ -235,8 +235,8 @@ impl Value {
                 BinaryOpKind::BitwiseXOR => Some(Value::Boolean(lhs ^ rhs)),
                 BinaryOpKind::Equal => Some(Value::Boolean(lhs == rhs)),
                 BinaryOpKind::NotEqual => Some(Value::Boolean(lhs != rhs)),
-                BinaryOpKind::LessThan => Some(Value::Boolean(lhs < rhs)),
-                BinaryOpKind::GreaterThan => Some(Value::Boolean(lhs > rhs)),
+                BinaryOpKind::LessThan => Some(Value::Boolean(!lhs & rhs)),
+                BinaryOpKind::GreaterThan => Some(Value::Boolean(lhs & !rhs)),
                 BinaryOpKind::LessThanOrEqual => Some(Value::Boolean(lhs <= rhs)),
                 BinaryOpKind::GreaterThanOrEqual => Some(Value::Boolean(lhs >= rhs)),
                 _ => None,

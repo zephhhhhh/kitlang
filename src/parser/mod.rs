@@ -1,6 +1,9 @@
+use ::std::ops::Range;
+
 use crate::{
     ast::{
-        ASTRoot, IdentPath, IdentPathSegments, Mutability, SourceSpan, SpannedIdent, Ty, Visibility,
+        ASTRoot, IdentPath, IdentPathSegments, Mutability, SourceSpan, SpannedIdent,
+        SpannedIdentPath, Ty, Visibility,
     },
     lexer::tokenise_stripped,
     parser::errors::{ParseError, ParseErrorKind},
@@ -130,7 +133,7 @@ impl TokenCursor<'_> {
     /// Returns a range that represents the start token.
     #[inline]
     #[must_use]
-    pub fn first_span(&self) -> ::std::ops::Range<u32> {
+    pub fn first_span(&self) -> Range<u32> {
         if let Some(token) = self.tokens.first() {
             token.start..token.end
         } else {
@@ -141,7 +144,7 @@ impl TokenCursor<'_> {
     /// Returns a range that represents the end of the file.
     #[inline]
     #[must_use]
-    pub fn eof_span(&self) -> ::std::ops::Range<u32> {
+    pub fn eof_span(&self) -> Range<u32> {
         if let Some(token) = self.tokens.last() {
             token.start..token.end
         } else {
@@ -152,12 +155,26 @@ impl TokenCursor<'_> {
     /// Returns a range that represents the current token index.
     #[inline]
     #[must_use]
-    pub fn current_span(&self) -> ::std::ops::Range<u32> {
+    pub fn current_span(&self) -> Range<u32> {
         if let Some(token) = self.get(self.position()) {
             token.start..token.end
         } else {
             self.eof_span()
         }
+    }
+
+    /// Returns a range that represents the full file of tokens.
+    /// From the first character of the first token, to the last character of the final token.
+    #[inline]
+    #[must_use]
+    pub fn full_span(&self) -> Range<u32> {
+        let Some(first_token) = self.tokens.first() else {
+            return self.eof_span();
+        };
+        let Some(last_token) = self.tokens.last() else {
+            return self.eof_span();
+        };
+        (first_token.start)..(last_token.end)
     }
 }
 
@@ -329,6 +346,20 @@ impl Parser<'_, '_> {
         Ok(IdentPath::from_segments(path_segments, root_relative))
     }
 
+    /// Parse a 'path' (I.e. `std::math::powf`) from the current cursor position,
+    /// into a path segment representation, also returns the span of the parsed path.
+    /// # Notes
+    /// Always expects atleast one `identifier`, can optionally start with '::', to force the path
+    /// to reference absolutely from the 'base'.
+    pub fn parse_spanned_path(&mut self) -> PResult<SpannedIdentPath> {
+        let path_span_start = self.begin_span();
+        let path = self.parse_path()?;
+        Ok(SpannedIdentPath {
+            path,
+            span: self.finish_span(path_span_start),
+        })
+    }
+
     /// Parses a `&` and `&mut`
     pub fn parse_ref_and_refmut(&mut self) -> PResult<RefType> {
         if self.check_kind_advance(Punctuation::Ampersand) {
@@ -376,7 +407,7 @@ impl Parser<'_, '_> {
     /// Parse the 'root' AST, starting from the beginning of the file.
     /// This is the function you want to call to fully parse a token stream.
     pub fn parse_root(&mut self) -> PResult<ASTRoot> {
-        let mut root_ast = ASTRoot::default();
+        let mut root_ast = ASTRoot::new_with_span(self.cursor.full_span().into());
 
         while !self.cursor.is_end() {
             let Some((_offset, token)) = self.find_next_significant_token()? else {

@@ -14,6 +14,7 @@ pub mod interpreter;
 pub mod lexer;
 pub mod parser;
 pub mod prelude;
+pub mod spanned_error;
 pub mod token;
 
 #[cfg(test)]

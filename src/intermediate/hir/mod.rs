@@ -1,6 +1,9 @@
 use crate::{
-    ast::{self, Visibility},
-    intermediate::hir::errors::{LoweringError, LoweringErrorKind},
+    ast::{self, SourceSpan, Visibility},
+    intermediate::hir::{
+        errors::{LoweringError, LoweringErrorKind},
+        nodes::ModuleSpan,
+    },
 };
 
 pub mod errors;
@@ -289,10 +292,10 @@ impl HLIRLowerer<'_> {
     ) -> LowerResult<OwnerDefId> {
         match &item.kind {
             ast::ItemKind::Const(constant) => {
-                self.lower_const(constant, parent_node, true, item.vis)
+                self.lower_const(constant, item.span, parent_node, true, item.vis)
             }
             ast::ItemKind::Fn(function) => {
-                self.lower_function(function, parent_node, true, item.vis)
+                self.lower_function(function, item.span, parent_node, true, item.vis)
             }
             _ => {
                 // This shouldn't be possible..
@@ -308,16 +311,18 @@ impl HLIRLowerer<'_> {
     ) -> LowerResult<OwnerDefId> {
         match &item.kind {
             ast::ItemKind::Const(constant) => {
-                self.lower_const(constant, parent_node, false, item.vis)
+                self.lower_const(constant, item.span, parent_node, false, item.vis)
             }
             ast::ItemKind::Fn(function) => {
-                self.lower_function(function, parent_node, false, item.vis)
+                self.lower_function(function, item.span, parent_node, false, item.vis)
             }
-            ast::ItemKind::Mod(module) => self.lower_module(module, parent_node, item.vis),
-            ast::ItemKind::Enum(e) => self.lower_enum(e, parent_node, item.vis),
-            ast::ItemKind::Struct(s) => self.lower_struct(s, parent_node, item.vis),
-            ast::ItemKind::Impl(im) => self.lower_impl(im, parent_node),
-            ast::ItemKind::Use(useimport) => self.lower_use(useimport, parent_node),
+            ast::ItemKind::Mod(module) => {
+                self.lower_module(module, item.span, parent_node, item.vis)
+            }
+            ast::ItemKind::Enum(e) => self.lower_enum(e, item.span, parent_node, item.vis),
+            ast::ItemKind::Struct(s) => self.lower_struct(s, item.span, parent_node, item.vis),
+            ast::ItemKind::Impl(im) => self.lower_impl(im, item.span, parent_node),
+            ast::ItemKind::Use(useimport) => self.lower_use(useimport, item.span, parent_node),
         }
     }
 
@@ -335,7 +340,8 @@ impl HLIRLowerer<'_> {
             .insert_owning_node(OwningNode::new(OwningNodeKind::Item(Item::new(
                 ItemKind::Module(nodes::Module {
                     owner_id: OwnerDefId::ROOT_NODE,
-                    ident: "ModuleRoot".into(),
+                    ident: nodes::ModuleIdent::RawIdent("RootModule".into()),
+                    span: ModuleSpan::Implementation(ast.full_file_span),
                     vis: Visibility::Public,
                     item_ids: vec![],
                 }),
@@ -352,14 +358,19 @@ impl HLIRLowerer<'_> {
     fn lower_module(
         &mut self,
         m: &ast::Module,
+        span: SourceSpan,
         parent_node: OwnerDefId,
         vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
-        let module_ident = m.ident.string();
         let mod_id = self.hlir.next_owner_id();
+        let mod_span = match &m.kind {
+            ast::ModuleKind::Declaration => ModuleSpan::Declaration(span),
+            ast::ModuleKind::Definition(_) => ModuleSpan::Implementation(span),
+        };
         let item = Item::new(ItemKind::Module(nodes::Module {
             owner_id: mod_id,
-            ident: module_ident.into(),
+            ident: nodes::ModuleIdent::SpannedIdent(m.ident.clone()),
+            span: mod_span,
             vis,
             item_ids: vec![],
         }));
@@ -377,6 +388,7 @@ impl HLIRLowerer<'_> {
     fn lower_function(
         &mut self,
         f: &ast::Function,
+        span: SourceSpan,
         parent_node: OwnerDefId,
         impl_item: bool,
         vis: Visibility,
@@ -384,7 +396,7 @@ impl HLIRLowerer<'_> {
         let fn_node_id = self.hlir.next_owner_id();
         let node_item = Item::new(ItemKind::Function(nodes::Function {
             owner_id: fn_node_id,
-            ident: f.ident.ident(),
+            ident: f.ident.clone(),
             vis,
             native: f.native,
             sig: nodes::FunctionSig {
@@ -394,7 +406,10 @@ impl HLIRLowerer<'_> {
                 } else {
                     nodes::FunctionReturnTy::Default
                 },
+                span: f.sig.span,
             },
+            decl_span: f.decl_span,
+            full_span: span,
             body: None,
         }));
         self.hlir.insert_owning_node_with_parent(
@@ -409,7 +424,8 @@ impl HLIRLowerer<'_> {
                 fn_node_id,
                 HIRNode::Param(nodes::Parameter {
                     id: param_id,
-                    ident: param.ident.ident(),
+                    ident: param.ident.clone(),
+                    span: param.span,
                     mutable: param.mutable,
                 }),
             );
@@ -438,13 +454,15 @@ impl HLIRLowerer<'_> {
     fn lower_struct(
         &mut self,
         ast_struct: &ast::Struct,
+        span: SourceSpan,
         owner_node: OwnerDefId,
         vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
         let struct_node_id = self.hlir.next_owner_id();
         let struct_item = Item::new(ItemKind::Struct(nodes::Struct {
             owner_id: struct_node_id,
-            ident: ast_struct.ident.ident(),
+            ident: ast_struct.ident.clone(),
+            span,
             vis,
             fields: vec![],
         }));
@@ -461,7 +479,8 @@ impl HLIRLowerer<'_> {
                     struct_node_id,
                     HIRNode::Field(nodes::StructField {
                         id: self.hlir.next_hir_id_on(struct_node_id),
-                        ident: s.ident.ident(),
+                        ident: s.ident.clone(),
+                        span: s.span,
                         ty: s.ty.clone(),
                         vis: s.vis,
                     }),
@@ -483,6 +502,7 @@ impl HLIRLowerer<'_> {
     fn lower_enum(
         &mut self,
         ast_enum: &ast::Enum,
+        span: SourceSpan,
         owner_node: OwnerDefId,
         vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
@@ -490,6 +510,7 @@ impl HLIRLowerer<'_> {
         let enum_item = Item::new(ItemKind::Enum(nodes::Enum {
             owner_id: enum_node_id,
             ident: ast_enum.ident.clone(),
+            span,
             vis,
         }));
         self.hlir.insert_owning_node_with_parent(
@@ -503,6 +524,7 @@ impl HLIRLowerer<'_> {
     fn lower_const(
         &mut self,
         ast_const: &ast::Constant,
+        span: SourceSpan,
         owner_node: OwnerDefId,
         impl_item: bool,
         vis: Visibility,
@@ -510,7 +532,8 @@ impl HLIRLowerer<'_> {
         let const_node_id = self.hlir.next_owner_id();
         let const_item = Item::new(ItemKind::Constant(nodes::Constant {
             owner_id: const_node_id,
-            ident: ast_const.ident.ident(),
+            ident: ast_const.ident.clone(),
+            span,
             ty: ast_const.ty.clone(),
             vis,
             expr: HirId::PLACEHOLDER_ID,
@@ -531,11 +554,18 @@ impl HLIRLowerer<'_> {
         Ok(const_node_id)
     }
 
-    fn lower_impl(&mut self, im: &ast::Impl, owner_node: OwnerDefId) -> LowerResult<OwnerDefId> {
+    fn lower_impl(
+        &mut self,
+        im: &ast::Impl,
+        span: SourceSpan,
+        owner_node: OwnerDefId,
+    ) -> LowerResult<OwnerDefId> {
         let impl_node_id = self.hlir.next_owner_id();
         let impl_item = Item::new(ItemKind::Impl(nodes::Impl {
+            span,
+            ty_span: im.target_path.span,
             owner_id: impl_node_id,
-            self_ty: im.target_path.clone(),
+            self_ty: im.target_path.path.clone(),
             items: vec![],
         }));
         self.hlir.insert_owning_node_with_parent(
@@ -561,12 +591,14 @@ impl HLIRLowerer<'_> {
     fn lower_use(
         &mut self,
         useimport: &ast::UseImport,
+        span: SourceSpan,
         owner_node: OwnerDefId,
     ) -> LowerResult<OwnerDefId> {
         let use_node_id = self.hlir.next_owner_id();
         let use_item = Item::new(ItemKind::Use(nodes::UsePath {
             owner_id: use_node_id,
             import_path: useimport.path.clone(),
+            span,
             resolved_id: None,
         }));
         self.hlir.insert_owning_node_with_parent(
@@ -584,6 +616,7 @@ impl HLIRLowerer<'_> {
             HIRNode::Block(nodes::Block {
                 id: block_id,
                 statements: vec![],
+                span: block.span,
             }),
         );
 
@@ -702,15 +735,16 @@ impl HLIRLowerer<'_> {
             }
         }?;
 
-        let expr = Expr {
+        let hir_expr = Expr {
             id: self.hlir.next_hir_id_on(owner_node),
             kind: expr_kind,
+            span: expr.span,
         };
 
         // FIXME: Probably error if it can't be lowered.
         Ok(self
             .hlir
-            .insert_hir_node(owner_node, HIRNode::Expr(expr))
+            .insert_hir_node(owner_node, HIRNode::Expr(hir_expr))
             .unwrap_or(HirId::PLACEHOLDER_ID))
     }
 
@@ -728,7 +762,7 @@ impl HLIRLowerer<'_> {
                     None
                 };
 
-                let statement = Statement {
+                let hir_statement = Statement {
                     id: self.hlir.next_hir_id_on(owner_node),
                     kind: StatementKind::Let(LetStatement {
                         ident: local.ident.ident.clone(),
@@ -736,18 +770,20 @@ impl HLIRLowerer<'_> {
                         ty: local.ty.clone(),
                         initial_value: init_value,
                     }),
+                    span: statement.span,
                 };
                 self.hlir
-                    .insert_hir_node(owner_node, HIRNode::Statement(statement))
+                    .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
             }
             ast::StatementKind::Item(item) => {
                 let item_id = self.lower_ast_item(item, owner_node)?;
-                let statement = Statement {
+                let hir_statement = Statement {
                     id: self.hlir.next_hir_id_on(owner_node),
                     kind: StatementKind::Item(item_id),
+                    span: statement.span,
                 };
                 self.hlir
-                    .insert_hir_node(owner_node, HIRNode::Statement(statement))
+                    .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
             }
             ast::StatementKind::Expr(expression) => {
                 let expr_id = self.lower_expression(expression, owner_node)?;
@@ -757,26 +793,27 @@ impl HLIRLowerer<'_> {
                     } else {
                         false
                     };
-                let statement = Statement {
+                let hir_statement = Statement {
                     id: self.hlir.next_hir_id_on(owner_node),
                     kind: if is_control_flow && !is_last_statement {
                         StatementKind::Semi(expr_id)
                     } else {
                         StatementKind::Expr(expr_id)
                     },
-                    // kind: StatementKind::Expr(expr_id),
+                    span: statement.span,
                 };
                 self.hlir
-                    .insert_hir_node(owner_node, HIRNode::Statement(statement))
+                    .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
             }
             ast::StatementKind::Semi(expression) => {
                 let expr_id = self.lower_expression(expression, owner_node)?;
-                let statement = Statement {
+                let hir_statement = Statement {
                     id: self.hlir.next_hir_id_on(owner_node),
                     kind: StatementKind::Semi(expr_id),
+                    span: statement.span,
                 };
                 self.hlir
-                    .insert_hir_node(owner_node, HIRNode::Statement(statement))
+                    .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
             }
             ast::StatementKind::Empty => None,
         };

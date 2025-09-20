@@ -5,12 +5,21 @@ use crate::token::Token;
 /// This is the output of the `Parser` stage.
 /// Currently this only stores the AST from a single "root" module/project.
 /// In future this will store multiple modules for multiple file compilations.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ASTRoot {
     pub items: Vec<Item>,
+    pub full_file_span: SourceSpan,
 }
 
 impl ASTRoot {
+    #[inline]
+    pub fn new_with_span(full_file_span: SourceSpan) -> Self {
+        Self {
+            items: Vec::new(),
+            full_file_span,
+        }
+    }
+
     /// Pushes an item into the list of items for the current module.
     #[inline]
     pub fn push_item(&mut self, item: Item) {
@@ -247,6 +256,44 @@ impl ::std::fmt::Debug for IdentPath {
         } else {
             write!(f, "Path('{}')", path_str)
         }
+    }
+}
+
+#[derive(Clone, PartialEq, PartialOrd, Hash)]
+pub struct SpannedIdentPath {
+    pub path: IdentPath,
+    pub span: SourceSpan,
+}
+
+impl ::std::ops::Deref for SpannedIdentPath {
+    type Target = IdentPath;
+
+    fn deref(&self) -> &Self::Target {
+        &self.path
+    }
+}
+
+impl ::std::ops::DerefMut for SpannedIdentPath {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.path
+    }
+}
+
+impl ::std::fmt::Debug for SpannedIdentPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SpannedIdentPath {{ {}, {}..{} }}",
+            self.path.to_ident().str(),
+            self.span.start,
+            self.span.end
+        )
+    }
+}
+
+impl ::std::fmt::Display for SpannedIdentPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        ::std::fmt::Display::fmt(&self.path, f)
     }
 }
 
@@ -1092,6 +1139,7 @@ impl ::std::fmt::Debug for Constant {
 #[derive(Clone, PartialEq)]
 pub struct Block {
     pub statements: Vec<Statement>,
+    pub span: SourceSpan,
 }
 
 impl ::std::fmt::Debug for Block {
@@ -1102,8 +1150,8 @@ impl ::std::fmt::Debug for Block {
 
 impl Block {
     #[inline]
-    pub fn new(statements: Vec<Statement>) -> Self {
-        Self { statements }
+    pub fn new(statements: Vec<Statement>, span: SourceSpan) -> Self {
+        Self { statements, span }
     }
 }
 
@@ -1155,6 +1203,7 @@ pub enum FunctionReturnTy {
 pub struct FunctionSig {
     pub parameters: Vec<Parameter>,
     pub output: FunctionReturnTy,
+    pub span: SourceSpan,
 }
 
 /// A function [`Item`] declaration, holds information on the name of the function, all parameter
@@ -1165,6 +1214,7 @@ pub struct Function {
     pub ident: SpannedIdent,
     pub native: bool,
     pub sig: FunctionSig,
+    pub decl_span: SourceSpan,
     pub body: Option<Box<Block>>,
 }
 
@@ -1174,12 +1224,14 @@ impl Function {
         ident: SpannedIdent,
         native: bool,
         sig: FunctionSig,
+        decl_span: SourceSpan,
         body: Option<Box<Block>>,
     ) -> Self {
         Self {
             ident,
             native,
             sig,
+            decl_span,
             body,
         }
     }
@@ -1303,18 +1355,18 @@ impl ::std::fmt::Debug for EnumVariant {
 /// of the [`Enum`].
 #[derive(Clone, PartialEq)]
 pub struct Enum {
-    pub ident: Ident,
+    pub ident: SpannedIdent,
     pub variants: Vec<EnumVariant>,
 }
 
 impl Enum {
     #[inline]
-    pub fn new(ident: Ident, variants: Vec<EnumVariant>) -> Self {
+    pub fn new(ident: SpannedIdent, variants: Vec<EnumVariant>) -> Self {
         Self { ident, variants }
     }
 
     #[inline]
-    pub fn new_boxed(ident: Ident, variants: Vec<EnumVariant>) -> Box<Self> {
+    pub fn new_boxed(ident: SpannedIdent, variants: Vec<EnumVariant>) -> Box<Self> {
         Box::new(Self::new(ident, variants))
     }
 
@@ -1381,18 +1433,18 @@ impl ::std::fmt::Debug for Module {
 /// for, as well as a list of all [`Item`]'s contained within.
 #[derive(Clone, PartialEq)]
 pub struct Impl {
-    pub target_path: IdentPath,
+    pub target_path: SpannedIdentPath,
     pub items: Vec<Item>,
 }
 
 impl Impl {
     #[inline]
-    pub fn new(target_path: IdentPath, items: Vec<Item>) -> Self {
+    pub fn new(target_path: SpannedIdentPath, items: Vec<Item>) -> Self {
         Self { target_path, items }
     }
 
     #[inline]
-    pub fn new_boxed(target_path: IdentPath, items: Vec<Item>) -> Box<Self> {
+    pub fn new_boxed(target_path: SpannedIdentPath, items: Vec<Item>) -> Box<Self> {
         Box::new(Self::new(target_path, items))
     }
 }
@@ -1510,12 +1562,12 @@ impl ::std::fmt::Debug for StructInitialisation {
 #[derive(Clone, PartialEq)]
 pub struct UseImport {
     /// Path to import.
-    pub path: IdentPath,
+    pub path: SpannedIdentPath,
 }
 
 impl UseImport {
     #[inline]
-    pub fn new(path: IdentPath) -> Self {
+    pub fn new(path: SpannedIdentPath) -> Self {
         Self { path }
     }
 }

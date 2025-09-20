@@ -90,7 +90,7 @@ impl Value {
 
     pub fn str_ref(&self) -> Option<&str> {
         match self {
-            Value::String(s) => Some(&s),
+            Value::String(s) => Some(s),
             _ => None,
         }
     }
@@ -228,8 +228,8 @@ impl Value {
             match op {
                 BinaryOpKind::Equal => Some(Value::Boolean(lhs == rhs)),
                 BinaryOpKind::NotEqual => Some(Value::Boolean(lhs != rhs)),
-                BinaryOpKind::LessThan => Some(Value::Boolean(lhs < rhs)),
-                BinaryOpKind::GreaterThan => Some(Value::Boolean(lhs > rhs)),
+                BinaryOpKind::LessThan => Some(Value::Boolean(!lhs & rhs)),
+                BinaryOpKind::GreaterThan => Some(Value::Boolean(lhs & !rhs)),
                 BinaryOpKind::LessThanOrEqual => Some(Value::Boolean(lhs <= rhs)),
                 BinaryOpKind::GreaterThanOrEqual => Some(Value::Boolean(lhs >= rhs)),
                 _ => None,
@@ -387,6 +387,7 @@ impl InterpreterState {
         self.position_stack.pop();
     }
 
+    #[allow(dead_code)]
     fn current_pos_cloned(&self) -> Option<InterpreterPosition> {
         self.position_stack.last().cloned()
     }
@@ -395,6 +396,7 @@ impl InterpreterState {
         self.position_stack.last()
     }
 
+    #[allow(dead_code)]
     fn current_pos_expect(&self) -> &InterpreterPosition {
         self.current_pos().expect("Interpreter stack empty.")
     }
@@ -613,11 +615,11 @@ impl InterpreterState {
                     None
                 }
             }
-            ExprKind::MethodCall(hir_id, ident, hir_ids) => todo!(),
-            ExprKind::Index(hir_id, hir_id1) => todo!(),
-            ExprKind::FieldAccess(hir_id, ident) => todo!(),
-            ExprKind::StructInit(struct_initialisation) => todo!(),
-            ExprKind::Path(RefPath::Resolved(ref_path, resolved_id)) => {
+            // ExprKind::MethodCall(hir_id, ident, hir_ids) => todo!(),
+            // ExprKind::Index(hir_id, hir_id1) => todo!(),
+            // ExprKind::FieldAccess(hir_id, ident) => todo!(),
+            // ExprKind::StructInit(struct_initialisation) => todo!(),
+            ExprKind::Path(RefPath::Resolved(_ref_path, resolved_id)) => {
                 let value = Value::Reference(*resolved_id);
                 if should_read {
                     self.read_value(value)
@@ -638,6 +640,10 @@ impl InterpreterState {
                 } else {
                     Value::Unit
                 })
+            }
+            k => {
+                eprintln!("Unimplemented expr kind: {:?}", k);
+                todo!()
             }
         };
 

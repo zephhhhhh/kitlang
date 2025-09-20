@@ -5,8 +5,8 @@ use crate::{
     intermediate::hir::{
         HLIR, HirId, OwnerDefId,
         errors::{LowerResult, LoweringError, LoweringErrorKind},
-        exprs::{Expr, ExprKind, RefPath, ResolvedID},
-        nodes::{Function, HIRNode, Parameter},
+        exprs::{RefPath, ResolvedID},
+        nodes::{Function, Parameter},
     },
 };
 
@@ -293,6 +293,8 @@ struct AssociatedReferenceMapper {
 
     pub root_namespace: Namespace,
     pub stage1_complete: bool,
+
+    // TODO: Implement these errors!!
     pub errors: Vec<LoweringError>,
 }
 
@@ -398,7 +400,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
     fn visit_module(&mut self, module: &Module, hlir: &HLIR) {
         if module.owner_id != OwnerDefId::ROOT_NODE {
             let current_path = self.current_path().clone();
-            let module_ident = module.ident.string();
+            let module_ident = module.ident.ident().string();
             let local = self.should_be_local(&current_path);
             self.get_namespace_mut(&current_path)
                 .expect("Namespace path exists.")
@@ -519,7 +521,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
 impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
     fn visit_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'_>) {
         if module.owner_id != OwnerDefId::ROOT_NODE {
-            self.push_to_current_path(module.ident.str());
+            self.push_to_current_path(module.ident.ident().str());
             self.super_module_mut(module, hlir);
             self.pop_from_current_path();
         } else {

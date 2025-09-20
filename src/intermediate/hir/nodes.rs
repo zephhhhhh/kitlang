@@ -3,7 +3,7 @@ use super::{
     exprs::{Expr, RefPath, ResolvedID},
     statements::Statement,
 };
-use crate::ast::{self, Visibility};
+use crate::ast::{self, Ident, IdentPath, SourceSpan, SpannedIdent, SpannedIdentPath, Visibility};
 use paste::paste;
 
 // FIXME: Create HIR::Ty type.
@@ -48,6 +48,12 @@ impl OwningNodeKind {
     pub fn item_mut(&mut self) -> Option<&mut Item> {
         match self {
             OwningNodeKind::Item(item) | OwningNodeKind::ImplItem(item) => Some(item),
+        }
+    }
+
+    pub fn span(&self) -> Option<SourceSpan> {
+        match self {
+            OwningNodeKind::Item(item) | OwningNodeKind::ImplItem(item) => item.span(),
         }
     }
 }
@@ -115,6 +121,10 @@ impl OwningNode {
 
     pub fn item_mut(&mut self) -> Option<&mut Item> {
         self.kind.item_mut()
+    }
+
+    pub fn span(&self) -> Option<SourceSpan> {
+        self.kind.span()
     }
 }
 
@@ -193,9 +203,48 @@ impl_item_kind_shorthand!(impl, ItemKind::Impl(i) => i, Impl);
 // Item kind tys..
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ModuleSpan {
+    Declaration(SourceSpan),
+    Implementation(SourceSpan),
+}
+
+impl ModuleSpan {
+    pub fn span(&self) -> SourceSpan {
+        match self {
+            ModuleSpan::Declaration(source_span) | ModuleSpan::Implementation(source_span) => {
+                *source_span
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ModuleIdent {
+    RawIdent(Ident),
+    SpannedIdent(SpannedIdent),
+}
+
+impl ModuleIdent {
+    pub fn ident(&self) -> &Ident {
+        match self {
+            ModuleIdent::RawIdent(ident) => ident,
+            ModuleIdent::SpannedIdent(spanned_ident) => &spanned_ident.ident,
+        }
+    }
+
+    pub fn span(&self) -> SourceSpan {
+        match self {
+            ModuleIdent::RawIdent(_) => SourceSpan::new(0, 0),
+            ModuleIdent::SpannedIdent(spanned_ident) => spanned_ident.span,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub owner_id: OwnerDefId,
-    pub ident: ast::Ident,
+    pub ident: ModuleIdent,
+    pub span: ModuleSpan,
     pub vis: Visibility,
     pub item_ids: Vec<OwnerDefId>,
 }
@@ -205,14 +254,20 @@ pub struct Module {
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct Parameter {
     pub id: HirId,
-    pub ident: ast::Ident,
+    pub ident: SpannedIdent,
+    pub span: SourceSpan,
     pub mutable: ast::Mutability,
 }
 
 impl Parameter {
     #[inline]
-    pub fn new(id: HirId, ident: ast::Ident, mutable: ast::Mutability) -> Self {
-        Self { id, ident, mutable }
+    pub fn new(id: HirId, ident: SpannedIdent, span: SourceSpan, mutable: ast::Mutability) -> Self {
+        Self {
+            id,
+            ident,
+            span,
+            mutable,
+        }
     }
 }
 
@@ -242,6 +297,7 @@ pub enum FunctionReturnTy {
 pub struct FunctionSig {
     pub parameters: Vec<ast::Ty>,
     pub output: FunctionReturnTy,
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -253,38 +309,19 @@ pub struct FunctionBody {
 #[derive(Clone, PartialEq)]
 pub struct Function {
     pub owner_id: OwnerDefId,
-    pub ident: ast::Ident,
+    pub ident: SpannedIdent,
     pub vis: Visibility,
     pub native: bool,
     pub sig: FunctionSig,
+    pub decl_span: SourceSpan,
+    pub full_span: SourceSpan,
     pub body: Option<FunctionBody>,
-}
-
-impl Function {
-    #[inline]
-    pub fn new(
-        owner_id: OwnerDefId,
-        ident: ast::Ident,
-        vis: Visibility,
-        native: bool,
-        sig: FunctionSig,
-        body: Option<FunctionBody>,
-    ) -> Self {
-        Self {
-            owner_id,
-            ident,
-            vis,
-            native,
-            sig,
-            body,
-        }
-    }
 }
 
 impl ::std::fmt::Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Function")
-            .field("ident", &self.ident.0)
+            .field("ident", &self.ident.str())
             .field("sig", &self.sig)
             .field("vis", &self.vis)
             .field("body", &self.body)
@@ -296,15 +333,17 @@ impl ::std::fmt::Debug for Function {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructField {
     pub id: HirId,
-    pub ident: ast::Ident,
+    pub ident: SpannedIdent,
+    pub span: SourceSpan,
     pub ty: ast::Ty,
-    pub vis: ast::Visibility,
+    pub vis: Visibility,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Struct {
     pub owner_id: OwnerDefId,
-    pub ident: ast::Ident,
+    pub ident: SpannedIdent,
+    pub span: SourceSpan,
     pub vis: Visibility,
     pub fields: Vec<HirId>,
 }
@@ -312,8 +351,9 @@ pub struct Struct {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Enum {
     pub owner_id: OwnerDefId,
-    pub ident: ast::Ident,
-    pub vis: ast::Visibility,
+    pub ident: SpannedIdent,
+    pub span: SourceSpan,
+    pub vis: Visibility,
     // TODO: Variants..
 }
 
@@ -321,24 +361,28 @@ pub struct Enum {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Constant {
     pub owner_id: OwnerDefId,
-    pub ident: ast::Ident,
+    pub ident: SpannedIdent,
+    pub span: SourceSpan,
     pub ty: ast::Ty,
-    pub vis: ast::Visibility,
+    pub vis: Visibility,
     pub expr: HirId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Impl {
+    pub span: SourceSpan,
     pub owner_id: OwnerDefId,
     // FIXME: Make this the hir::Ty.
-    pub self_ty: ast::IdentPath,
+    pub ty_span: SourceSpan,
+    pub self_ty: IdentPath,
     pub items: Vec<OwnerDefId>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UsePath {
     pub owner_id: OwnerDefId,
-    pub import_path: ast::IdentPath,
+    pub import_path: SpannedIdentPath,
+    pub span: SourceSpan,
     pub resolved_id: Option<ResolvedID>,
 }
 
@@ -358,12 +402,24 @@ pub enum ItemKind {
 impl ItemKind {
     pub fn ident(&self) -> Option<String> {
         match self {
-            ItemKind::Module(md) => Some(md.ident.string()),
+            ItemKind::Module(md) => Some(md.ident.ident().string()),
             ItemKind::Function(f) => Some(f.ident.string()),
             ItemKind::Struct(s) => Some(s.ident.string()),
             ItemKind::Enum(e) => Some(e.ident.string()),
             ItemKind::Constant(c) => Some(c.ident.string()),
             ItemKind::Impl(_) | ItemKind::Use(_) => None,
+        }
+    }
+
+    pub fn span(&self) -> Option<SourceSpan> {
+        match self {
+            ItemKind::Module(md) => Some(md.ident.span()),
+            ItemKind::Function(f) => Some(f.decl_span),
+            ItemKind::Struct(s) => Some(s.ident.span),
+            ItemKind::Enum(e) => Some(e.ident.span),
+            ItemKind::Constant(c) => Some(c.ident.span),
+            ItemKind::Impl(_) => None,
+            ItemKind::Use(u) => Some(u.span),
         }
     }
 }
@@ -385,10 +441,15 @@ impl Item {
     pub fn ident(&self) -> Option<String> {
         self.kind.ident()
     }
+
+    pub fn span(&self) -> Option<SourceSpan> {
+        self.kind.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
     pub id: HirId,
     pub statements: Vec<HirId>,
+    pub span: SourceSpan,
 }

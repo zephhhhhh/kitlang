@@ -167,6 +167,7 @@ impl Parser<'_, '_> {
     }
 
     pub fn parse_block_expression(&mut self) -> PResult<Box<Block>> {
+        let span_start = self.begin_span();
         self.expect_kind(Punctuation::OpenBrace)?;
 
         let mut statements: Vec<Statement> = Vec::new();
@@ -193,7 +194,10 @@ impl Parser<'_, '_> {
             statements.push(new_statement);
         }
 
-        Ok(Box::new(Block::new(statements)))
+        Ok(Box::new(Block::new(
+            statements,
+            self.finish_span(span_start),
+        )))
     }
 
     fn parse_literal(&mut self) -> PResult<Box<Expression>> {

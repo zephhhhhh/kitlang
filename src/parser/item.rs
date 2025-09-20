@@ -34,12 +34,15 @@ impl Parser<'_, '_> {
         let native = self.check_kind_advance(Keyword::Native);
         self.expect_kind(Keyword::Fn)?;
         let func_name = self.expect_ident_spanned()?;
+
+        let func_sig_span_start = self.begin_span();
         self.expect_kind(Punctuation::OpenParen)?;
 
         let function_arguments =
             self.parse_block_like(Punctuation::Comma, Punctuation::CloseParen, |s| {
                 Ok(s.parse_variable_pattern()?.into_param())
             })?;
+        let func_sig_span = self.finish_span(func_sig_span_start);
 
         for (i, arg) in function_arguments.iter().enumerate() {
             if arg.ident.str() == "self" {
@@ -74,6 +77,8 @@ impl Parser<'_, '_> {
             }
         };
 
+        let decl_span = self.finish_span(span_start);
+
         let function_body = if self.check_kind_advance(Punctuation::SemiColon) {
             None
         } else {
@@ -90,12 +95,14 @@ impl Parser<'_, '_> {
         let function_sig = FunctionSig {
             parameters: function_arguments,
             output: func_return_type,
+            span: func_sig_span,
         };
 
         let item_kind = ItemKind::Fn(Box::new(Function::new(
             func_name,
             native,
             function_sig,
+            decl_span,
             function_body,
         )));
 
@@ -193,12 +200,12 @@ impl Parser<'_, '_> {
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Enum)?;
 
-        let enum_ident = self.expect_ident()?;
+        let enum_ident = self.expect_ident_spanned()?;
 
         if self.check_kind_advance(Punctuation::SemiColon) {
             // Enum with 0 variants.. (Unit enum)
             return Ok(Item::new(
-                ItemKind::Enum(Enum::new_boxed(enum_ident.into(), vec![])),
+                ItemKind::Enum(Enum::new_boxed(enum_ident, vec![])),
                 public,
                 self.finish_span(span_start),
             ));
@@ -211,7 +218,7 @@ impl Parser<'_, '_> {
         })?;
 
         Ok(Item::new(
-            ItemKind::Enum(Enum::new_boxed(enum_ident.into(), variants)),
+            ItemKind::Enum(Enum::new_boxed(enum_ident, variants)),
             public,
             self.finish_span(span_start),
         ))
@@ -252,7 +259,8 @@ impl Parser<'_, '_> {
         let span_start = self.begin_span();
 
         self.expect_kind(Keyword::Impl)?;
-        let ty = self.parse_path()?;
+
+        let target = self.parse_spanned_path()?;
 
         // Parse module body..
         self.expect_kind(Punctuation::OpenBrace)?;
@@ -261,7 +269,7 @@ impl Parser<'_, '_> {
             self.parse_block_like_no_delimiter(Punctuation::CloseBrace, |s| s.parse_impl_item())?;
 
         Ok(Item::new(
-            ItemKind::Impl(Impl::new_boxed(ty, items)),
+            ItemKind::Impl(Impl::new_boxed(target, items)),
             Visibility::Public,
             self.finish_span(span_start),
         ))
@@ -287,7 +295,8 @@ impl Parser<'_, '_> {
 
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Use)?;
-        let path = self.parse_path()?;
+
+        let path = self.parse_spanned_path()?;
 
         self.expect_kind(Punctuation::SemiColon)?;
 

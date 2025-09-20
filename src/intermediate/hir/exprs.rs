@@ -1,5 +1,5 @@
 use super::{DefId, HirId, OwnerDefId};
-use crate::ast;
+use crate::ast::{self, IdentPath, SourceSpan};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructFieldInit {
@@ -53,6 +53,7 @@ pub enum ExprKind {
 pub struct Expr {
     pub id: HirId,
     pub kind: ExprKind,
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -123,12 +124,12 @@ impl From<&OwnerDefId> for ResolvedID {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RefPath {
-    Unresolved(ast::IdentPath),
-    Resolved(ast::IdentPath, ResolvedID),
+    Unresolved(IdentPath),
+    Resolved(IdentPath, ResolvedID),
 }
 
 impl RefPath {
-    pub fn ident_path(&self) -> &ast::IdentPath {
+    pub fn ident_path(&self) -> &IdentPath {
         match self {
             RefPath::Unresolved(ident_path) => ident_path,
             RefPath::Resolved(ident_path, _) => ident_path,

@@ -1,4 +1,4 @@
-use crate::ast::{self, Ident, Mutability};
+use crate::ast::{self, Ident, Mutability, SourceSpan};
 
 use super::{HirId, OwnerDefId};
 
@@ -14,6 +14,7 @@ pub enum StatementKind {
 pub struct Statement {
     pub id: HirId,
     pub kind: StatementKind,
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,7 +1,7 @@
 use crate::ast::Mutability;
 use crate::intermediate::hir::exprs::{Expr, ExprKind, ResolvedID};
 use crate::intermediate::hir::nodes::Block;
-use crate::intermediate::mir::{self as KitMIR, BasicBlockId};
+use crate::intermediate::mir::{self as KitMIR, BasicBlockId, MIR};
 use crate::intermediate::{
     hir::{
         HLIR, HirId, OwnerDefId,
@@ -301,7 +301,7 @@ impl HIRToMIRFuncLowerer {
                     eprintln!("No resolved local.");
                 }
             }
-            ResolvedID::Def(def_id) => {}
+            ResolvedID::Def(_def_id) => {}
             ResolvedID::OwnerDef(owner_def_id) => {
                 self.state.owner_target = Some(owner_def_id);
             }
@@ -708,7 +708,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
     fn visit_function_param(&mut self, parameter: &Parameter, _hlir: &HLIR) {
         let param_local_id = self
             .body
-            .push_param(parameter.mutable, parameter.ident.clone());
+            .push_param(parameter.mutable, parameter.ident.ident.clone());
         self.lut.insert(parameter.id, param_local_id);
     }
 
@@ -720,12 +720,6 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
             self.emit_final_block();
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct MIR {
-    pub bodies: HashMap<OwnerDefId, Body>,
-    pub native_function_links: HashMap<OwnerDefId, String>,
 }
 
 pub fn lower_hir_to_mir(hlir: &HLIR) -> LowerResult<MIR> {

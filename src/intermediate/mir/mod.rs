@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     ast::{BinaryOpKind, Ident, Literal, Mutability, UnaryOpKind},
     intermediate::hir::OwnerDefId,
@@ -300,85 +302,16 @@ impl Body {
     }
 }
 
-pub mod lowerer;
-
-mod mir_impl {
-    use std::collections::HashMap;
-
-    use crate::intermediate::{
-        hir::{
-            HLIR, HirId,
-            errors::*,
-            nodes::{Block, Function, HIRNode, OwningNodeKind},
-            statements::StatementKind,
-        },
-        mir::{Body, LocalDefinition, LocalId, LocalInfo},
-    };
-
-    pub fn lower_hir_to_mir(hlir: &HLIR) -> LowerResult<()> {
-        for i in hlir.owner_id_iter() {
-            if let Some(node) = hlir.owning_node(i) {
-                if let Some(func) = node.hir_function_ref() {
-                    lower_hir_fn_to_mir(hlir, func).unwrap();
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn lower_hir_fn_to_mir(hlir: &HLIR, func: &Function) -> LowerResult<()> {
-        if let Some(body) = &func.body {
-            let params: Option<Vec<_>> = body
-                .params
-                .iter()
-                .map(|p| {
-                    if let HIRNode::Param(p) = hlir.get_hir_node(*p)? {
-                        Some((p.mutable, p.ident.clone()))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if let Some(HIRNode::Block(b)) = hlir.get_hir_node(body.block) {
-                let mir_params: Vec<_> = params
-                    .unwrap()
-                    .iter()
-                    .map(|(mutable, ident)| LocalDefinition {
-                        mutable: *mutable,
-                        info: LocalInfo::UserDeclared(ident.clone()),
-                    })
-                    .collect();
-                let mut body = Body::new(&mir_params);
-                let mut lut = HashMap::<HirId, LocalId>::new();
-
-                for statement_id in &b.statements {
-                    if let Some(HIRNode::Statement(statement)) = hlir.get_hir_node(*statement_id) {
-                        match &statement.kind {
-                            StatementKind::Let(let_statement) => {
-                                let local_id = body.push_local(LocalDefinition {
-                                    mutable: let_statement.mutable,
-                                    info: LocalInfo::UserDeclared(let_statement.ident.clone()),
-                                });
-                                lut.insert(statement.id, local_id);
-                            }
-                            StatementKind::Expr(hir_id) => {}
-                            StatementKind::Semi(hir_id) => {}
-                            _ => {}
-                        }
-                    }
-                }
-
-                println!("MIR Func '{}' = {:#?}", func.ident.str(), body);
-            }
-        }
-
-        Ok(())
-    }
+#[derive(Debug, Clone)]
+pub struct MIR {
+    pub bodies: HashMap<OwnerDefId, Body>,
+    pub native_function_links: HashMap<OwnerDefId, String>,
 }
+
+mod lowerer;
 
 pub fn lower_hir_to_mir(
     hlir: &crate::intermediate::hir::HLIR,
-) -> crate::intermediate::hir::errors::LowerResult<()> {
-    mir_impl::lower_hir_to_mir(hlir)
+) -> crate::intermediate::hir::errors::LowerResult<MIR> {
+    lowerer::lower_hir_to_mir(hlir)
 }
