@@ -1,17 +1,13 @@
 use std::collections::HashMap;
 
-use crate::{
-    ast::{IdentPath, IdentPathSegment, SpannedIdentPath, Visibility},
-    intermediate::hir::{
-        HLIR, HirId, OwnerDefId,
-        errors::{LowerResult, LoweringError, LoweringErrorKind},
-        exprs::{RefPath, ResolvedID},
-        nodes::{Function, Parameter},
-    },
-};
+use crate::ast::{IdentPath, IdentPathSegment, SpannedIdentPath, Visibility};
 
-use super::hir::visitor::{HLIRDisjointMut, HLIRVisitor, HLIRVisitorMut};
-use super::hir::{nodes::Module, statements::LetStatement};
+use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
+use crate::intermediate::hir::nodes::{
+    Function, LetStatement, Module, Parameter, RefPath, ResolvedID,
+};
+use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitor, HLIRVisitorMut};
+use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 #[derive(Debug, Clone, PartialEq)]
 struct LocalScope {

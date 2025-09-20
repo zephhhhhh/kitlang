@@ -1,13 +1,12 @@
-use crate::{
-    ast::{
-        Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Impl, Item, ItemKind,
-        Module, ModuleKind, Struct, StructField, UseImport, VariantData, Visibility,
-    },
-    parser::errors::{ParseError, ParseErrorKind},
-    token::{Keyword, Punctuation, TokenKind},
+use crate::ast::{
+    Constant, Enum, EnumVariant, Function, FunctionReturnTy, FunctionSig, Impl, Item, ItemKind,
+    Module, ModuleKind, Struct, StructField, UseImport, VariantData, Visibility,
 };
 
-use super::{Parser, errors::PResult};
+use crate::parser::Parser;
+use crate::parser::errors::{PResult, ParseError, ParseErrorKind};
+
+use crate::token::{Keyword, Punctuation, TokenKind};
 
 impl Parser<'_, '_> {
     pub fn parse_item(&mut self) -> PResult<Item> {

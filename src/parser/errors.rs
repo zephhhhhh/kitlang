@@ -1,6 +1,8 @@
 use thiserror::Error;
 
-use crate::{ast::SourceSpan, spanned_error::SpannedErrorBuilder, token::TokenKind};
+use crate::ast::SourceSpan;
+use crate::spanned_error::SpannedErrorBuilder;
+use crate::token::TokenKind;
 
 /// Parse error result, has [`ParseError`] as the error variant.
 pub type PResult<T> = Result<T, ParseError>;

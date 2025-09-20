@@ -1,12 +1,8 @@
-use super::{
-    HLIR, HirId, OwnerDefId,
-    exprs::{Expr, ExprKind, RefPath},
-    nodes::{
-        Block, Constant, Enum, Function, HIRNode, Impl, Item, ItemKind, Module, OwningNode,
-        Parameter, Struct, UsePath,
-    },
-    statements::{LetStatement, Statement, StatementKind},
+use crate::intermediate::hir::nodes::{
+    Block, Constant, Enum, Expr, ExprKind, Function, HIRNode, Impl, Item, ItemKind, LetStatement,
+    Module, OwningNode, Parameter, RefPath, Statement, StatementKind, Struct, UsePath,
 };
+use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 /// Provides an interface from traversing the HLIR tree.
 ///

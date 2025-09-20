@@ -1,14 +1,13 @@
-use crate::{
-    ast::{
-        BinaryOpKind, Block, Expression, ExpressionAssociation, ExpressionKind, ExpressionOrder,
-        FieldInitialisation, IdentPath, Literal, MethodCall, SpannedIdentPath, Statement,
-        StatementKind, StructInitialisation, UnaryOpKind,
-    },
-    parser::errors::{ParseError, ParseErrorKind},
-    token::{Keyword, LiteralKind, Punctuation, TokenKind},
+use crate::ast::{
+    BinaryOpKind, Block, Expression, ExpressionAssociation, ExpressionKind, ExpressionOrder,
+    FieldInitialisation, IdentPath, Literal, MethodCall, SpannedIdentPath, Statement,
+    StatementKind, StructInitialisation, UnaryOpKind,
 };
 
-use super::{Parser, errors::PResult};
+use crate::parser::Parser;
+use crate::parser::errors::{PResult, ParseError, ParseErrorKind};
+
+use crate::token::{Keyword, LiteralKind, Punctuation, TokenKind};
 
 #[derive(Debug)]
 enum ExpressionOrderBound {

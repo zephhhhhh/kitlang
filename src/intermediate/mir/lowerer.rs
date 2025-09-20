@@ -1,24 +1,20 @@
-use crate::ast::Mutability;
-use crate::intermediate::hir::exprs::{Expr, ExprKind, ResolvedID};
-use crate::intermediate::hir::nodes::Block;
-use crate::intermediate::mir::{self as KitMIR, BasicBlockId, MIR};
-use crate::intermediate::{
-    hir::{
-        HLIR, HirId, OwnerDefId,
-        errors::LowerResult,
-        nodes::{Function, Parameter},
-        statements::{LetStatement, Statement, StatementKind},
-        visitor::HLIRVisitor,
-    },
-    mir::{BasicBlock, Body, LocalDefinition, LocalId, LocalInfo},
-};
 use std::collections::HashMap;
 
-// Aliases.
-use KitMIR::{
-    BlockExitKind, ExitDirective, Operand, RValue, Statement as MIRStatement,
-    StatementKind as MIRStatementKind,
+use crate::ast::Mutability;
+
+use crate::intermediate::hir::errors::LowerResult;
+use crate::intermediate::hir::nodes::{
+    Block, Expr, ExprKind, Function, LetStatement, Parameter, ResolvedID, Statement, StatementKind,
 };
+use crate::intermediate::hir::visitor::HLIRVisitor;
+use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+
+use crate::intermediate::mir::{
+    BasicBlock, BasicBlockId, BlockExitKind, Body, ExitDirective, LocalDefinition, LocalId,
+    LocalInfo, MIR, Operand, RValue,
+};
+// Aliases.
+use crate::intermediate::mir::{Statement as MIRStatement, StatementKind as MIRStatementKind};
 
 #[derive(Debug, Default)]
 struct HIRToMIRBlockBuilder {

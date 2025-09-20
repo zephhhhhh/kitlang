@@ -1,9 +1,9 @@
-use super::{
-    HirId, LocalDefId, OwnerDefId,
-    exprs::{Expr, RefPath, ResolvedID},
-    statements::Statement,
+use crate::intermediate::hir::{DefId, HirId, LocalDefId, OwnerDefId};
+
+use crate::ast::{
+    self, BinaryOpKind, Ident, IdentPath, Literal, Mutability, SourceSpan, SpannedIdent,
+    SpannedIdentPath, UnaryOpKind, Visibility,
 };
-use crate::ast::{self, Ident, IdentPath, SourceSpan, SpannedIdent, SpannedIdentPath, Visibility};
 use paste::paste;
 
 // FIXME: Create HIR::Ty type.
@@ -256,12 +256,12 @@ pub struct Parameter {
     pub id: HirId,
     pub ident: SpannedIdent,
     pub span: SourceSpan,
-    pub mutable: ast::Mutability,
+    pub mutable: Mutability,
 }
 
 impl Parameter {
     #[inline]
-    pub fn new(id: HirId, ident: SpannedIdent, span: SourceSpan, mutable: ast::Mutability) -> Self {
+    pub fn new(id: HirId, ident: SpannedIdent, span: SourceSpan, mutable: Mutability) -> Self {
         Self {
             id,
             ident,
@@ -452,4 +452,208 @@ pub struct Block {
     pub id: HirId,
     pub statements: Vec<HirId>,
     pub span: SourceSpan,
+}
+
+// Statement..
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StatementKind {
+    Let(LetStatement),
+    Item(OwnerDefId),
+    Expr(HirId),
+    Semi(HirId),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Statement {
+    pub id: HirId,
+    pub kind: StatementKind,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LetStatement {
+    pub ident: Ident,
+    pub mutable: Mutability,
+    pub ty: ast::Ty, // TODO: Change this.
+    pub initial_value: Option<HirId>,
+}
+
+// Exprs..
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructFieldInit {
+    pub ident: Ident,
+    pub expr: HirId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructInitialisation {
+    pub ty_path: RefPath,
+    pub fields: Vec<StructFieldInit>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExprKind {
+    /// Block(HIRNode::Block).
+    Block(HirId),
+    /// Literal(Literal)
+    Literal(Literal),
+    /// Binary Operation(Kind, lhs: HIRNode::Expr, rhs: HIRNode::Expr)
+    BinaryOp(BinaryOpKind, HirId, HirId),
+    /// Unary Operation(Kind, HIRNode::Expr)
+    UnaryOp(UnaryOpKind, HirId),
+    /// If(condition: HIRNode::Expr, true_block: HIRNode::Block, else: HIRNode::Expr)
+    If(HirId, HirId, Option<HirId>),
+    /// While(condition: HIRNode::Expr, block: HIRNode::Block)
+    While(HirId, HirId),
+    /// Assign(target: HIRNode::Expr, value: HIRNode::Expr)
+    Assign(HirId, HirId),
+    /// Call(target: HIRNode::Expr, args: Vec<HIRNode::Expr>)
+    Call(HirId, Vec<HirId>),
+    /// Method Call(target: HIRNode::Expr, method_name: Ident, args: Vec<HIRNode::Expr>)
+    MethodCall(HirId, Ident, Vec<HirId>),
+    /// Index(target: HIRNode::Expr, index: HIRNode::Expr)
+    Index(HirId, HirId),
+    /// Field Access(target: HIRNode::Expr, field_name: Ident)
+    FieldAccess(HirId, Ident),
+    /// Struct Initialisation
+    StructInit(StructInitialisation),
+    /// Path
+    Path(RefPath),
+    /// Continue to next loop iteration
+    Continue,
+    /// Break from loop
+    Break,
+    /// Return from function(Option<HIRNode::Expr>)
+    Return(Option<HirId>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Expr {
+    pub id: HirId,
+    pub kind: ExprKind,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ResolvedID {
+    Hir(HirId),
+    Def(DefId),
+    OwnerDef(OwnerDefId),
+}
+
+impl ResolvedID {
+    pub fn hir_id(&self) -> Option<HirId> {
+        match self {
+            ResolvedID::Hir(hir_id) => Some(*hir_id),
+            _ => None,
+        }
+    }
+
+    pub fn def_id(&self) -> Option<DefId> {
+        match self {
+            ResolvedID::Def(def_id) => Some(*def_id),
+            _ => None,
+        }
+    }
+
+    pub fn owner_def_id(&self) -> Option<OwnerDefId> {
+        match self {
+            ResolvedID::OwnerDef(owner_def_id) => Some(*owner_def_id),
+            _ => None,
+        }
+    }
+}
+
+impl From<HirId> for ResolvedID {
+    fn from(value: HirId) -> Self {
+        Self::Hir(value)
+    }
+}
+
+impl From<&HirId> for ResolvedID {
+    fn from(value: &HirId) -> Self {
+        Self::Hir(*value)
+    }
+}
+
+impl From<DefId> for ResolvedID {
+    fn from(value: DefId) -> Self {
+        Self::Def(value)
+    }
+}
+
+impl From<&DefId> for ResolvedID {
+    fn from(value: &DefId) -> Self {
+        Self::Def(*value)
+    }
+}
+
+impl From<OwnerDefId> for ResolvedID {
+    fn from(value: OwnerDefId) -> Self {
+        Self::OwnerDef(value)
+    }
+}
+
+impl From<&OwnerDefId> for ResolvedID {
+    fn from(value: &OwnerDefId) -> Self {
+        Self::OwnerDef(*value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RefPath {
+    Unresolved(SpannedIdentPath),
+    Resolved(SpannedIdentPath, ResolvedID),
+}
+
+impl RefPath {
+    pub fn spanned_ident_path(&self) -> &SpannedIdentPath {
+        match self {
+            RefPath::Unresolved(ident_path) => ident_path,
+            RefPath::Resolved(ident_path, _) => ident_path,
+        }
+    }
+
+    pub fn ident_path(&self) -> &IdentPath {
+        match self {
+            RefPath::Unresolved(ident_path) => &ident_path.path,
+            RefPath::Resolved(ident_path, _) => &ident_path.path,
+        }
+    }
+
+    pub fn span(&self) -> SourceSpan {
+        match self {
+            RefPath::Unresolved(ident_path) => ident_path.span,
+            RefPath::Resolved(ident_path, _) => ident_path.span,
+        }
+    }
+
+    pub fn is_resolved(&self) -> bool {
+        matches!(self, RefPath::Resolved(_, _))
+    }
+
+    pub fn resolved_id(&self) -> Option<ResolvedID> {
+        match self {
+            RefPath::Unresolved(_) => None,
+            RefPath::Resolved(_, id) => Some(*id),
+        }
+    }
+
+    pub fn resolve_to(&mut self, id: ResolvedID) {
+        *self = RefPath::Resolved(self.spanned_ident_path().clone(), id);
+    }
+
+    pub fn resolve_to_hir_id(&mut self, id: HirId) {
+        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::Hir(id));
+    }
+
+    pub fn resolve_to_owner_id(&mut self, id: OwnerDefId) {
+        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::OwnerDef(id));
+    }
+
+    pub fn resolve_to_def_id(&mut self, id: DefId) {
+        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::Def(id));
+    }
 }

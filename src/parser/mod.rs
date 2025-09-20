@@ -1,21 +1,18 @@
 use ::std::ops::Range;
 
-use crate::{
-    ast::{
-        ASTRoot, IdentPath, IdentPathSegments, Mutability, SourceSpan, SpannedIdent,
-        SpannedIdentPath, Ty, Visibility,
-    },
-    lexer::tokenise_stripped,
-    parser::errors::{ParseError, ParseErrorKind},
-    token::{Keyword, Punctuation, Token, TokenKind},
+use crate::ast::{
+    ASTRoot, IdentPath, IdentPathSegments, Mutability, SourceSpan, SpannedIdent, SpannedIdentPath,
+    Ty, Visibility,
 };
+
+use crate::lexer::tokenise_stripped;
+use crate::parser::errors::{PResult, ParseError, ParseErrorKind};
+use crate::token::{Keyword, Punctuation, Token, TokenKind};
 
 mod errors;
 mod expr;
 mod item;
 mod statement;
-
-use errors::PResult;
 
 pub type TokenList = Vec<Token>;
 

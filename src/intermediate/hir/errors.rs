@@ -1,18 +1,18 @@
 use thiserror::Error;
 
-use crate::{
-    intermediate::{hir, resolver::UnresolvedReferences},
-    spanned_error::SpannedErrorBuilder,
-};
+use crate::intermediate::hir::HirId;
+use crate::intermediate::resolver::UnresolvedReferences;
+
+use crate::spanned_error::SpannedErrorBuilder;
 
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum LoweringErrorKind {
     #[error("Expected a 'Parameter' node, found: {0:?}")]
-    ExpectedParameterNode(hir::HirId),
+    ExpectedParameterNode(HirId),
     #[error("Expected to find '{0}' at '{1:?}'")]
-    WrongNodeType(String, hir::HirId),
+    WrongNodeType(String, HirId),
     #[error("Expected to find a HIR Node at '{0:?}' but found none!")]
-    ExpectedNodeFoundNone(hir::HirId),
+    ExpectedNodeFoundNone(HirId),
 
     #[error("Variable '{0}' is already defined!")]
     VariableAlreadyDefined(String),

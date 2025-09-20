@@ -1,17 +1,14 @@
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
-use crate::{
-    ast::{BinaryOpKind, Literal, UnaryOpKind},
-    intermediate::{
-        hir::OwnerDefId,
-        mir::{
-            BasicBlockId, BlockExitKind, Body, LocalId, MIR, Operand, RValue, Statement,
-            StatementKind,
-        },
-        resolver::{Namespace, NamespaceKind},
-    },
-    interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn},
+use crate::ast::{BinaryOpKind, Literal, UnaryOpKind};
+
+use crate::intermediate::hir::OwnerDefId;
+use crate::intermediate::mir::{
+    BasicBlockId, BlockExitKind, Body, LocalId, MIR, Operand, RValue, Statement, StatementKind,
 };
+
+use crate::intermediate::resolver::{Namespace, NamespaceKind};
+use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
 
 #[derive(Debug, Clone)]
 pub struct Program {

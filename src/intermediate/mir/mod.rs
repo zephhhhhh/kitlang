@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{
-    ast::{BinaryOpKind, Ident, Literal, Mutability, UnaryOpKind},
-    intermediate::hir::OwnerDefId,
-};
+use crate::ast::{BinaryOpKind, Ident, Literal, Mutability, UnaryOpKind};
+
+use crate::intermediate::hir::OwnerDefId;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BasicBlockId(pub u32);

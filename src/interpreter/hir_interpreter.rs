@@ -1,18 +1,15 @@
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
-use crate::{
-    ast::{BinaryOpKind, Literal, UnaryOpKind},
-    intermediate::{
-        hir::{
-            HLIR, HirId, OwnerDefId,
-            exprs::{Expr, ExprKind, RefPath, ResolvedID},
-            nodes::{Block, HIRNode},
-            statements::{Statement, StatementKind},
-        },
-        resolver::{Namespace, NamespaceKind},
-    },
-    interpreter::native_functions::{IntoHIRKitlangFn, KitlangHIRNativeFn},
+use crate::ast::{BinaryOpKind, Literal, UnaryOpKind};
+
+use crate::intermediate::hir::nodes::{
+    Block, Expr, ExprKind, HIRNode, RefPath, ResolvedID, Statement, StatementKind,
 };
+use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+
+use crate::intermediate::resolver::{Namespace, NamespaceKind};
+
+use crate::interpreter::native_functions::{IntoHIRKitlangFn, KitlangHIRNativeFn};
 
 #[derive(Debug, Clone)]
 pub struct Program {

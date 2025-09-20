@@ -1,13 +1,11 @@
-use crate::{
-    ast::{
-        Local, LocalKind, Mutability, Parameter, SourceSpan, SpannedIdent, Statement,
-        StatementKind, Ty,
-    },
-    parser::errors::{ParseError, ParseErrorKind},
-    token::{Keyword, Punctuation, TokenKind},
+use crate::ast::{
+    Local, LocalKind, Mutability, Parameter, SourceSpan, SpannedIdent, Statement, StatementKind, Ty,
 };
 
-use super::{Parser, errors::PResult};
+use crate::parser::Parser;
+use crate::parser::errors::{PResult, ParseError, ParseErrorKind};
+
+use crate::token::{Keyword, Punctuation, TokenKind};
 
 /// Output from parsing a variable pattern from the [`TokenStream`].
 /// Describes the declaration of a variable, as a parameter or similar.
