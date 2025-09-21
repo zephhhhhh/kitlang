@@ -577,18 +577,20 @@ impl Debug for SpannedIdent {
 /// `Ty::Array(Ty::Type(Identifier))`.
 #[derive(Clone, PartialEq, PartialOrd, Hash)]
 pub enum Ty {
+    /// The type is the unit '()' type. (void)
+    Unit(SourceSpan),
     /// The type is not specified, and has to be inferred.
     Infer,
     /// `Self`.
-    This,
+    This(SourceSpan),
     /// A reference to a [`Ty`], with a description of if it is `mutable` or not.
-    Ref(Box<Ty>, Mutability),
+    Ref(Box<Ty>, Mutability, SourceSpan),
     /// Just a plain type, no reference or anything else.
-    Type(IdentPath),
+    Type(SpannedIdentPath),
     /// An array of a specified [`Ty`].
-    Array(Box<Ty>),
+    Array(Box<Ty>, SourceSpan),
     /// A tuple of multiple [`Ty`]'s.
-    Tuple(Vec<Box<Ty>>),
+    Tuple(Vec<Box<Ty>>, SourceSpan),
 }
 
 impl Ty {
@@ -596,7 +598,7 @@ impl Ty {
     /// # Returns
     /// `Ty::Type(src)`
     #[inline]
-    pub fn new(src: IdentPath) -> Self {
+    pub fn new(src: SpannedIdentPath) -> Self {
         Self::Type(src)
     }
 
@@ -608,12 +610,27 @@ impl Ty {
     #[inline]
     pub fn get_type_ident(&self) -> Option<String> {
         match self {
+            Ty::Unit(_) => Some("()".to_string()),
             Ty::Infer => None,
-            Ty::This => None,
-            Ty::Ref(ty, _) => ty.get_type_ident(),
+            Ty::This(_) => None,
+            Ty::Ref(ty, _, _) => ty.get_type_ident(),
             Ty::Type(t) => Some(t.to_string()),
-            Ty::Array(ty) => ty.get_type_ident(),
-            Ty::Tuple(_items) => None, // TODO: ?
+            Ty::Array(ty, _) => ty.get_type_ident(),
+            Ty::Tuple(_, _) => None, // TODO: ?
+        }
+    }
+
+    /// Returns the span of the type specifier if possible.
+    #[inline]
+    pub fn get_span(&self) -> Option<SourceSpan> {
+        match self {
+            Ty::Unit(s) => Some(*s),
+            Ty::Infer => None,
+            Ty::This(s) => Some(*s),
+            Ty::Ref(_, _, s) => Some(*s),
+            Ty::Type(t) => Some(t.span),
+            Ty::Array(_, s) => Some(*s),
+            Ty::Tuple(_, s) => Some(*s), // TODO: ?
         }
     }
 }
@@ -621,17 +638,18 @@ impl Ty {
 impl Debug for Ty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Ty::Unit(_) => write!(f, "Unit"),
             Ty::Infer => write!(f, "Infer"),
-            Ty::This => write!(f, "Self"),
-            Ty::Ref(t, mutable) => {
+            Ty::This(_) => write!(f, "Self"),
+            Ty::Ref(t, mutable, _) => {
                 if mutable.is_mutable() {
                     write!(f, "MutRef({t:?})")
                 } else {
                     write!(f, "Ref({t:?})")
                 }
             }
-            Ty::Array(t) => write!(f, "Array({t:?})"),
-            Ty::Tuple(t) => {
+            Ty::Array(t, _) => write!(f, "Array({t:?})"),
+            Ty::Tuple(t, _) => {
                 write!(f, "Tuple(")?;
                 for (i, ty) in t.iter().enumerate() {
                     if i == 0 {
@@ -642,7 +660,7 @@ impl Debug for Ty {
                 }
                 write!(f, ")")
             }
-            Ty::Type(t) => write!(f, "Type({})", t),
+            Ty::Type(t) => write!(f, "Type({})", t.path),
         }
     }
 }

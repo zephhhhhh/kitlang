@@ -3,12 +3,11 @@ use ::std::fmt::Debug;
 use crate::intermediate::hir::{DefId, HirId, LocalDefId, OwnerDefId};
 
 use crate::ast::{
-    self, BinaryOpKind, Ident, IdentPath, Literal, Mutability, SourceSpan, SpannedIdent,
-    SpannedIdentPath, UnaryOpKind, Visibility,
+    BinaryOpKind, Ident, IdentPath, Literal, Mutability, SourceSpan, SpannedIdent,
+    SpannedIdentPath, Ty as ASTTy, UnaryOpKind, Visibility,
 };
+use crate::intermediate::types::KitTy;
 use paste::paste;
-
-// FIXME: Create HIR::Ty type.
 
 // Owning nodes..
 
@@ -57,6 +56,31 @@ impl OwningNodeKind {
         match self {
             OwningNodeKind::Item(item) | OwningNodeKind::ImplItem(item) => item.span(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub enum Type {
+    Unresolved(ASTTy),
+    Resolved(KitTy),
+}
+
+impl Type {
+    pub fn unit() -> Self {
+        Self::Resolved(KitTy::Unit)
+    }
+
+    pub fn from_ast_ty(ty: &ASTTy) -> Self {
+        match KitTy::try_from_ast_ty(ty) {
+            Some(t) => Self::Resolved(t),
+            None => Self::Unresolved(ty.clone()),
+        }
+    }
+}
+
+impl From<KitTy> for Type {
+    fn from(value: KitTy) -> Self {
+        Self::Resolved(value)
     }
 }
 
@@ -251,8 +275,7 @@ pub struct Module {
     pub item_ids: Vec<OwnerDefId>,
 }
 
-/// An individual parameter to a function, includes the name `Identifier`, the [`Ty`] of the
-/// parameter, as well as if it is declared as `mutable` or not.
+/// An individual parameter to a function.
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct Parameter {
     pub id: HirId,
@@ -283,22 +306,11 @@ impl Debug for Parameter {
     }
 }
 
-/// The return type of a function. If not specified this will default to
-/// `FunctionReturnTy::Default` which is the unit type `()`, otherwise this holds the specified
-/// return type.
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub enum FunctionReturnTy {
-    /// No return type specified.
-    Default,
-    /// Specified return type.
-    Ty(Box<ast::Ty>),
-}
-
 /// The "signature" of a function, holds the return type and the parameter types.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct FunctionSig {
-    pub parameters: Vec<ast::Ty>,
-    pub output: FunctionReturnTy,
+    pub parameters: Vec<Type>,
+    pub output: Type,
     pub span: SourceSpan,
 }
 
@@ -337,7 +349,7 @@ pub struct StructField {
     pub id: HirId,
     pub ident: SpannedIdent,
     pub span: SourceSpan,
-    pub ty: ast::Ty,
+    pub ty: Type,
     pub vis: Visibility,
 }
 
@@ -365,7 +377,7 @@ pub struct Constant {
     pub owner_id: OwnerDefId,
     pub ident: SpannedIdent,
     pub span: SourceSpan,
-    pub ty: ast::Ty,
+    pub ty: Type,
     pub vis: Visibility,
     pub expr: HirId,
 }
@@ -477,7 +489,7 @@ pub struct Statement {
 pub struct LetStatement {
     pub ident: Ident,
     pub mutable: Mutability,
-    pub ty: ast::Ty, // TODO: Change this.
+    pub ty: Type, // TODO: Change this.
     pub initial_value: Option<HirId>,
 }
 

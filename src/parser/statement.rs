@@ -81,9 +81,13 @@ impl Parser<'_, '_> {
 
                 self.parse_ty()?
             } else if ref_type.is_ref() {
-                Ty::Ref(Box::new(Ty::This), ref_type.mutability())
+                Ty::Ref(
+                    Box::new(Ty::This(ident_span)),
+                    ref_type.mutability(),
+                    self.finish_span(start_span),
+                )
             } else {
-                Ty::This
+                Ty::This(ident_span)
             };
 
             (SpannedIdent::new("self", ident_span), ty)

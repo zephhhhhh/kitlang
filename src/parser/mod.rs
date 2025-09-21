@@ -375,13 +375,28 @@ impl Parser<'_, '_> {
     /// # Notes
     /// Always expects atleast one `Identifier`.
     pub fn parse_ty(&mut self) -> PResult<Ty> {
+        let span_start = self.begin_span();
         let ref_type = self.parse_ref_and_refmut()?;
-        let path = self.parse_path()?;
+
+        let root_type = if self.check_kind(Punctuation::OpenParen)
+            && self.check_kind_at(1, Punctuation::CloseParen)
+        {
+            // Unit type '()'.
+            let unit_start_span = self.begin_span();
+            self.cursor.advance_by(2);
+            Ty::Unit(self.finish_span(unit_start_span))
+        } else {
+            Ty::new(self.parse_spanned_path()?)
+        };
 
         if ref_type.is_ref() {
-            Ok(Ty::Ref(Box::new(Ty::new(path)), ref_type.mutability()))
+            Ok(Ty::Ref(
+                Box::new(root_type),
+                ref_type.mutability(),
+                self.finish_span(span_start),
+            ))
         } else {
-            Ok(Ty::new(path))
+            Ok(root_type)
         }
     }
 

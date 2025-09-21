@@ -2,10 +2,10 @@ use crate::ast::{self, SourceSpan, Visibility};
 
 use crate::intermediate::hir::errors::LowerResult;
 use crate::intermediate::hir::nodes::{
-    Block, Constant, Enum, Expr, ExprKind, Function, FunctionBody, FunctionReturnTy, FunctionSig,
-    HIRNode, Impl, Item, ItemKind, LetStatement, Module, ModuleIdent, ModuleSpan, OwningNode,
-    OwningNodeKind, Parameter, RefPath, Statement, StatementKind, Struct, StructField,
-    StructFieldInit, StructInitialisation, UsePath,
+    Block, Constant, Enum, Expr, ExprKind, Function, FunctionBody, FunctionSig, HIRNode, Impl,
+    Item, ItemKind, LetStatement, Module, ModuleIdent, ModuleSpan, OwningNode, OwningNodeKind,
+    Parameter, RefPath, Statement, StatementKind, Struct, StructField, StructFieldInit,
+    StructInitialisation, Type, UsePath,
 };
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
@@ -124,18 +124,23 @@ impl HLIRLowerer<'_> {
         vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
         let fn_node_id = self.hlir.next_owner_id();
+        let fn_out_type = match &f.sig.output {
+            ast::FunctionReturnTy::Default => Type::unit(),
+            ast::FunctionReturnTy::Ty(ty) => Type::from_ast_ty(ty),
+        };
         let node_item = Item::new(ItemKind::Function(Function {
             owner_id: fn_node_id,
             ident: f.ident.clone(),
             vis,
             native: f.native,
             sig: FunctionSig {
-                parameters: f.sig.parameters.iter().map(|p| p.ty.clone()).collect(),
-                output: if let ast::FunctionReturnTy::Ty(t) = &f.sig.output {
-                    FunctionReturnTy::Ty(t.clone())
-                } else {
-                    FunctionReturnTy::Default
-                },
+                parameters: f
+                    .sig
+                    .parameters
+                    .iter()
+                    .map(|p| Type::from_ast_ty(&p.ty))
+                    .collect(),
+                output: fn_out_type,
                 span: f.sig.span,
             },
             decl_span: f.decl_span,
@@ -211,7 +216,7 @@ impl HLIRLowerer<'_> {
                         id: self.hlir.next_hir_id_on(struct_node_id),
                         ident: s.ident.clone(),
                         span: s.span,
-                        ty: s.ty.clone(),
+                        ty: Type::from_ast_ty(&s.ty),
                         vis: s.vis,
                     }),
                 )
@@ -264,7 +269,7 @@ impl HLIRLowerer<'_> {
             owner_id: const_node_id,
             ident: ast_const.ident.clone(),
             span,
-            ty: ast_const.ty.clone(),
+            ty: Type::from_ast_ty(&ast_const.ty),
             vis,
             expr: HirId::PLACEHOLDER_ID,
         }));
@@ -497,7 +502,7 @@ impl HLIRLowerer<'_> {
                     kind: StatementKind::Let(LetStatement {
                         ident: local.ident.ident.clone(),
                         mutable: local.mutable,
-                        ty: local.ty.clone(),
+                        ty: Type::from_ast_ty(&local.ty),
                         initial_value: init_value,
                     }),
                     span: statement.span,
