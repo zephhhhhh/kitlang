@@ -1,4 +1,4 @@
-use crate::ast::Ty as ASTTy;
+use crate::ast::{BinaryOpKind, Ty as ASTTy, UnaryOpKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitInt {
@@ -35,6 +35,10 @@ impl KitInt {
 
     pub fn byte_count(&self) -> u64 {
         self.bit_width() / 8
+    }
+
+    pub fn largest_width(&self, other: &KitInt) -> KitInt {
+        if self > other { *self } else { *other }
     }
 }
 
@@ -74,6 +78,10 @@ impl KitUInt {
     pub fn byte_count(&self) -> u64 {
         self.bit_width() / 8
     }
+
+    pub fn largest_width(&self, other: &KitUInt) -> KitUInt {
+        if self > other { *self } else { *other }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -106,6 +114,10 @@ impl KitFloat {
     pub fn byte_count(&self) -> u64 {
         self.bit_width() / 8
     }
+
+    pub fn largest_width(&self, other: &KitFloat) -> KitFloat {
+        if self > other { *self } else { *other }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -131,6 +143,217 @@ impl KitTy {
             ASTTy::Infer | ASTTy::This(_) => None,
             a => {
                 eprintln!("KitTy conversion not implemented for: {:?}", a);
+                None
+            }
+        }
+    }
+}
+
+impl KitTy {
+    pub fn is_compatible(&self, other: &KitTy) -> bool {
+        match self {
+            KitTy::Unit => matches!(other, KitTy::Unit),
+            KitTy::Int(_) => matches!(other, KitTy::Int(_)),
+            KitTy::UInt(_) => matches!(other, KitTy::UInt(_)),
+            KitTy::Float(_) => matches!(other, KitTy::Float(_)),
+            KitTy::Boolean => matches!(other, KitTy::Boolean),
+            KitTy::Char => matches!(other, KitTy::Char),
+            KitTy::String => matches!(other, KitTy::String),
+            KitTy::Abstract => false,
+        }
+    }
+
+    pub fn unary_op_result_type(&self, op_kind: UnaryOpKind) -> Option<KitTy> {
+        match self {
+            KitTy::Unit => None,
+            KitTy::Int(kit_int) => match op_kind {
+                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Not => Some(KitTy::Int(*kit_int)),
+                UnaryOpKind::Negate => Some(KitTy::Int(*kit_int)),
+            },
+            KitTy::UInt(kit_uint) => match op_kind {
+                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Not => Some(KitTy::UInt(*kit_uint)),
+                UnaryOpKind::Negate => None,
+            },
+            KitTy::Float(kit_float) => match op_kind {
+                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Not => None,
+                UnaryOpKind::Negate => Some(KitTy::Float(*kit_float)),
+            },
+            KitTy::Boolean => match op_kind {
+                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Not => Some(KitTy::Boolean),
+                UnaryOpKind::Negate => None,
+            },
+            KitTy::Char => match op_kind {
+                UnaryOpKind::Dereference => todo!(),
+                _ => None,
+            },
+            KitTy::String => match op_kind {
+                UnaryOpKind::Dereference => todo!(),
+                _ => None,
+            },
+            KitTy::Abstract => {
+                println!("Tried to do abstract result type for unary.");
+                None
+            }
+        }
+    }
+
+    pub fn binary_op_result_type(&self, other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
+        fn unit_result_type(other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
+            match (other, op_kind) {
+                (
+                    KitTy::Unit,
+                    BinaryOpKind::NotEqual
+                    | BinaryOpKind::Equal
+                    | BinaryOpKind::LessThan
+                    | BinaryOpKind::LessThanOrEqual
+                    | BinaryOpKind::GreaterThan
+                    | BinaryOpKind::GreaterThanOrEqual,
+                ) => Some(KitTy::Unit),
+                _ => None,
+            }
+        }
+
+        fn int_result_type(lhs: &KitInt, other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
+            match other {
+                KitTy::Int(rhs_int) => match op_kind {
+                    BinaryOpKind::Add
+                    | BinaryOpKind::Sub
+                    | BinaryOpKind::Mul
+                    | BinaryOpKind::Div
+                    | BinaryOpKind::Mod => Some(KitTy::Int(lhs.largest_width(rhs_int))),
+                    BinaryOpKind::BitwiseXOR
+                    | BinaryOpKind::BitwiseAND
+                    | BinaryOpKind::BitwiseOR => {
+                        if lhs == rhs_int {
+                            Some(KitTy::Int(*lhs))
+                        } else {
+                            None
+                        }
+                    }
+                    BinaryOpKind::ShiftLeft | BinaryOpKind::ShiftRight => Some(KitTy::Int(*lhs)),
+                    BinaryOpKind::And | BinaryOpKind::Or => None,
+                    BinaryOpKind::NotEqual
+                    | BinaryOpKind::Equal
+                    | BinaryOpKind::LessThan
+                    | BinaryOpKind::LessThanOrEqual
+                    | BinaryOpKind::GreaterThan
+                    | BinaryOpKind::GreaterThanOrEqual => Some(KitTy::Boolean),
+                },
+                _ => None,
+            }
+        }
+
+        fn uint_result_type(lhs: &KitUInt, other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
+            match other {
+                KitTy::UInt(rhs_uint) => match op_kind {
+                    BinaryOpKind::Add
+                    | BinaryOpKind::Sub
+                    | BinaryOpKind::Mul
+                    | BinaryOpKind::Div
+                    | BinaryOpKind::Mod => Some(KitTy::UInt(lhs.largest_width(rhs_uint))),
+                    BinaryOpKind::BitwiseXOR
+                    | BinaryOpKind::BitwiseAND
+                    | BinaryOpKind::BitwiseOR => {
+                        if lhs == rhs_uint {
+                            Some(KitTy::UInt(*lhs))
+                        } else {
+                            None
+                        }
+                    }
+                    BinaryOpKind::ShiftLeft | BinaryOpKind::ShiftRight => Some(KitTy::UInt(*lhs)),
+                    BinaryOpKind::And | BinaryOpKind::Or => None,
+                    BinaryOpKind::NotEqual
+                    | BinaryOpKind::Equal
+                    | BinaryOpKind::LessThan
+                    | BinaryOpKind::LessThanOrEqual
+                    | BinaryOpKind::GreaterThan
+                    | BinaryOpKind::GreaterThanOrEqual => Some(KitTy::Boolean),
+                },
+                _ => None,
+            }
+        }
+
+        fn float_result_type(
+            lhs: &KitFloat,
+            other: &KitTy,
+            op_kind: BinaryOpKind,
+        ) -> Option<KitTy> {
+            match other {
+                KitTy::Float(rhs_float) => match op_kind {
+                    BinaryOpKind::Add
+                    | BinaryOpKind::Sub
+                    | BinaryOpKind::Mul
+                    | BinaryOpKind::Div
+                    | BinaryOpKind::Mod => Some(KitTy::Float(lhs.largest_width(rhs_float))),
+                    BinaryOpKind::BitwiseXOR
+                    | BinaryOpKind::BitwiseAND
+                    | BinaryOpKind::BitwiseOR => None,
+                    BinaryOpKind::ShiftLeft | BinaryOpKind::ShiftRight => None,
+                    BinaryOpKind::Or | BinaryOpKind::And => None,
+                    BinaryOpKind::NotEqual
+                    | BinaryOpKind::Equal
+                    | BinaryOpKind::LessThan
+                    | BinaryOpKind::LessThanOrEqual
+                    | BinaryOpKind::GreaterThan
+                    | BinaryOpKind::GreaterThanOrEqual => Some(KitTy::Boolean),
+                },
+                _ => None,
+            }
+        }
+
+        fn boolean_result_type(other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
+            match (other, op_kind) {
+                (
+                    KitTy::Boolean,
+                    BinaryOpKind::And
+                    | BinaryOpKind::Or
+                    | BinaryOpKind::Equal
+                    | BinaryOpKind::NotEqual
+                    | BinaryOpKind::LessThan
+                    | BinaryOpKind::LessThanOrEqual
+                    | BinaryOpKind::GreaterThan
+                    | BinaryOpKind::GreaterThanOrEqual,
+                ) => Some(KitTy::Boolean),
+                _ => None,
+            }
+        }
+
+        fn char_result_type(_other: &KitTy, _op_kind: BinaryOpKind) -> Option<KitTy> {
+            todo!()
+        }
+
+        fn string_result_type(other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
+            match (other, op_kind) {
+                (
+                    KitTy::String,
+                    BinaryOpKind::And
+                    | BinaryOpKind::Or
+                    | BinaryOpKind::Equal
+                    | BinaryOpKind::NotEqual
+                    | BinaryOpKind::LessThan
+                    | BinaryOpKind::LessThanOrEqual
+                    | BinaryOpKind::GreaterThan
+                    | BinaryOpKind::GreaterThanOrEqual,
+                ) => Some(KitTy::Boolean),
+                (KitTy::String, BinaryOpKind::Add) => Some(KitTy::String),
+                _ => None,
+            }
+        }
+
+        match self {
+            KitTy::Unit => unit_result_type(other, op_kind),
+            KitTy::Int(kit_int) => int_result_type(kit_int, other, op_kind),
+            KitTy::UInt(kit_uint) => uint_result_type(kit_uint, other, op_kind),
+            KitTy::Float(kit_float) => float_result_type(kit_float, other, op_kind),
+            KitTy::Boolean => boolean_result_type(other, op_kind),
+            KitTy::Char => char_result_type(other, op_kind),
+            KitTy::String => string_result_type(other, op_kind),
+            KitTy::Abstract => {
+                println!("Tried to do abstract result type.");
                 None
             }
         }

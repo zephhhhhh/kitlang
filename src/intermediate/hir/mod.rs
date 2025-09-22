@@ -5,6 +5,7 @@ use crate::ast;
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::nodes::{HIRNode, Item, OwningNode, OwningNodeKind};
 use crate::intermediate::resolver::{Namespace, resolve_paths};
+use crate::intermediate::type_check::run_type_checker;
 
 mod lowerer;
 
@@ -288,7 +289,7 @@ pub fn parse_ast_to_hir_processed(ast: &ast::ASTRoot) -> LowerResult<(Namespace,
     let namespaces = resolve_paths(&mut hlir)?;
 
     // Type checking..
-    // TODO: Check da types !
+    run_type_checker(&mut hlir)?;
 
     Ok((namespaces, hlir))
 }

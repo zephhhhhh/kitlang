@@ -159,6 +159,7 @@ impl HLIRLowerer<'_> {
                 fn_node_id,
                 HIRNode::Param(Parameter {
                     id: param_id,
+                    fn_id: fn_node_id,
                     ident: param.ident.clone(),
                     span: param.span,
                     mutable: param.mutable,
@@ -170,7 +171,7 @@ impl HLIRLowerer<'_> {
         if !f.native {
             // Parse block expression..
             if let Some(body_block) = &f.body {
-                let body_id = self.lower_block(body_block, fn_node_id)?;
+                let body_id = self.lower_block(body_block, true, fn_node_id)?;
 
                 self.hlir
                     .owning_node_mut_unchecked(fn_node_id)
@@ -344,13 +345,19 @@ impl HLIRLowerer<'_> {
         Ok(use_node_id)
     }
 
-    fn lower_block(&mut self, block: &ast::Block, owner_node: OwnerDefId) -> LowerResult<HirId> {
+    fn lower_block(
+        &mut self,
+        block: &ast::Block,
+        root_block: bool,
+        owner_node: OwnerDefId,
+    ) -> LowerResult<HirId> {
         let block_id = self.hlir.next_hir_id_on(owner_node);
         self.hlir.insert_hir_node(
             owner_node,
             HIRNode::Block(Block {
                 id: block_id,
                 statements: vec![],
+                root_block,
                 span: block.span,
             }),
         );
@@ -396,7 +403,7 @@ impl HLIRLowerer<'_> {
             },
 
             ast::ExpressionKind::Block(block) => {
-                let block_id = self.lower_block(block, owner_node)?;
+                let block_id = self.lower_block(block, false, owner_node)?;
                 Ok(ExprKind::Block(block_id))
             }
             ast::ExpressionKind::BinaryOp(binary_op_kind, lhs, rhs) => {
@@ -410,7 +417,7 @@ impl HLIRLowerer<'_> {
             }
             ast::ExpressionKind::If(expression, block, expression1) => {
                 let condition = self.lower_expression(expression, owner_node)?;
-                let if_block = self.lower_block(block, owner_node)?;
+                let if_block = self.lower_block(block, false, owner_node)?;
                 let else_expr = if let Some(else_e) = expression1 {
                     Some(self.lower_expression(else_e, owner_node)?)
                 } else {
@@ -420,7 +427,7 @@ impl HLIRLowerer<'_> {
             }
             ast::ExpressionKind::While(expression, block) => {
                 let condition = self.lower_expression(expression, owner_node)?;
-                let while_block = self.lower_block(block, owner_node)?;
+                let while_block = self.lower_block(block, false, owner_node)?;
                 Ok(ExprKind::While(condition, while_block))
             }
             ast::ExpressionKind::Assign(expression, expression1) => {

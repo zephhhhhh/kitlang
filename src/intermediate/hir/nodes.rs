@@ -70,6 +70,26 @@ impl Type {
         Self::Resolved(KitTy::Unit)
     }
 
+    pub fn is_unit(&self) -> bool {
+        let Some(resolved) = self.resolved() else {
+            return false;
+        };
+        *resolved == KitTy::Unit
+    }
+
+    pub fn is_resolved(&self) -> bool {
+        matches!(self, Self::Resolved(_))
+    }
+
+    pub fn resolved(&self) -> Option<&KitTy> {
+        match self {
+            Type::Resolved(kit_ty) => Some(kit_ty),
+            _ => None,
+        }
+    }
+}
+
+impl Type {
     pub fn from_ast_ty(ty: &ASTTy) -> Self {
         match KitTy::try_from_ast_ty(ty) {
             Some(t) => Self::Resolved(t),
@@ -279,21 +299,10 @@ pub struct Module {
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct Parameter {
     pub id: HirId,
+    pub fn_id: OwnerDefId,
     pub ident: SpannedIdent,
     pub span: SourceSpan,
     pub mutable: Mutability,
-}
-
-impl Parameter {
-    #[inline]
-    pub fn new(id: HirId, ident: SpannedIdent, span: SourceSpan, mutable: Mutability) -> Self {
-        Self {
-            id,
-            ident,
-            span,
-            mutable,
-        }
-    }
 }
 
 impl Debug for Parameter {
@@ -465,6 +474,7 @@ impl Item {
 pub struct Block {
     pub id: HirId,
     pub statements: Vec<HirId>,
+    pub root_block: bool,
     pub span: SourceSpan,
 }
 

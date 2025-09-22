@@ -125,7 +125,7 @@ impl HLIRVisitorMut<'_> for ScopeResolver {
         block: &mut super::hir::nodes::Block,
         hlir: &mut HLIRDisjointMut<'_>,
     ) {
-        if block.id.id.0 > 0 {
+        if block.root_block {
             self.push_child_scope(None);
             self.super_block_mut(block, hlir);
             self.pop_scope();
