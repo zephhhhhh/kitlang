@@ -439,6 +439,7 @@ impl TypeChecker {
                     }
                 }
             }
+            ExprKind::Continue | ExprKind::Break => Ok(Type::unit()),
             unk => {
                 eprintln!("Error unknown expression type: {:?}", unk);
                 Ok(Type::unit())

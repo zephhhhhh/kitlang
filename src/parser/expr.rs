@@ -116,7 +116,11 @@ impl Parser<'_, '_> {
             TokenKind::Ident(_) | TokenKind::Punctuation(Punctuation::Colon) => {
                 let span_start = self.begin_span();
                 let path = self.parse_spanned_path()?;
-                if self.check_kind(Punctuation::OpenBrace) && self.check_ident_at(1) {
+                // FIXME: REALLY HACKY
+                if self.check_kind(Punctuation::OpenBrace)
+                    && self.check_ident_at(1)
+                    && self.check_kind_at(2, Punctuation::Colon)
+                {
                     self.parse_struct_initialiser(path)
                 } else {
                     Ok(Expression::new_boxed(
