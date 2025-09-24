@@ -603,7 +603,7 @@ impl TypeCheckFail {
 /// This will validate that all type rules are followed, as well as fill in any types that must be
 /// inferred from context.
 pub fn run_type_checker(hlir: &mut HLIR) -> LowerResult<()> {
-    let mut checker = TypeChecker::new(false);
+    let mut checker = TypeChecker::new(true);
 
     checker.walk_mut(hlir);
 

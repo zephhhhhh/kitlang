@@ -1,7 +1,6 @@
 use paste::paste;
 use std::sync::Arc;
 
-use super::hir_interpreter::{InterpreterState as HIRInterpreterState, Value as HIRValue};
 use super::mir_interpreter::{InterpreterState as MIRInterpreterState, Value as MIRValue};
 
 macro_rules! impl_native_fn_interface {
@@ -42,5 +41,4 @@ macro_rules! impl_native_fn_interface {
     };
 }
 
-impl_native_fn_interface!(HIR, HIRInterpreterState, HIRValue);
 impl_native_fn_interface!(MIR, MIRInterpreterState, MIRValue);
