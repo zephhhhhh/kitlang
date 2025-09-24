@@ -245,6 +245,13 @@ impl<'a> HLIRDisjointMut<'a> {
     pub fn new(hlir: &'a mut HLIR) -> Self {
         Self { hlir }
     }
+
+    pub fn nonmut_ref<'b>(&'a self) -> &'b HLIR
+    where
+        'a: 'b,
+    {
+        self.hlir
+    }
 }
 
 impl HLIRDisjointMut<'_> {
@@ -264,10 +271,20 @@ impl HLIRDisjointMut<'_> {
         ))
     }
 
+    pub fn get_owning_node_mut(&mut self, id: OwnerDefId) -> Option<&'static mut OwningNode> {
+        Some(self.owning_node_mut(id)?.value_mut())
+    }
+
     pub fn owning_node_item_mut(&mut self, id: OwnerDefId) -> Option<DisjointItem> {
         Some(DisjointItem::from_mut_ref(
             self.hlir.owning_node_item_mut(id)?,
         ))
+    }
+}
+
+impl AsRef<HLIR> for HLIRDisjointMut<'_> {
+    fn as_ref(&self) -> &HLIR {
+        self.nonmut_ref()
     }
 }
 

@@ -42,6 +42,14 @@ impl SourceSpan {
     pub fn new(start: u32, end: u32) -> Self {
         Self { start, end }
     }
+
+    pub fn null_span() -> Self {
+        Self::new(0, 0)
+    }
+
+    pub fn is_null_span(&self) -> bool {
+        self.start == 0 && self.end == 0
+    }
 }
 
 impl From<(u32, u32)> for SourceSpan {

@@ -1,4 +1,4 @@
-use ::std::fmt::Debug;
+use ::std::fmt::{Debug, Display};
 
 use crate::intermediate::hir::{DefId, HirId, LocalDefId, OwnerDefId};
 
@@ -81,6 +81,10 @@ impl Type {
         matches!(self, Self::Resolved(_))
     }
 
+    pub fn is_infer(&self) -> bool {
+        matches!(self, Self::Unresolved(ASTTy::Infer))
+    }
+
     pub fn resolved(&self) -> Option<&KitTy> {
         match self {
             Type::Resolved(kit_ty) => Some(kit_ty),
@@ -94,6 +98,21 @@ impl Type {
         match KitTy::try_from_ast_ty(ty) {
             Some(t) => Self::Resolved(t),
             None => Self::Unresolved(ty.clone()),
+        }
+    }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Unresolved(ty) => write!(f, "Unresolved({:?})", ty),
+            Type::Resolved(kit_ty) => {
+                if let Some(ty_str) = kit_ty.to_type_str() {
+                    write!(f, "{}", ty_str)
+                } else {
+                    write!(f, "{:?}", kit_ty)
+                }
+            }
         }
     }
 }
@@ -112,6 +131,19 @@ pub enum HIRNode {
     Statement(Statement),
     Field(StructField),
     Path(RefPath),
+}
+
+impl HIRNode {
+    pub fn span(&self) -> SourceSpan {
+        match self {
+            HIRNode::Param(parameter) => parameter.span,
+            HIRNode::Block(block) => block.span,
+            HIRNode::Expr(expr) => expr.span,
+            HIRNode::Statement(statement) => statement.span,
+            HIRNode::Field(struct_field) => struct_field.span,
+            HIRNode::Path(ref_path) => ref_path.span(),
+        }
+    }
 }
 
 impl Debug for HIRNode {

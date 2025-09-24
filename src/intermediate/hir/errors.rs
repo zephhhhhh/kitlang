@@ -5,6 +5,7 @@ use thiserror::Error;
 use crate::intermediate::hir::HirId;
 use crate::intermediate::resolver::UnresolvedReferences;
 
+use crate::intermediate::type_check::TypeCheckFail;
 use crate::spanned_error::SpannedErrorBuilder;
 
 #[derive(Error, Debug, Clone, PartialEq)]
@@ -23,6 +24,9 @@ pub enum LoweringErrorKind {
 
     #[error("Failed to resolve references: {0:?}")]
     UnresolvedReferences(UnresolvedReferences),
+
+    #[error("Failed to validate types: {0:?}")]
+    TypeCheckFail(Vec<TypeCheckFail>),
 }
 
 /// Represents an error while parsing the [`ASTRoot`] into High-level IR.
@@ -57,6 +61,19 @@ impl LoweringError {
                 } else {
                     format!("Unresolved references: {:?}", unresolved_references)
                 }
+            }
+            LoweringErrorKind::TypeCheckFail(fails) => {
+                let mut final_output = String::new();
+                for fail in fails {
+                    if !final_output.is_empty() {
+                        final_output += "\n";
+                    }
+                    final_output += &SpannedErrorBuilder::new(source_string, fail.span)
+                        .print_header_line(&fail.reason)
+                        .generate_highlight()
+                        .generate_output();
+                }
+                final_output
             }
             e => format!("Failed to lower to HIR: {:?}", e),
         }

@@ -1,6 +1,6 @@
 use ::std::fmt::Debug;
 
-use crate::ast;
+use crate::ast::{ASTRoot, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::nodes::{HIRNode, Item, OwningNode, OwningNodeKind};
@@ -263,6 +263,23 @@ impl HLIR {
     }
 }
 
+// "Helper" functions..
+impl HLIR {
+    pub fn span_by_owner_id(&self, id: OwnerDefId) -> Option<SourceSpan> {
+        self.owning_node(id)?.span()
+    }
+
+    pub fn span_by_hir_id(&self, id: HirId) -> Option<SourceSpan> {
+        Some(self.get_hir_node(id)?.span())
+    }
+}
+
+impl AsRef<HLIR> for HLIR {
+    fn as_ref(&self) -> &HLIR {
+        self
+    }
+}
+
 impl Debug for HLIR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HLIR")
@@ -274,7 +291,7 @@ impl Debug for HLIR {
 /// Lower the output of the parser stage to HIR.
 /// # Note
 /// This function does not do any later processing.
-pub fn lower_ast_to_hir(ast: &ast::ASTRoot) -> LowerResult<HLIR> {
+pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
     lowerer::lower_ast_to_hir(ast)
 }
 
@@ -282,7 +299,7 @@ pub fn lower_ast_to_hir(ast: &ast::ASTRoot) -> LowerResult<HLIR> {
 /// # Note
 /// Unlike `lower_ast_to_hir`, this function does do all HIR processing.
 /// (Type checking, resolution, etc).
-pub fn parse_ast_to_hir_processed(ast: &ast::ASTRoot) -> LowerResult<(Namespace, HLIR)> {
+pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(Namespace, HLIR)> {
     let mut hlir = lower_ast_to_hir(ast)?;
 
     // Resolution..
