@@ -22,7 +22,7 @@ values are valid. For example that they are referenced after declared and not be
 - After everything is resolved, we then do type checking. This ensures all operations on types are valid, function arguments are 
 supplied the expected type, the return type matches the declared type, assignments have the same type on both sides, etc.
 - This is also where type propagation is performed for "Infer" types.
-## Optionally: Optimisation / Lowering to MIR (Middle-level Intermediate Respresentation)
+## Lowering to MIR (Middle-level Intermediate Respresentation) / Optimisation
 - This stage would involve further lowering the representation to something closer to what a compiler would ultimately output in assembly,
 this form would be easier to optimise, but is optional.
 ## Code generation / Execution
@@ -31,10 +31,7 @@ or feeding into an interpreter for execution.
 
 # Interpreter
 ## Notes
-The current interpreter implementation is almost entirely subject to change, as it stands the interpreter will interpret the HIR directly,
-however this makes certain features and operations very annoying and difficult to actually execute, so the end goal will be to further
-lower the representation to MIR which will be much closer to instructions a CPU will execute and will be much more ergonomic to implement
-once completed.
+The current interpreter implementation is almost entirely subject to change, as it stands the interpreter will interpret the MIR directly. Eventually this MIR will be lowered further into actually assembly instructions before being assembled into a final executable.
 
 # To-do list
 ## Parser
@@ -45,28 +42,25 @@ once completed.
 - Implement assign binary operations.
 
 ## HIR
-### General
-- Carry over source span information for better error handling.
 ### Resolver
 - Factor in "use" statements when resolving.
 - Correctly resolve local only references.
-
-## Type checking
-- Implement it.
-
-## Interpreter.
-- Implement it.
 
 ### Eventually:
 - Implement enums and match statements.
 
 # Timeline
 ## High priority
-- Start work on interpreter.
+- Add proper error handling like in the parser for other stages of the compiler.
+- Add documentation for HIR and MIR and interpreter.
+- Add documentation for the [`Visitor`] traits.
+- Create tests for HIR and MIR lowering.
 
 ## Medium priority
-- Better error handling for HIR.
+- Implement `Use` statement.
+- Revisit renaming especially for parser.
+- Add proper logging for things that are not diagnostic but for compiler debugging.
 
 ## Low Priority
-- Type checker.
 - Update syntax docs.
+- Add proper configuration (This will be especially important to add when working on the `Use` statement)
