@@ -4,25 +4,44 @@ use crate::ast::{BinaryOpKind, Literal, UnaryOpKind};
 
 use crate::intermediate::hir::OwnerDefId;
 use crate::intermediate::mir::{
-    BasicBlockId, BlockExitKind, Body, LocalId, MIR, Operand, RValue, Statement, StatementKind,
+    AssignTarget, BasicBlockId, BlockExitKind, Body, LocalId, MIR, Operand, RValue, Statement,
+    StatementKind,
 };
 
-use crate::intermediate::resolver::{Namespace, NamespaceKind};
+use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeRegistry};
 use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
 
 #[derive(Debug, Clone)]
 pub struct Program {
     pub namespace: Namespace,
+    pub registry: TypeRegistry,
     pub mir: MIR,
 }
 
 impl Program {
-    pub fn new(mir: MIR, namespace: Namespace) -> Self {
-        Self { mir, namespace }
+    pub fn new(mir: MIR, registry: TypeRegistry, namespace: Namespace) -> Self {
+        Self {
+            mir,
+            registry,
+            namespace,
+        }
     }
 }
 
 pub type ProgramType = Program;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ADTValueKind {
+    Struct(Vec<Value>),
+}
+
+impl std::fmt::Display for ADTValueKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ADTValueKind::Struct(values) => write!(f, "{:?}", values),
+        }
+    }
+}
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum Value {
@@ -33,6 +52,8 @@ pub enum Value {
     Float(f64),
     String(String),
     Boolean(bool),
+    Ref(AssignTarget),
+    ADT(ADTValueKind),
 }
 
 impl Value {
@@ -57,6 +78,8 @@ impl Value {
             Value::Float(f) => f.to_string(),
             Value::String(s) => s.clone(),
             Value::Boolean(b) => b.to_string(),
+            Value::Ref(at) => format!("{:?}", at),
+            Value::ADT(kind) => kind.to_string(),
         }
     }
 
@@ -141,6 +164,8 @@ impl Value {
                 UnaryOpKind::Not => Some(Value::Boolean(!b)),
                 UnaryOpKind::Negate => None,
             },
+            Value::Ref(_) => todo!(),
+            Value::ADT(_) => todo!(),
         }
     }
 
@@ -247,6 +272,8 @@ impl Value {
             Value::Float(f) => perform_float_op(*f, rhs.float()?, op),
             Value::String(s) => perform_string_op(s, rhs.str_ref()?, op),
             Value::Boolean(b) => perform_bool_op(*b, rhs.bool()?, op),
+            Value::Ref(_) => todo!(),
+            Value::ADT(_) => todo!(),
         }
     }
 }
@@ -323,6 +350,36 @@ impl ExecutionFrame {
         }
     }
 
+    pub fn field_access(&self, id: LocalId, field_index: usize) -> Option<&Value> {
+        let value = self.local(id)?;
+        match value {
+            Value::ADT(adtvalue_kind) => match adtvalue_kind {
+                ADTValueKind::Struct(values) => values.get(field_index),
+            },
+            _ => None,
+        }
+    }
+
+    pub fn field_access_mut(&mut self, id: LocalId, field_index: usize) -> Option<&mut Value> {
+        let value = self.local_mut(id)?;
+        match value {
+            Value::ADT(adtvalue_kind) => match adtvalue_kind {
+                ADTValueKind::Struct(values) => values.get_mut(field_index),
+            },
+            _ => None,
+        }
+    }
+
+    pub fn field_access_expect(&self, id: LocalId, field_index: usize) -> &Value {
+        self.field_access(id, field_index)
+            .expect("Field access doesn't exist.")
+    }
+
+    pub fn field_access_expect_mut(&mut self, id: LocalId, field_index: usize) -> &mut Value {
+        self.field_access_mut(id, field_index)
+            .expect("Field access doesn't exist mut.")
+    }
+
     pub fn local(&self, id: LocalId) -> Option<&Value> {
         self.locals.get(id.0 as usize)
     }
@@ -341,6 +398,44 @@ impl ExecutionFrame {
         self.locals
             .get_mut(id.0 as usize)
             .expect("Local doesn't exist mut.")
+    }
+
+    pub fn value(&self, at: AssignTarget) -> Option<&Value> {
+        match at {
+            AssignTarget::Local(local_id) => self.local(local_id),
+            AssignTarget::Field(local_id, field_index) => self.field_access(local_id, field_index),
+        }
+    }
+
+    pub fn value_mut(&mut self, at: AssignTarget) -> Option<&mut Value> {
+        match at {
+            AssignTarget::Local(local_id) => self.local_mut(local_id),
+            AssignTarget::Field(local_id, field_index) => {
+                self.field_access_mut(local_id, field_index)
+            }
+        }
+    }
+
+    pub fn value_expect(&self, at: AssignTarget) -> &Value {
+        self.value(at).expect("Value doesn't exist.")
+    }
+
+    pub fn value_expect_mut(&mut self, at: AssignTarget) -> &mut Value {
+        self.value_mut(at).expect("Value doesn't exist mut.")
+    }
+
+    pub fn perform_deref(&self, at: AssignTarget) -> AssignTarget {
+        let local_mut = match at {
+            AssignTarget::Local(local_id) => self.local_expect(local_id),
+            AssignTarget::Field(local_id, field_index) => {
+                self.field_access_expect(local_id, field_index)
+            }
+        };
+
+        match local_mut {
+            Value::Ref(a) => self.perform_deref(*a),
+            _ => at,
+        }
     }
 }
 
@@ -478,9 +573,15 @@ impl InterpreterState {
                 }
                 BlockExitKind::Branch(operand, true_block, false_block) => {
                     let condition = match operand {
-                        Operand::Copy(local_id) => {
-                            self.execution_frame()?.local(*local_id)?.bool()?
-                        }
+                        Operand::Copy(local_id) => match local_id {
+                            AssignTarget::Local(local_id) => {
+                                self.execution_frame()?.local(*local_id)?.bool()?
+                            }
+                            AssignTarget::Field(local_id, field_index) => self
+                                .execution_frame()?
+                                .field_access(*local_id, *field_index)?
+                                .bool()?,
+                        },
                         Operand::Literal(Literal::Boolean(b)) => *b,
                         _ => {
                             eprintln!("Invalid branch operand type! {:?}", operand);
@@ -496,12 +597,7 @@ impl InterpreterState {
                     let args: Vec<_> = operands
                         .iter()
                         .map(|o| match o {
-                            Operand::Copy(local_id) => self
-                                .execution_frame()
-                                .unwrap()
-                                .local(*local_id)
-                                .expect("No local in frame?")
-                                .clone(),
+                            Operand::Copy(local) => self.perform_deref(*local).clone(),
                             Operand::Unit => Value::Unit,
                             Operand::Literal(literal) => literal.into(),
                             Operand::Const => Value::Unit,
@@ -510,7 +606,7 @@ impl InterpreterState {
                     //println!("{:?} = Call{{ {:?}, args = {:?} }} -> {:?}", local_id, owner_def_id, args, basic_block_id);
 
                     let result = self.execute_function(program, *owner_def_id, &args)?;
-                    self.perform_assignment(*local_id, result);
+                    self.perform_assignment(AssignTarget::from_local(*local_id), result);
 
                     current_block = body.block(*basic_block_id)?;
                 }
@@ -527,11 +623,10 @@ impl InterpreterState {
 
     fn eval_operand(&mut self, operand: &Operand) -> Option<Value> {
         match operand {
-            Operand::Copy(local_id) => self
-                .execution_frame()
-                .expect("Execution frame doesn't exist while evaluating operand?")
-                .local(*local_id)
-                .cloned(),
+            Operand::Copy(local) => {
+                // FIXME: Don't assume deref.
+                Some(self.perform_deref(*local).clone())
+            }
             Operand::Unit => Some(Value::Unit),
             Operand::Literal(literal) => Some(literal.into()),
             Operand::Const => {
@@ -557,17 +652,42 @@ impl InterpreterState {
 
                 rhs_value.perform_unary_op(*unary_op_kind)
             }
-            RValue::Ref(_local_id) => todo!(),
+            RValue::Ref(assign_target) => Some(Value::Ref(*assign_target)),
+            RValue::ADT(kind, operands) => match kind {
+                crate::intermediate::mir::ADTKind::Struct(_) => {
+                    let adt_values = operands
+                        .iter()
+                        .map(|o| self.eval_operand(o))
+                        .collect::<Option<Vec<_>>>();
+                    if let Some(values) = adt_values {
+                        Some(Value::ADT(ADTValueKind::Struct(values)))
+                    } else {
+                        eprintln!("Failed to evaluate all field values!");
+                        None
+                    }
+                }
+            },
         }
     }
 
-    pub fn perform_assignment(&mut self, local: LocalId, new_value: Value) {
+    pub fn perform_deref(&self, local: AssignTarget) -> &Value {
+        let frame = self.execution_frame().expect("Execution frame");
+        let derefd = frame.perform_deref(local);
+        frame.value_expect(derefd)
+    }
+
+    pub fn perform_deref_mut(&mut self, local: AssignTarget) -> &mut Value {
         let frame = self.execution_frame_mut().expect("Execution frame");
-        let local_mut = frame.local_expect_mut(local);
+        let derefd = frame.perform_deref(local);
+        frame.value_expect_mut(derefd)
+    }
+
+    pub fn perform_assignment(&mut self, target: AssignTarget, new_value: Value) {
+        let local_mut = self.perform_deref_mut(target);
         if !local_mut.are_matching_types(&new_value) && !local_mut.is_unit() {
             println!(
                 "Warning: Non matching types {:?}: {:?} => {:?}",
-                local, local_mut, new_value
+                target, local_mut, new_value
             );
         }
         *local_mut = new_value;
@@ -575,9 +695,9 @@ impl InterpreterState {
 
     pub fn execute_statement(&mut self, statement: &Statement) {
         match &statement.kind {
-            StatementKind::Assign(local_id, rvalue) => {
+            StatementKind::Assign(target, rvalue) => {
                 if let Some(new_value) = self.eval_rvalue(rvalue) {
-                    self.perform_assignment(*local_id, new_value);
+                    self.perform_assignment(*target, new_value);
                 } else {
                     eprintln!("Failed to evaluate Rvalue: {:?}", rvalue);
                 }

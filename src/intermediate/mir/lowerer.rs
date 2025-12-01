@@ -4,10 +4,11 @@ use crate::ast::Mutability;
 
 use crate::intermediate::hir::errors::LowerResult;
 use crate::intermediate::hir::nodes::{
-    Block, Expr, ExprKind, Function, LetStatement, Parameter, ResolvedID, Statement, StatementKind,
+    Block, Expr, ExprKind, Function, LetStatement, Parameter, RefPath, ResolvedID, Statement,
+    StatementKind, Type,
 };
 use crate::intermediate::hir::visitor::HLIRVisitor;
-use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+use crate::intermediate::hir::{HLIR, HirId, OwnerDefId, ProgramMetaData};
 
 use crate::intermediate::mir::{
     BasicBlock, BasicBlockId, BlockExitKind, Body, ExitDirective, LocalDefinition, LocalId,
@@ -15,6 +16,9 @@ use crate::intermediate::mir::{
 };
 // Aliases.
 use crate::intermediate::mir::{Statement as MIRStatement, StatementKind as MIRStatementKind};
+use crate::intermediate::types::KitTy;
+
+use super::AssignTarget;
 
 #[derive(Debug, Default)]
 struct HIRToMIRBlockBuilder {
@@ -27,7 +31,16 @@ impl HIRToMIRBlockBuilder {
         self.statements.is_empty()
     }
 
-    pub fn push_assign(&mut self, target: LocalId, value: RValue) {
+    #[allow(dead_code)]
+    pub fn push_field_assign(&mut self, target: LocalId, field_index: usize, value: RValue) {
+        self.push_assign(AssignTarget::Field(target, field_index), value);
+    }
+
+    pub fn push_local_assign(&mut self, target: LocalId, value: RValue) {
+        self.push_assign(AssignTarget::Local(target), value);
+    }
+
+    pub fn push_assign(&mut self, target: AssignTarget, value: RValue) {
         self.push_statement_kind(MIRStatementKind::Assign(target, value));
     }
 
@@ -57,8 +70,8 @@ impl HIRToMIRBlockBuilder {
 struct HIRToMIRFuncLowererState {
     pub parse_assign_target: bool,
     pub owner_target: Option<OwnerDefId>,
-    pub assign_target: Option<LocalId>,
-    pub last_block_target: Option<LocalId>,
+    pub assign_target: Option<AssignTarget>,
+    pub last_block_target: Option<AssignTarget>,
 
     pub loop_stack: Vec<HIRToMIRLoopState>,
 }
@@ -92,11 +105,11 @@ fn read_and_reset<T: Copy>(v: &mut Option<T>) -> Option<T> {
 }
 
 impl HIRToMIRFuncLowererState {
-    pub fn read_assign_target(&mut self) -> Option<LocalId> {
+    pub fn read_assign_target(&mut self) -> Option<AssignTarget> {
         read_and_reset(&mut self.assign_target)
     }
 
-    pub fn read_last_block_target(&mut self) -> Option<LocalId> {
+    pub fn read_last_block_target(&mut self) -> Option<AssignTarget> {
         read_and_reset(&mut self.last_block_target)
     }
 
@@ -113,7 +126,8 @@ impl HIRToMIRFuncLowererState {
     }
 }
 
-struct HIRToMIRFuncLowerer {
+struct HIRToMIRFuncLowerer<'a> {
+    pub program_meta_data: &'a ProgramMetaData,
     pub body: Body,
     pub func_owner_id: OwnerDefId,
     pub func_body_id: HirId,
@@ -125,9 +139,14 @@ struct HIRToMIRFuncLowerer {
     pub state: HIRToMIRFuncLowererState,
 }
 
-impl HIRToMIRFuncLowerer {
-    pub fn from_func_id(hlir: &HLIR, func_id: OwnerDefId) -> Option<Body> {
+impl<'a> HIRToMIRFuncLowerer<'a> {
+    pub fn from_func_id(
+        hlir: &HLIR,
+        meta_data: &'a ProgramMetaData,
+        func_id: OwnerDefId,
+    ) -> Option<Body> {
         let mut f = Self {
+            program_meta_data: meta_data,
             body: Body::new_empty(),
             func_owner_id: func_id,
             func_body_id: HirId::PLACEHOLDER_ID,
@@ -148,7 +167,7 @@ impl HIRToMIRFuncLowerer {
     }
 }
 
-impl HIRToMIRFuncLowerer {
+impl HIRToMIRFuncLowerer<'_> {
     const DEBUG_BLOCK_CREATION: bool = false;
     const DEBUG_LOOP_STATE: bool = false;
 
@@ -236,13 +255,13 @@ impl HIRToMIRFuncLowerer {
         }
 
         let builder = self.builder_mut_expect();
-        builder.push_assign(LocalId::RETURN_VALUE, RValue::unit());
+        builder.push_local_assign(LocalId::RETURN_VALUE, RValue::unit());
         builder.set_exit_kind(BlockExitKind::Return);
         self.emit_block()
     }
 }
 
-impl HIRToMIRFuncLowerer {
+impl HIRToMIRFuncLowerer<'_> {
     fn is_directive_set(&self) -> bool {
         if let Some(builder) = self.builder() {
             builder.directive.is_some()
@@ -255,15 +274,27 @@ impl HIRToMIRFuncLowerer {
         self.visit_expr_by_id(expr_id, hlir);
     }
 
-    fn new_temp_local(&mut self) -> LocalId {
+    fn get_mutability_of_local(&self, local_id: LocalId) -> Mutability {
+        self.body
+            .locals
+            .get(local_id.0 as usize)
+            .map(|l| l.mutable)
+            .unwrap_or(Mutability::Immutable)
+    }
+
+    fn new_temp_local_with_mut(&mut self, mutable: Mutability) -> LocalId {
         if self.state.assign_target.is_some() {
             println!("New local while assign target is active!");
             self.state.assign_target = None;
         }
         self.body.push_local(LocalDefinition {
-            mutable: Mutability::Immutable,
+            mutable,
             info: LocalInfo::Temp,
         })
+    }
+
+    fn new_temp_local(&mut self) -> LocalId {
+        self.new_temp_local_with_mut(Mutability::Immutable)
     }
 
     fn last_local(&mut self) -> LocalId {
@@ -271,14 +302,14 @@ impl HIRToMIRFuncLowerer {
         LocalId(locals.saturating_sub(1))
     }
 
-    fn last_target(&mut self) -> LocalId {
+    fn last_target(&mut self) -> AssignTarget {
         if let Some(assign_target) = self.state.read_assign_target() {
             return assign_target;
         }
         if let Some(block_target) = self.state.read_last_block_target() {
             return block_target;
         }
-        self.last_local()
+        self.last_local().into()
     }
 
     fn handle_resolved_id(&mut self, resolved: ResolvedID) {
@@ -286,7 +317,7 @@ impl HIRToMIRFuncLowerer {
             ResolvedID::Hir(hir_id) => {
                 if let Some(resolved_local) = self.lut.get(&hir_id).cloned() {
                     if self.state.parse_assign_target {
-                        self.state.assign_target = Some(resolved_local)
+                        self.state.assign_target = Some(resolved_local.into())
                     } else {
                         // let local = self.new_temp_local();
                         // self.builder_mut_expect()
@@ -301,10 +332,11 @@ impl HIRToMIRFuncLowerer {
             ResolvedID::OwnerDef(owner_def_id) => {
                 self.state.owner_target = Some(owner_def_id);
             }
+            ResolvedID::TypeDef(_type_id) => {}
         }
     }
 
-    fn visit_expr_assigned(&mut self, expr_id: HirId, hlir: &HLIR) -> Option<LocalId> {
+    fn visit_expr_assigned(&mut self, expr_id: HirId, hlir: &HLIR) -> Option<AssignTarget> {
         let before_locals = self.body.locals.len();
         self.visit_expr_by_id(expr_id, hlir);
         let after_locals = self.body.locals.len();
@@ -314,7 +346,7 @@ impl HIRToMIRFuncLowerer {
         } else if let Some(block_target) = self.state.read_last_block_target() {
             Some(block_target)
         } else if after_locals > before_locals {
-            Some(LocalId(after_locals.saturating_sub(1) as u32))
+            Some(LocalId(after_locals.saturating_sub(1) as u32).into())
         } else {
             None
         }
@@ -327,20 +359,20 @@ impl HIRToMIRFuncLowerer {
     }
 }
 
-impl HLIRVisitor for HIRToMIRFuncLowerer {
+impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
     fn visit_expr(&mut self, expr: &Expr, hlir: &HLIR) {
         match &expr.kind {
             ExprKind::Block(hir_id) => self.visit_block_by_id(*hir_id, hlir),
             ExprKind::Literal(literal) => {
                 let local = self.new_temp_local();
                 self.builder_mut_expect()
-                    .push_assign(local, RValue::literal(literal.clone()));
+                    .push_local_assign(local, RValue::literal(literal.clone()));
             }
             ExprKind::BinaryOp(binary_op_kind, hir_id, hir_id1) => {
                 if let Some(lhs_local) = self.visit_expr_assigned(*hir_id, hlir) {
                     if let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) {
                         let local = self.new_temp_local();
-                        self.builder_mut_expect().push_assign(
+                        self.builder_mut_expect().push_local_assign(
                             local,
                             RValue::BinaryOp(
                                 *binary_op_kind,
@@ -357,7 +389,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
             ExprKind::UnaryOp(unary_op_kind, hir_id) => {
                 if let Some(rhs_local) = self.visit_expr_assigned(*hir_id, hlir) {
                     let local = self.new_temp_local();
-                    self.builder_mut_expect().push_assign(
+                    self.builder_mut_expect().push_local_assign(
                         local,
                         RValue::UnaryOp(*unary_op_kind, Operand::Copy(rhs_local)),
                     );
@@ -405,7 +437,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                                 RValue::unit()
                             };
                         self.builder_mut_expect()
-                            .push_assign(if_result_local, true_final_assign_value);
+                            .push_local_assign(if_result_local, true_final_assign_value);
                         is_local_set = true;
                     }
 
@@ -432,7 +464,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                                     RValue::unit()
                                 };
                             self.builder_mut_expect()
-                                .push_assign(if_result_local, false_final_assign_value);
+                                .push_local_assign(if_result_local, false_final_assign_value);
                         }
 
                         let final_false_block_id = self.emit_and_replace_block().unwrap();
@@ -445,7 +477,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                     } else {
                         if !is_local_set && !has_else {
                             self.builder_mut_expect()
-                                .push_assign(if_result_local, RValue::unit());
+                                .push_local_assign(if_result_local, RValue::unit());
                         }
 
                         if let Some(BlockExitKind::Goto(last_true_goto)) =
@@ -457,7 +489,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
 
                     if is_local_set {
                         // println!("If local: {:?}", if_result_local);
-                        self.state.last_block_target = Some(if_result_local);
+                        self.state.last_block_target = Some(if_result_local.into());
                     }
                 }
             }
@@ -526,15 +558,15 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                     self.state.loop_stack.pop();
 
                     self.builder_mut_expect()
-                        .push_assign(while_result_local, RValue::unit());
-                    self.state.last_block_target = Some(while_result_local);
+                        .push_local_assign(while_result_local, RValue::unit());
+                    self.state.last_block_target = Some(while_result_local.into());
                 } else {
                     println!("No loop condition target!");
                 }
             }
             ExprKind::Assign(hir_id, hir_id1) => {
                 if let Some(target) = self.visit_expr_assigned(*hir_id, hlir) {
-                    if let Some(local) = self.body.local(target) {
+                    if let Some(local) = self.body.local(target.local_id()) {
                         if !local.mutable.is_mutable() {
                             eprintln!("Cannot assign to immutable variable!");
                         }
@@ -574,7 +606,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                                 == call_block_id,
                             "Call block id does not match expected."
                         );
-                        self.state.last_block_target = Some(call_result_slot);
+                        self.state.last_block_target = Some(call_result_slot.into());
                     } else {
                         eprintln!("Failed to get all arg local ids.");
                     }
@@ -582,10 +614,158 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                     eprintln!("Failed to get call target id.");
                 }
             }
-            // ExprKind::MethodCall(hir_id, ident, hir_ids) => todo!(),
+            ExprKind::MethodCall(hir_id, ident, args) => {
+                fn is_def_method_func(hlir: &HLIR, owner_id: OwnerDefId) -> bool {
+                    let Some(owning_node) = hlir.owning_node(owner_id) else {
+                        return false;
+                    };
+                    let Some(func) = owning_node.hir_function_ref() else {
+                        return false;
+                    };
+                    func.is_method
+                }
+
+                let Some(self_id) = self.visit_expr_assigned(*hir_id, hlir) else {
+                    eprintln!("Failed to eval target method!");
+                    return;
+                };
+                let Some(Type::Resolved(KitTy::Abstract(type_id))) =
+                    self.program_meta_data.type_map.get(hir_id)
+                else {
+                    eprintln!("Target not abstract.");
+                    return;
+                };
+
+                let to_access = self
+                    .program_meta_data
+                    .type_registry
+                    .get_from_type_id(*type_id)
+                    .expect("Type exists.");
+                let Some(assoc_def) = to_access.find_associated_def(hlir, ident.str()) else {
+                    eprintln!("Failed to find associated def!");
+                    return;
+                };
+
+                if !is_def_method_func(hlir, assoc_def) {
+                    eprintln!("Associated call is not a method!");
+                    return;
+                }
+
+                let self_arg = Operand::Copy(self_id);
+                let arg_local_ids: Option<Vec<_>> = std::iter::once(Some(self_arg))
+                    .chain(args.iter().map(|a_id| {
+                        let local_id = self.visit_expr_assigned(*a_id, hlir)?;
+                        Some(Operand::Copy(local_id))
+                    }))
+                    .collect();
+
+                if let Some(arg_ids) = arg_local_ids {
+                    if self.is_directive_set() {
+                        self.emit_and_replace_block()
+                            .expect("Emit block before method call.");
+                    }
+                    let call_block_id = self.body.next_block_id();
+                    let call_result_slot = self.new_temp_local();
+                    self.builder_mut_expect().set_exit_kind(BlockExitKind::Call(
+                        call_result_slot,
+                        assoc_def,
+                        arg_ids,
+                        call_block_id.next(),
+                    ));
+                    assert!(
+                        self.emit_and_replace_block().expect("Emit call block.") == call_block_id,
+                        "Call block id does not match expected."
+                    );
+                    self.state.last_block_target = Some(call_result_slot.into());
+                } else {
+                    eprintln!("Failed to eval all args!");
+                }
+            }
             // ExprKind::Index(hir_id, hir_id1) => todo!(),
-            // ExprKind::FieldAccess(hir_id, ident) => todo!(),
-            // ExprKind::StructInit(struct_initialisation) => todo!(),
+            ExprKind::FieldAccess(hir_id, ident) => {
+                if let Some(target_local) = self.visit_expr_assigned(*hir_id, hlir) {
+                    if let Some(Type::Resolved(KitTy::Abstract(type_id))) =
+                        self.program_meta_data.type_map.get(hir_id)
+                    {
+                        let to_access = self
+                            .program_meta_data
+                            .type_registry
+                            .get_from_type_id(*type_id)
+                            .expect("Type exists.");
+                        let Some(field_index) = to_access.find_field_index(ident.str()) else {
+                            eprintln!("Failed to find field index");
+                            return;
+                        };
+
+                        let target_local_id = target_local.local_expect();
+
+                        let local = self
+                            .new_temp_local_with_mut(self.get_mutability_of_local(target_local_id));
+                        self.builder_mut_expect().push_local_assign(
+                            local,
+                            RValue::refer(AssignTarget::Field(target_local_id, field_index)),
+                        );
+                    } else {
+                        eprintln!("Target not abstract.");
+                    }
+                } else {
+                    eprintln!("Failed to eval target field local!");
+                }
+            }
+            ExprKind::StructInit(struct_initialisation) => {
+                let RefPath::Resolved(_, resolved_id) = &struct_initialisation.ty_path else {
+                    eprintln!(
+                        "Failed to get struct init type id. {:?}",
+                        struct_initialisation.ty_path
+                    );
+                    return;
+                };
+                let ResolvedID::TypeDef(type_id) = *resolved_id else {
+                    eprintln!("Resolved id is not type id.");
+                    return;
+                };
+                if let Some(type_info) = self
+                    .program_meta_data
+                    .type_registry
+                    .get_from_type_id(type_id)
+                {
+                    if type_info.get_field_count() != struct_initialisation.fields.len() {
+                        eprintln!("Field count mismatch in initialisation!");
+                        return;
+                    }
+
+                    let mut field_values = type_info
+                        .get_fields()
+                        .iter()
+                        .map(|_| Operand::Unit)
+                        .collect::<Vec<_>>();
+
+                    for field_init in &struct_initialisation.fields {
+                        let Some(field_index) = type_info.find_field_index(field_init.ident.str())
+                        else {
+                            eprintln!("Failed to find field index for {}", field_init.ident.str());
+                            return;
+                        };
+
+                        if let Some(field_init_local) =
+                            self.visit_expr_assigned(field_init.expr, hlir)
+                        {
+                            *field_values.get_mut(field_index).expect("Field index") =
+                                Operand::Copy(field_init_local);
+                        } else {
+                            eprintln!("Failed to eval init local");
+                        }
+                    }
+
+                    let struct_local = self.new_temp_local();
+                    self.builder_mut_expect().push_local_assign(
+                        struct_local,
+                        RValue::ADT(super::ADTKind::Struct(type_id), field_values),
+                    );
+                } else {
+                    eprintln!("Failed to get type info!");
+                }
+            }
             ExprKind::Path(ref_path) => {
                 if let Some(resolved) = ref_path.resolved_id() {
                     self.handle_resolved_id(resolved);
@@ -646,7 +826,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                 };
 
                 self.builder_mut_expect()
-                    .push_assign(LocalId::RETURN_VALUE, return_value);
+                    .push_local_assign(LocalId::RETURN_VALUE, return_value);
                 self.builder_mut_expect()
                     .set_exit_kind(BlockExitKind::Return);
             }
@@ -663,7 +843,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
         if let Some(init_id) = &let_statement.initial_value {
             if let Some(target) = self.visit_expr_assigned(*init_id, hlir) {
                 self.builder_mut_expect()
-                    .push_assign(local_id, RValue::Unchanged(Operand::Copy(target)));
+                    .push_local_assign(local_id, RValue::Unchanged(Operand::Copy(target)));
             } else {
                 eprintln!("Failed to get let statement initial expression target");
             }
@@ -681,7 +861,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
                     let builder = self.builder_mut_expect();
                     builder.set_exit_kind(BlockExitKind::Return);
                     builder.push_statement_kind(MIRStatementKind::Assign(
-                        LocalId::RETURN_VALUE,
+                        AssignTarget::Local(LocalId::RETURN_VALUE),
                         RValue::Unchanged(Operand::Copy(last_local)),
                     ));
                 } else {
@@ -718,7 +898,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer {
     }
 }
 
-pub fn lower_hir_to_mir(hlir: &HLIR) -> LowerResult<MIR> {
+pub fn lower_hir_to_mir(hlir: &HLIR, type_info: &ProgramMetaData) -> LowerResult<MIR> {
     let mut bodies = HashMap::<OwnerDefId, Body>::new();
     let mut native_function_links = HashMap::<OwnerDefId, String>::new();
 
@@ -727,7 +907,9 @@ pub fn lower_hir_to_mir(hlir: &HLIR) -> LowerResult<MIR> {
             if let Some(func) = node.hir_function_ref() {
                 if func.native {
                     native_function_links.insert(i, func.ident.string());
-                } else if let Some(result_body) = HIRToMIRFuncLowerer::from_func_id(hlir, i) {
+                } else if let Some(result_body) =
+                    HIRToMIRFuncLowerer::from_func_id(hlir, type_info, i)
+                {
                     bodies.insert(i, result_body);
                 }
             }

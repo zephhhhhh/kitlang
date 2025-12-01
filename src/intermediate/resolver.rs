@@ -1,14 +1,18 @@
 use ::std::fmt::Debug;
 use std::collections::HashMap;
 
-use crate::ast::{IdentPath, IdentPathSegment, SpannedIdentPath, Visibility};
+use crate::ast::{IdentPath, IdentPathSegment, SpannedIdent, SpannedIdentPath, Visibility};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::nodes::{
-    Function, LetStatement, Module, Parameter, RefPath, ResolvedID,
+    ExprKind, Function, HIRNode, LetStatement, Module, Parameter, RefPath, ResolvedID, StructField,
+    Type,
 };
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitor, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+
+use super::hir::nodes::ItemKind;
+use super::types::KitTy;
 
 #[derive(Debug, Clone, PartialEq)]
 struct LocalScope {
@@ -191,7 +195,7 @@ pub enum NamespaceKind {
     Module,
     Function,
     Constant,
-    Struct,
+    Struct(TypeID),
     Enum,
 }
 
@@ -283,10 +287,170 @@ impl Namespace {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ADTStructField {
+    pub ident: SpannedIdent,
+    pub ty: Type,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ADTKind {
+    Struct(Vec<ADTStructField>),
+}
+
+impl ADTKind {
+    #[allow(dead_code)]
+    pub fn is_struct(&self) -> bool {
+        matches!(self, ADTKind::Struct(_))
+    }
+}
+
+#[derive(Clone)]
+pub struct ADTTypeInfo {
+    pub owner_id: OwnerDefId,
+    pub type_id: TypeID,
+    pub kind: ADTKind,
+    pub defined_in: IdentPath,
+    pub type_ident: SpannedIdent,
+    pub associated_defs: Vec<OwnerDefId>,
+}
+
+impl Debug for ADTTypeInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ADTTypeInfo")
+            .field("owner_id", &self.owner_id)
+            .field("type_id", &self.type_id)
+            .field("kind", &self.kind)
+            .field("defined_in", &self.defined_in.to_string())
+            .field("type_ident", &self.type_ident)
+            .field("associated_defs", &self.associated_defs)
+            .field("full_path", &self.full_path().to_string())
+            .finish()
+    }
+}
+
+impl ADTTypeInfo {
+    pub fn new_struct(
+        owner_id: OwnerDefId,
+        defined_in: IdentPath,
+        type_ident: SpannedIdent,
+        fields: Vec<ADTStructField>,
+    ) -> Self {
+        Self {
+            owner_id,
+            type_id: PLACEHOLDER_TYPE_ID,
+            kind: ADTKind::Struct(fields),
+            defined_in,
+            type_ident,
+            associated_defs: Vec::new(),
+        }
+    }
+
+    pub fn full_path(&self) -> IdentPath {
+        self.defined_in.extend_ident(&self.type_ident.ident())
+    }
+
+    pub fn find_associated_def(&self, hlir: &HLIR, ident: &str) -> Option<OwnerDefId> {
+        Some(
+            self.associated_defs
+                .iter()
+                .filter_map(|id| hlir.owning_node(*id)?.item())
+                .find(|i| match &i.kind {
+                    ItemKind::Module(module) => module.ident.ident().str() == ident,
+                    ItemKind::Function(function) => function.ident.str() == ident,
+                    ItemKind::Constant(constant) => constant.ident.str() == ident,
+                    _ => false,
+                })?
+                .owner_id,
+        )
+    }
+
+    pub fn get_fields(&self) -> &[ADTStructField] {
+        match &self.kind {
+            ADTKind::Struct(fields) => fields,
+        }
+    }
+
+    pub fn get_fields_mut(&mut self) -> &mut [ADTStructField] {
+        match &mut self.kind {
+            ADTKind::Struct(fields) => fields,
+        }
+    }
+
+    pub fn get_field_count(&self) -> usize {
+        self.get_fields().len()
+    }
+
+    pub fn find_field_index(&self, field_name: &str) -> Option<usize> {
+        for (index, field) in self.get_fields().iter().enumerate() {
+            if field.ident.str() == field_name {
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    pub fn get_field_by_ident(&self, field_name: &str) -> Option<&ADTStructField> {
+        self.get_fields()
+            .iter()
+            .find(|f| f.ident.str() == field_name)
+    }
+
+    pub fn get_field_by_ident_mut(&mut self, field_name: &str) -> Option<&mut ADTStructField> {
+        self.get_fields_mut()
+            .iter_mut()
+            .find(|f| f.ident.str() == field_name)
+    }
+}
+
+pub type TypeID = usize;
+const PLACEHOLDER_TYPE_ID: TypeID = usize::MAX;
+
+#[derive(Default, Clone, Debug)]
+pub struct TypeRegistry {
+    all_paths: Vec<(IdentPath, TypeID)>,
+    lut: HashMap<IdentPath, TypeID>,
+    store: Vec<ADTTypeInfo>,
+}
+
+impl TypeRegistry {
+    pub fn register_adt(&mut self, mut info: ADTTypeInfo) -> TypeID {
+        let full_path = info.defined_in.extend_ident(&info.type_ident.ident());
+
+        let type_id = self.store.len();
+        info.type_id = type_id;
+        self.store.push(info);
+
+        self.lut.insert(full_path.clone(), type_id);
+        self.all_paths.push((full_path, type_id));
+
+        type_id
+    }
+
+    pub fn get_from_type_id(&self, id: TypeID) -> Option<&ADTTypeInfo> {
+        self.store.get(id as usize)
+    }
+
+    pub fn get_from_type_id_mut(&mut self, id: TypeID) -> Option<&mut ADTTypeInfo> {
+        self.store.get_mut(id as usize)
+    }
+
+    pub fn find_type_id_from_path(&self, path: &IdentPath) -> Option<TypeID> {
+        self.lut.get(path).cloned()
+    }
+
+    pub fn adt_types(&self) -> &[ADTTypeInfo] {
+        &self.store
+    }
+}
+
 struct AssociatedReferenceMapper {
     pub path_stack: Vec<IdentPath>,
-
     pub impl_path_lut: Vec<(OwnerDefId, IdentPath)>,
+
+    pub active_adt: Option<TypeID>,
+
+    pub type_registry: TypeRegistry,
 
     pub root_namespace: Namespace,
     pub stage1_complete: bool,
@@ -300,6 +464,8 @@ impl AssociatedReferenceMapper {
         Self {
             path_stack: vec![IdentPath::from_segments(Vec::new(), true)],
             impl_path_lut: Vec::new(),
+            active_adt: None,
+            type_registry: TypeRegistry::default(),
             root_namespace: Namespace::default_root_definition(),
             stage1_complete: false,
             errors: Vec::new(),
@@ -314,7 +480,7 @@ impl AssociatedReferenceMapper {
         self.reset_path_to(IdentPath::from_segments(Vec::new(), true));
     }
 
-    pub fn map_references(&mut self, hlir: &mut HLIR) -> LowerResult<Namespace> {
+    pub fn map_references(&mut self, hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
         // Map all except impls..
         self.visit_root(hlir);
         self.stage1_complete = true;
@@ -334,7 +500,7 @@ impl AssociatedReferenceMapper {
         self.reset_path();
         self.walk_mut(hlir);
 
-        Ok(self.root_namespace.clone())
+        Ok((self.root_namespace.clone(), self.type_registry.clone()))
     }
 }
 
@@ -427,37 +593,89 @@ impl HLIRVisitor for AssociatedReferenceMapper {
         let current_path = self.current_path().clone();
         let function_ident = function.ident.string();
         let local = self.should_be_local(&current_path);
-        self.get_namespace_mut(&current_path)
-            .expect("Namespace path exists.")
-            .items
-            .insert(function_ident.clone(), Namespace {
-                ident: function_ident.clone(),
-                kind: NamespaceKind::Function,
-                items: HashMap::new(),
-                id: ResolvedID::OwnerDef(function.owner_id),
-                vis: if local {
-                    Visibility::Private
-                } else {
-                    Visibility::Public
-                },
-                local,
-            });
+
+        let namespace = self
+            .get_namespace_mut(&current_path)
+            .expect("Namespace path exists");
+
+        if namespace.items.contains_key(&function_ident) {
+            // error here.
+            // TODO: REMOVE THESE TEMP PANICS EVERYWHERE
+            panic!(
+                "Namespace {} already contains item: {}",
+                current_path, function_ident
+            );
+        }
+
+        namespace.items.insert(function_ident.clone(), Namespace {
+            ident: function_ident.clone(),
+            kind: NamespaceKind::Function,
+            items: HashMap::new(),
+            id: ResolvedID::OwnerDef(function.owner_id),
+            vis: if local {
+                Visibility::Private
+            } else {
+                Visibility::Public
+            },
+            local,
+        });
+
+        if let Some(adt_impl_ty_id) = self.active_adt {
+            if let Some(adt_info) = self.type_registry.get_from_type_id_mut(adt_impl_ty_id) {
+                adt_info.associated_defs.push(function.owner_id);
+            }
+        }
 
         self.push_to_current_path(&function_ident);
         self.super_function(function, hlir);
         self.pop_from_current_path();
     }
 
-    fn visit_struct(&mut self, structure: &super::hir::nodes::Struct, _hlir: &HLIR) {
+    fn visit_struct(&mut self, structure: &super::hir::nodes::Struct, hlir: &HLIR) {
+        fn get_field_info(node: Option<&HIRNode>) -> Option<StructField> {
+            if let HIRNode::Field(a) = node? {
+                Some(a.clone())
+            } else {
+                None
+            }
+        }
+
         let current_path = self.current_path().clone();
-        let struct_ident = structure.ident.string();
+        let adt_fields: Option<Vec<StructField>> = structure
+            .fields
+            .iter()
+            .map(|id| hlir.get_hir_node(*id))
+            .map(get_field_info)
+            .collect();
+
+        let struct_type_id = if let Some(resolved_fields) = adt_fields {
+            let fields = resolved_fields
+                .iter()
+                .map(|fi| ADTStructField {
+                    ident: fi.ident.clone(),
+                    ty: fi.ty.clone(),
+                })
+                .collect();
+
+            self.type_registry.register_adt(ADTTypeInfo::new_struct(
+                structure.owner_id,
+                self.current_path().clone(),
+                structure.ident.clone(),
+                fields,
+            ))
+        } else {
+            // idk..
+            panic!("Failed to get some resolved struct fields.");
+        };
+
         let local = self.should_be_local(&current_path);
+        let struct_ident = structure.ident.string();
         self.get_namespace_mut(&current_path)
             .expect("Namespace path exists.")
             .items
             .insert(struct_ident.clone(), Namespace {
-                ident: struct_ident.clone(),
-                kind: NamespaceKind::Struct,
+                ident: struct_ident,
+                kind: NamespaceKind::Struct(struct_type_id),
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(structure.owner_id),
                 vis: structure.vis,
@@ -510,7 +728,17 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             };
             self.impl_path_lut.push((impl_info.owner_id, impl_path));
         } else {
-            self.super_impl(impl_info, hlir);
+            // do resolve.. add associated defs to type info..
+            if let Some(impl_adt_id) = self
+                .type_registry
+                .find_type_id_from_path(self.current_path())
+            {
+                self.active_adt = Some(impl_adt_id);
+                self.super_impl(impl_info, hlir);
+                self.active_adt = None;
+            } else {
+                eprintln!("Failed to get impl adt id for '{}'", self.current_path());
+            }
         }
     }
 }
@@ -634,7 +862,243 @@ impl UnresolvedReferenceChecker {
     }
 }
 
-fn resolve_associated_references(hlir: &mut HLIR) -> LowerResult<Namespace> {
+struct TypeResolver<'a> {
+    pub current_impl: Option<Type>,
+
+    pub path_stack: Vec<IdentPath>,
+    pub type_registry: TypeRegistry,
+
+    pub root_namespace: &'a Namespace,
+
+    // TODO: Implement these errors!!
+    pub errors: Vec<LoweringError>,
+}
+
+impl<'a> TypeResolver<'a> {
+    pub fn new(root_namespace: &'a Namespace, registry: TypeRegistry) -> Self {
+        Self {
+            current_impl: None,
+            path_stack: vec![IdentPath::from_segments(Vec::new(), true)],
+            type_registry: registry,
+            root_namespace,
+            errors: Vec::new(),
+        }
+    }
+}
+
+impl TypeResolver<'_> {
+    pub fn resolve_types(&mut self, hlir: &mut HLIR) -> LowerResult<TypeRegistry> {
+        self.walk_mut(hlir);
+
+        Ok(self.type_registry.clone())
+    }
+
+    fn resolve_type(&self, path: &IdentPath) -> Option<TypeID> {
+        let final_path = if path.is_root_relative() {
+            path.clone()
+        } else {
+            path.rebase_from_path(
+                &self
+                    .root_namespace
+                    .find_previous_module(self.current_path()),
+            )
+            .expect("Not root relative.")
+        };
+
+        let def = self.root_namespace.find_definition(&final_path)?;
+        if let NamespaceKind::Struct(ty_id) = def.kind {
+            Some(ty_id)
+        } else {
+            eprintln!(
+                "Type path is not a struct: {path:?}, but instead: {:?}",
+                def.kind
+            );
+            None
+        }
+        //self.type_registry.find_type_id_from_path(&type_path)
+    }
+}
+
+impl TypeResolver<'_> {
+    pub fn current_path(&self) -> &IdentPath {
+        self.path_stack
+            .last()
+            .expect("Always has atleast 1 in stack.")
+    }
+
+    pub fn current_path_mut(&mut self) -> &mut IdentPath {
+        self.path_stack
+            .last_mut()
+            .expect("Always has atleast 1 in stack.")
+    }
+
+    pub fn push_to_current_path(&mut self, s: &str) {
+        self.current_path_mut().push(s);
+    }
+
+    pub fn pop_from_current_path(&mut self) {
+        self.current_path_mut().pop();
+    }
+
+    #[allow(dead_code)]
+    pub fn push_stack(&mut self, path: IdentPath) {
+        self.path_stack.push(path);
+    }
+
+    #[allow(dead_code)]
+    pub fn pop_stack(&mut self) {
+        self.path_stack.pop();
+    }
+}
+
+impl HLIRVisitorMut<'_> for TypeResolver<'_> {
+    fn visit_expr_mut(
+        &mut self,
+        expr: &mut super::hir::nodes::Expr,
+        hlir: &mut HLIRDisjointMut<'_>,
+    ) {
+        match &mut expr.kind {
+            ExprKind::StructInit(struct_init) => {
+                if let RefPath::Unresolved(ty_path) = &struct_init.ty_path {
+                    if let Some(type_id) = self.resolve_type(&ty_path.path) {
+                        struct_init.ty_path =
+                            RefPath::Resolved(ty_path.clone(), ResolvedID::TypeDef(type_id));
+                    } else {
+                        eprintln!("Failed to resolve struct init type!");
+                    }
+                }
+            }
+            ExprKind::MethodCall(tar, ident, args) => {}
+            _ => {}
+        }
+
+        self.super_expr_mut(expr, hlir);
+    }
+
+    fn visit_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'_>) {
+        if module.owner_id != OwnerDefId::ROOT_NODE {
+            self.push_to_current_path(module.ident.ident().str());
+            self.super_module_mut(module, hlir);
+            self.pop_from_current_path();
+        } else {
+            self.super_module_mut(module, hlir);
+        }
+    }
+
+    fn visit_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'_>) {
+        self.push_to_current_path(function.ident.str());
+        self.super_function_mut(function, hlir);
+
+        for arg in &mut function.sig.parameters {
+            match arg {
+                Type::Unresolved(crate::ast::Ty::Type(type_path)) => {
+                    if let Some(type_id) = self.resolve_type(type_path) {
+                        *arg = Type::Resolved(KitTy::Abstract(type_id));
+                    } else {
+                        eprintln!("Failed to resolve function arg type path: {:?}", arg);
+                    }
+                }
+                Type::Unresolved(crate::ast::Ty::This(_s)) => {
+                    if let Some(impl_ty) = &self.current_impl {
+                        *arg = impl_ty.clone();
+                    } else {
+                        eprintln!("Failed to resolve self function arg.");
+                    }
+                }
+                _ => {}
+            }
+            if let Type::Unresolved(crate::ast::Ty::Type(type_path)) = arg {
+                if let Some(type_id) = self.resolve_type(type_path) {
+                    *arg = Type::Resolved(KitTy::Abstract(type_id));
+                } else {
+                    eprintln!("Failed to resolve function arg type path: {:?}", arg);
+                }
+            }
+        }
+
+        if let Type::Unresolved(crate::ast::Ty::Type(type_path)) = &function.sig.output {
+            if let Some(type_id) = self.resolve_type(type_path) {
+                function.sig.output = Type::Resolved(KitTy::Abstract(type_id));
+            } else {
+                eprintln!("Failed to resolve function type path");
+            }
+        }
+
+        self.pop_from_current_path();
+    }
+
+    fn visit_struct_mut(
+        &mut self,
+        structure: &mut super::hir::nodes::Struct,
+        hlir: &mut HLIRDisjointMut<'_>,
+    ) {
+        self.push_to_current_path(structure.ident.str());
+        let current_struct_path = self.current_path().clone();
+        let Some(current_struct_type_id) = self.resolve_type(&current_struct_path) else {
+            eprintln!("Failed to resolve struct: {:?} type id!", structure.ident);
+            return;
+        };
+        for field_id in &structure.fields {
+            if let Some(HIRNode::Field(field)) = hlir.get_hir_node_mut(*field_id) {
+                let resolved_type =
+                    if let Type::Unresolved(crate::ast::Ty::Type(type_path)) = &field.ty {
+                        self.resolve_type(&type_path.path)
+                    } else {
+                        None
+                    };
+
+                if let Some(type_id) = resolved_type {
+                    field.ty = Type::Resolved(KitTy::Abstract(type_id));
+
+                    let struct_info = self
+                        .type_registry
+                        .get_from_type_id_mut(current_struct_type_id)
+                        .expect("Has to exist.");
+                    if let Some(field_info) = struct_info.get_field_by_ident_mut(field.ident.str())
+                    {
+                        field_info.ty = Type::Resolved(KitTy::Abstract(type_id));
+                    } else {
+                        eprintln!("Failed to find field info: {:?}", field.ident.str());
+                    }
+                }
+            }
+        }
+        self.pop_from_current_path();
+    }
+
+    fn visit_impl_mut(
+        &mut self,
+        impl_info: &mut super::hir::nodes::Impl,
+        hlir: &mut HLIRDisjointMut<'_>,
+    ) {
+        let impl_path = if impl_info.self_ty.is_root_relative() {
+            impl_info.self_ty.clone()
+        } else {
+            let mut ip = self.current_path().clone();
+            ip.push_path(&impl_info.self_ty);
+            ip
+        };
+
+        if let Some(type_id) = self.type_registry.find_type_id_from_path(&impl_path) {
+            self.current_impl = Some(Type::Resolved(KitTy::Abstract(type_id)));
+            self.super_impl_mut(impl_info, hlir);
+            self.current_impl = None;
+        } else {
+            eprintln!("Failed to get type id for info: {:?}", impl_info.self_ty);
+        }
+    }
+}
+
+fn resolve_types(
+    hlir: &mut HLIR,
+    root_namespace: &Namespace,
+    registry: TypeRegistry,
+) -> LowerResult<TypeRegistry> {
+    let mut resolver = TypeResolver::new(root_namespace, registry);
+    resolver.resolve_types(hlir)
+}
+
+fn resolve_associated_references(hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
     let mut resolver = AssociatedReferenceMapper::new();
     let namespaces = resolver.map_references(hlir)?;
 
@@ -650,12 +1114,13 @@ fn verify_references(hlir: &mut HLIR) -> LowerResult<()> {
     UnresolvedReferenceChecker::new().verify_references(hlir)
 }
 
-pub fn resolve_paths(hlir: &mut HLIR) -> LowerResult<Namespace> {
+pub fn resolve_paths(hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
     resolve_scope_paths(hlir)?;
-    let namespaces = resolve_associated_references(hlir)?;
+    let (namespace, mut registry) = resolve_associated_references(hlir)?;
+    registry = resolve_types(hlir, &namespace, registry)?;
 
     // Verify all references have been resolved.
     verify_references(hlir)?;
 
-    Ok(namespaces)
+    Ok((namespace, registry))
 }

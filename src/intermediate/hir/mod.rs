@@ -4,8 +4,8 @@ use crate::ast::{ASTRoot, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::nodes::{HIRNode, Item, OwningNode, OwningNodeKind};
-use crate::intermediate::resolver::{Namespace, resolve_paths};
-use crate::intermediate::type_check::run_type_checker;
+use crate::intermediate::resolver::{Namespace, TypeRegistry, resolve_paths};
+use crate::intermediate::type_check::{TypeMap, run_type_checker};
 
 mod lowerer;
 
@@ -288,6 +288,14 @@ impl Debug for HLIR {
     }
 }
 
+/// Contains metadata about the program stored in HIR, such as type information, namespace etc.
+#[derive(Debug, Clone)]
+pub struct ProgramMetaData {
+    pub namespace: Namespace,
+    pub type_registry: TypeRegistry,
+    pub type_map: TypeMap,
+}
+
 /// Lower the output of the parser stage to HIR.
 /// # Note
 /// This function does not do any later processing.
@@ -299,14 +307,20 @@ pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
 /// # Note
 /// Unlike `lower_ast_to_hir`, this function does do all HIR processing.
 /// (Type checking, resolution, etc).
-pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(Namespace, HLIR)> {
+pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData, HLIR)> {
     let mut hlir = lower_ast_to_hir(ast)?;
 
     // Resolution..
-    let namespaces = resolve_paths(&mut hlir)?;
+    let (namespaces, type_registry) = resolve_paths(&mut hlir)?;
 
     // Type checking..
-    run_type_checker(&mut hlir)?;
+    let type_map = run_type_checker(&mut hlir, &type_registry)?;
 
-    Ok((namespaces, hlir))
+    let meta_data = ProgramMetaData {
+        namespace: namespaces,
+        type_registry,
+        type_map,
+    };
+
+    Ok((meta_data, hlir))
 }

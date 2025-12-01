@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use crate::ast::{BinaryOpKind, Ident, Literal, Mutability, UnaryOpKind};
 
 use crate::intermediate::hir::OwnerDefId;
+use crate::intermediate::resolver::TypeID;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BasicBlockId(pub u32);
@@ -87,7 +88,7 @@ impl Debug for LocalDefinition {
 
 #[derive(Clone, PartialEq, PartialOrd)]
 pub enum Operand {
-    Copy(LocalId),
+    Copy(AssignTarget),
     Unit,
     Literal(Literal),
     Const, // Not sure yet
@@ -104,12 +105,18 @@ impl Debug for Operand {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ADTKind {
+    Struct(TypeID),
+}
+
 #[derive(Clone)]
 pub enum RValue {
     Unchanged(Operand),
-    Ref(LocalId),
+    Ref(AssignTarget),
     BinaryOp(BinaryOpKind, (Operand, Operand)),
     UnaryOp(UnaryOpKind, Operand),
+    ADT(ADTKind, Vec<Operand>),
 }
 
 impl Debug for RValue {
@@ -121,6 +128,17 @@ impl Debug for RValue {
                 write!(f, "BinaryOp({:?}, ({:?}, {:?}))", arg0, arg1.0, arg1.1)
             }
             Self::UnaryOp(arg0, arg1) => write!(f, "UnaryOp({:?}, {:?})", arg0, arg1),
+            Self::ADT(kind, operands) => {
+                write!(f, "ADT({:?}, ", kind)?;
+                for (i, operand) in operands.iter().enumerate() {
+                    if i == 0 {
+                        write!(f, "{:?}", operand)?;
+                    } else {
+                        write!(f, ", {:?}", operand)?;
+                    }
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -133,11 +151,82 @@ impl RValue {
     pub fn literal(literal: Literal) -> Self {
         Self::Unchanged(Operand::Literal(literal))
     }
+
+    pub fn copy(assign_target: AssignTarget) -> Self {
+        Self::Unchanged(Operand::Copy(assign_target))
+    }
+
+    pub fn refer(assign_target: AssignTarget) -> Self {
+        Self::Ref(assign_target)
+    }
+}
+
+/// Defines a `slot` that is the target for a value to be assigned or copied into.
+/// This can either be a [`LocalId`] or a `Field` defined in a [`LocalId`].
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub enum AssignTarget {
+    Local(LocalId),
+    Field(LocalId, usize /*FieldIndex*/),
+}
+
+impl AssignTarget {
+    pub fn from_local(id: LocalId) -> Self {
+        Self::Local(id)
+    }
+
+    pub fn from_field_access(id: LocalId, field_index: usize) -> Self {
+        Self::Field(id, field_index)
+    }
+
+    /// Returns either the `LocalId` if `self` is of the `Local` variant, or the `LocalId` of the
+    /// object being accessed if `self` is of the `Field` variant.
+    pub fn local_id(&self) -> LocalId {
+        match self {
+            Self::Local(local_id) | Self::Field(local_id, _) => *local_id,
+        }
+    }
+
+    /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Local` variant.
+    /// Returns `None` otherwise.
+    pub fn local(&self) -> Option<LocalId> {
+        match self {
+            AssignTarget::Local(local_id) => Some(*local_id),
+            _ => None,
+        }
+    }
+
+    /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Local` variant.
+    /// Panics otherwise.
+    pub fn local_expect(&self) -> LocalId {
+        self.local().expect("Assign target should be local!")
+    }
+
+    /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Field` assignment variant.
+    /// Returns `None` otherwise.
+    pub fn field_access(&self) -> Option<(LocalId, usize)> {
+        match self {
+            AssignTarget::Field(local_id, field_index) => Some((*local_id, *field_index)),
+            _ => None,
+        }
+    }
+
+    /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Field` assignment variant.
+    /// Panics otherwise.
+    pub fn field_access_expect(&self) -> (LocalId, usize) {
+        self.field_access()
+            .expect("Assign target should be field access!")
+    }
+}
+
+impl From<LocalId> for AssignTarget {
+    fn from(value: LocalId) -> Self {
+        Self::Local(value)
+    }
 }
 
 #[derive(Clone)]
 pub enum StatementKind {
-    Assign(LocalId, RValue),
+    Assign(AssignTarget, RValue),
 }
 
 impl Debug for StatementKind {
@@ -312,6 +401,7 @@ mod lowerer;
 
 pub fn lower_hir_to_mir(
     hlir: &crate::intermediate::hir::HLIR,
+    meta_data: &crate::intermediate::hir::ProgramMetaData,
 ) -> crate::intermediate::hir::errors::LowerResult<MIR> {
-    lowerer::lower_hir_to_mir(hlir)
+    lowerer::lower_hir_to_mir(hlir, meta_data)
 }

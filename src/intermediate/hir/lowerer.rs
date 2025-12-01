@@ -133,6 +133,7 @@ impl HLIRLowerer<'_> {
             ident: f.ident.clone(),
             vis,
             native: f.native,
+            is_method: f.is_method,
             sig: FunctionSig {
                 parameters: f
                     .sig

@@ -6,6 +6,7 @@ use crate::ast::{
     BinaryOpKind, Ident, IdentPath, Literal, Mutability, SourceSpan, SpannedIdent,
     SpannedIdentPath, Ty as ASTTy, UnaryOpKind, Visibility,
 };
+use crate::intermediate::resolver::TypeID;
 use crate::intermediate::types::KitTy;
 use paste::paste;
 
@@ -367,6 +368,7 @@ pub struct Function {
     pub ident: SpannedIdent,
     pub vis: Visibility,
     pub native: bool,
+    pub is_method: bool,
     pub sig: FunctionSig,
     pub decl_span: SourceSpan,
     pub full_span: SourceSpan,
@@ -377,6 +379,7 @@ impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Function")
             .field("ident", &self.ident.str())
+            .field("is_method", &self.is_method)
             .field("sig", &self.sig)
             .field("vis", &self.vis)
             .field("body", &self.body)
@@ -597,6 +600,7 @@ pub enum ResolvedID {
     Hir(HirId),
     Def(DefId),
     OwnerDef(OwnerDefId),
+    TypeDef(TypeID),
 }
 
 impl ResolvedID {
@@ -617,6 +621,13 @@ impl ResolvedID {
     pub fn owner_def_id(&self) -> Option<OwnerDefId> {
         match self {
             ResolvedID::OwnerDef(owner_def_id) => Some(*owner_def_id),
+            _ => None,
+        }
+    }
+
+    pub fn type_id(&self) -> Option<TypeID> {
+        match self {
+            ResolvedID::TypeDef(type_id) => Some(*type_id),
             _ => None,
         }
     }

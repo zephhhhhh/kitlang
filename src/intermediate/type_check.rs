@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::ast::{Literal, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
@@ -5,8 +7,9 @@ use crate::intermediate::hir::visitor::HLIRVisitorMut;
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 use crate::intermediate::hir::nodes::{
-    Block, Expr, ExprKind, HIRNode, ResolvedID, Statement, StatementKind, Type,
+    Block, Expr, ExprKind, HIRNode, RefPath, ResolvedID, Statement, StatementKind, Type,
 };
+use crate::intermediate::resolver::TypeRegistry;
 use crate::intermediate::types::{KitFloat, KitInt, KitTy};
 
 use super::hir::nodes::{Function, LetStatement};
@@ -19,6 +22,9 @@ macro_rules! type_fail {
     ($span: expr, $msg: expr) => {
         TypeCheckFail::new($span, $msg)
     };
+    (span, $span: expr, $($arg:tt)*) => {
+        TypeCheckFail::new($span, format!($($arg)*))
+    };
     ($hlir: expr, $id: expr, $msg: literal) => {
         TypeCheckFail::new(get_span_by_id($id, $hlir.as_ref()), $msg)
     };
@@ -26,6 +32,8 @@ macro_rules! type_fail {
         TypeCheckFail::new(get_span_by_id($id, $hlir.as_ref()), format!($($arg)*))
     };
 }
+
+pub type TypeMap = HashMap<HirId, Type>;
 
 // Type funcs
 pub type TypeResult<T> = Result<T, TypeCheckFail>;
@@ -52,23 +60,31 @@ fn statement_mut_by_id(
     }
 }
 
-#[derive(Debug, Default)]
-struct TypeChecker {
+#[derive(Debug)]
+struct TypeChecker<'a> {
+    pub type_registry: &'a TypeRegistry,
+
+    pub type_map: TypeMap,
+
     pub should_infer: bool,
 
     pub errors: Vec<TypeCheckFail>,
     pub return_type_stack: Vec<Type>,
 }
 
-impl TypeChecker {
-    pub fn new(should_infer: bool) -> Self {
+impl<'a> TypeChecker<'a> {
+    pub fn new(type_registry: &'a TypeRegistry, should_infer: bool) -> Self {
         Self {
+            type_registry,
+            type_map: TypeMap::new(),
             should_infer,
             errors: Vec::new(),
             return_type_stack: Vec::new(),
         }
     }
+}
 
+impl TypeChecker<'_> {
     pub fn push_current_return_type(&mut self, t: Type) {
         self.return_type_stack.push(t);
     }
@@ -82,7 +98,7 @@ impl TypeChecker {
     }
 }
 
-impl TypeChecker {
+impl TypeChecker<'_> {
     fn resolved_type(id: HirId, t: &Type, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<KitTy> {
         t.resolved()
             .ok_or_else(|| type_fail!(hlir.as_ref(), id, "Failed to resolve expression type."))
@@ -90,7 +106,7 @@ impl TypeChecker {
     }
 }
 
-impl TypeChecker {
+impl TypeChecker<'_> {
     fn get_func_sig_by_call_expr_id(
         id: HirId,
         hlir: &mut HLIRDisjointMut<'_>,
@@ -185,7 +201,7 @@ impl TypeChecker {
     }
 }
 
-impl TypeChecker {
+impl TypeChecker<'_> {
     fn validate_return_value(
         &mut self,
         id: HirId,
@@ -257,7 +273,9 @@ impl TypeChecker {
             .ok_or_else(|| type_fail!("Failed to get expr node."))?;
 
         if let HIRNode::Expr(expr) = node {
-            self.eval_expr_type(expr, hlir)
+            let expr_ty = self.eval_expr_type(expr, hlir)?;
+            self.type_map.insert(id, expr_ty.clone());
+            Ok(expr_ty)
         } else {
             Err(type_fail!(node.span(), "Node is not an expression."))
         }
@@ -402,16 +420,141 @@ impl TypeChecker {
 
                 Ok(func_return_type)
             }
-            // ExprKind::MethodCall(hir_id, ident, hir_ids) => todo!(),
+            ExprKind::MethodCall(hir_id, ident, arg_ids) => {
+                let expr_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
+                let user_params = arg_ids
+                    .iter()
+                    .map(|id| Ok((self.eval_expr_type_by_id(*id, hlir)?, *id)))
+                    .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
+
+                match expr_ty {
+                    Type::Resolved(KitTy::Abstract(type_id)) => {
+                        let type_info = self
+                            .type_registry
+                            .get_from_type_id(type_id)
+                            .expect("Type exists");
+                        let Some(assoc_def) =
+                            type_info.find_associated_def(hlir.nonmut_ref(), ident.str())
+                        else {
+                            return Err(type_fail!(
+                                hlir,
+                                *hir_id,
+                                "Can't find associated def '{:?}'",
+                                ident
+                            ));
+                        };
+
+                        let node = hlir.nonmut_ref().owning_node(assoc_def).expect("Exists");
+                        let Some(func) = node.hir_function_ref() else {
+                            return Err(type_fail!(
+                                hlir,
+                                *hir_id,
+                                "Can't find func def '{:?}'",
+                                ident
+                            ));
+                        };
+
+                        assert!(func.is_method, "Func is not a method?");
+
+                        if func.sig.parameters.len() != user_params.len().wrapping_add(1) {
+                            return Err(type_fail!(
+                                hlir,
+                                *hir_id,
+                                "Method called with incorrect number of arguments! Expected: {}, Supplied: {}",
+                                func.sig.parameters.len().saturating_sub(1),
+                                user_params.len(),
+                            ));
+                        }
+
+                        let arg_compare_iter =
+                            func.sig.parameters.iter().skip(1).zip(user_params.iter());
+                        for (expected, (provided, prov_id)) in arg_compare_iter {
+                            if expected != provided {
+                                return Err(type_fail!(
+                                    hlir,
+                                    *prov_id,
+                                    "Method parameter type mismatch. Expected: {}, Found: {}",
+                                    expected,
+                                    provided
+                                ));
+                            }
+                        }
+
+                        Ok(func.sig.output.clone())
+                    }
+                    Type::Unresolved(t) => Err(type_fail!(
+                        hlir,
+                        *hir_id,
+                        "Method access type unresolved. {:?}",
+                        t
+                    )),
+                    Type::Resolved(t) => Err(type_fail!(
+                        hlir,
+                        *hir_id,
+                        "Can't access methods of type: {:?}",
+                        t
+                    )),
+                }
+            }
             // ExprKind::Index(hir_id, hir_id1) => todo!(),
-            // ExprKind::FieldAccess(hir_id, ident) => todo!(),
-            // ExprKind::StructInit(struct_initialisation) => todo!(),
+            ExprKind::FieldAccess(hir_id, ident) => {
+                let expr_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
+                match expr_ty {
+                    Type::Resolved(KitTy::Abstract(type_id)) => {
+                        let type_info = self
+                            .type_registry
+                            .get_from_type_id(type_id)
+                            .expect("Type exists");
+                        if let Some(field) = type_info.get_field_by_ident(ident.str()) {
+                            Ok(field.ty.clone())
+                        } else {
+                            Err(type_fail!(hlir, *hir_id, "Can't find field '{:?}'", ident))
+                        }
+                    }
+                    Type::Unresolved(t) => Err(type_fail!(
+                        hlir,
+                        *hir_id,
+                        "Field access type unresolved. {:?}",
+                        t
+                    )),
+                    Type::Resolved(t) => Err(type_fail!(
+                        hlir,
+                        *hir_id,
+                        "Can't access fields of type: {:?}",
+                        t
+                    )),
+                }
+            }
+            ExprKind::StructInit(struct_initialisation) => {
+                if let RefPath::Resolved(_, r) = struct_initialisation.ty_path {
+                    if let ResolvedID::TypeDef(type_id) = r {
+                        struct_initialisation
+                            .fields
+                            .iter()
+                            .map(|si| Ok((self.eval_expr_type_by_id(si.expr, hlir)?, si.expr)))
+                            .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
+
+                        Ok(Type::Resolved(KitTy::Abstract(type_id)))
+                    } else {
+                        Err(type_fail!(
+                            struct_initialisation.ty_path.span(),
+                            "Incorrect struct initialisation resolved type?"
+                        ))
+                    }
+                } else {
+                    Err(type_fail!(
+                        struct_initialisation.ty_path.span(),
+                        "Struct initialisation type not resolved?"
+                    ))
+                }
+            }
             ExprKind::Path(ref_path) => {
                 if let Some(resolved_id) = ref_path.resolved_id() {
                     match resolved_id {
                         ResolvedID::Hir(hir_id) => self.eval_non_expr_hir_id(hir_id, hlir),
                         ResolvedID::Def(_def_id) => todo!(),
                         ResolvedID::OwnerDef(_owner_def_id) => todo!(),
+                        ResolvedID::TypeDef(_type_id) => todo!(),
                     }
                 } else {
                     Err(type_fail!(
@@ -569,7 +712,7 @@ impl TypeChecker {
     }
 }
 
-impl HLIRVisitorMut<'_> for TypeChecker {
+impl HLIRVisitorMut<'_> for TypeChecker<'_> {
     fn visit_block_mut(&mut self, block: &mut Block, hlir: &mut HLIRDisjointMut<'_>) {
         // Note: Routing the visit block call like this stops all visit_expr_, etc.. from being
         // called.
@@ -603,8 +746,8 @@ impl TypeCheckFail {
 /// This function will run the type checker stage on the resolved HIR output.
 /// This will validate that all type rules are followed, as well as fill in any types that must be
 /// inferred from context.
-pub fn run_type_checker(hlir: &mut HLIR) -> LowerResult<()> {
-    let mut checker = TypeChecker::new(true);
+pub fn run_type_checker(hlir: &mut HLIR, type_registry: &TypeRegistry) -> LowerResult<TypeMap> {
+    let mut checker = TypeChecker::new(type_registry, true);
 
     checker.walk_mut(hlir);
 
@@ -613,6 +756,6 @@ pub fn run_type_checker(hlir: &mut HLIR) -> LowerResult<()> {
             checker.errors,
         )))
     } else {
-        Ok(())
+        Ok(checker.type_map)
     }
 }

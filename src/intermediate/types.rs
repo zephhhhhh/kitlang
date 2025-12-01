@@ -1,4 +1,7 @@
-use crate::ast::{BinaryOpKind, Ty as ASTTy, UnaryOpKind};
+use crate::{
+    ast::{BinaryOpKind, Ty as ASTTy, UnaryOpKind},
+    intermediate::resolver::TypeID,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitInt {
@@ -130,7 +133,8 @@ pub enum KitTy {
     Char,
     String,
     // Structs, etc..
-    Abstract, // TODO: Array, Tuple..
+    Abstract(TypeID),
+    // TODO: Array, Tuple..
 }
 
 impl KitTy {
@@ -159,7 +163,7 @@ impl KitTy {
             KitTy::Boolean => matches!(other, KitTy::Boolean),
             KitTy::Char => matches!(other, KitTy::Char),
             KitTy::String => matches!(other, KitTy::String),
-            KitTy::Abstract => false,
+            KitTy::Abstract(_) => false,
         }
     }
 
@@ -194,7 +198,7 @@ impl KitTy {
                 UnaryOpKind::Dereference => todo!(),
                 _ => None,
             },
-            KitTy::Abstract => {
+            KitTy::Abstract(_) => {
                 println!("Tried to do abstract result type for unary.");
                 None
             }
@@ -352,7 +356,7 @@ impl KitTy {
             KitTy::Boolean => boolean_result_type(other, op_kind),
             KitTy::Char => char_result_type(other, op_kind),
             KitTy::String => string_result_type(other, op_kind),
-            KitTy::Abstract => {
+            KitTy::Abstract(_) => {
                 println!("Tried to do abstract result type.");
                 None
             }
@@ -431,7 +435,7 @@ impl KitTy {
             KitTy::Boolean => Some("bool".into()),
             KitTy::Char => Some("char".into()),
             KitTy::String => Some("string".into()),
-            KitTy::Abstract => None,
+            KitTy::Abstract(_) => None,
         }
     }
 }
