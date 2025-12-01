@@ -43,6 +43,7 @@ impl Parser<'_, '_> {
             })?;
         let func_sig_span = self.finish_span(func_sig_span_start);
 
+        let mut is_method = false;
         for (i, arg) in function_arguments.iter().enumerate() {
             if arg.ident.str() == "self" {
                 if !from_impl_block {
@@ -55,6 +56,8 @@ impl Parser<'_, '_> {
                         ParseErrorKind::SelfMustBeFirstArgument,
                         arg.span,
                     ));
+                } else {
+                    is_method = true;
                 }
             }
         }
@@ -102,6 +105,7 @@ impl Parser<'_, '_> {
             native,
             function_sig,
             decl_span,
+            is_method,
             function_body,
         )));
 

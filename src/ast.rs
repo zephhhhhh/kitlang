@@ -86,7 +86,7 @@ pub type IdentPathSegments = Vec<IdentPathSegment>;
 /// # Notes
 /// A path can be defined as relative to the root "module" instead of the current scope by starting the path
 /// with the seperator, such as: `::Struct::Function`.
-#[derive(Clone, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Hash)]
 pub enum IdentPath {
     /// The path is relative to the root "module"
     RootRelative(IdentPathSegments),
@@ -239,6 +239,29 @@ impl IdentPath {
                 self.push(segment);
             }
         }
+    }
+
+    /// Create a new [`IdentPath`] with `s` appended on to the end of `self`.
+    pub fn extend(&self, s: &str) -> Self {
+        let mut c = self.clone();
+        c.push(s);
+        c
+    }
+
+    /// Create a new [`IdentPath`] with `ident` appended on to the end of `self`.
+    /// # Note
+    /// This is a convenience wrapper for `self.extend` and will convert the ident into a [`str`].
+    pub fn extend_ident(&self, ident: &Ident) -> Self {
+        self.extend(ident.str())
+    }
+
+    /// Create a new [`IdentPath`] with each path segment of `path` appended on to the end of `self`.
+    pub fn extend_path(&self, path: &IdentPath) -> Self {
+        let mut c = self.clone();
+        for s in path.segments() {
+            c.push(s);
+        }
+        c
     }
 }
 
@@ -1248,6 +1271,7 @@ pub struct Function {
     pub native: bool,
     pub sig: FunctionSig,
     pub decl_span: SourceSpan,
+    pub is_method: bool,
     pub body: Option<Box<Block>>,
 }
 
@@ -1258,6 +1282,7 @@ impl Function {
         native: bool,
         sig: FunctionSig,
         decl_span: SourceSpan,
+        is_method: bool,
         body: Option<Box<Block>>,
     ) -> Self {
         Self {
@@ -1265,6 +1290,7 @@ impl Function {
             native,
             sig,
             decl_span,
+            is_method,
             body,
         }
     }
@@ -1275,6 +1301,7 @@ impl Debug for Function {
         f.debug_struct("Function")
             .field("ident", &self.ident.str())
             .field("sig", &self.sig)
+            .field("method", &self.is_method)
             .field("body", &self.body)
             .finish()
     }
