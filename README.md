@@ -1,66 +1,151 @@
 # Kitlang
 
-Kitlang is a hobby language project inspired by rust, designed to be embedded in programs 
-as a plugin/extension/modding language.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
 
-TODO...
+A statically-typed, Rust-inspired programming language designed for embedding as a plugin, extension, or modding language.
 
-# Kitlang stages
-## Tokeniser
-- Tokeniser takes the raw input source code text and transforms it into individual tokens for easier processing.
-## Parser
-- Parser takes in the output of the tokeniser as input, and performs "syntactic analysis" on the tokens, building out the 
-meaning for the sequence of tokens, but at this stage everything is still referenced using strings. Another way of putting this
-would be that none of the references to other functions or variables are resolved at this stage, but just that the overall structure
-and meaning of the code is laid out in memory. The output of this stage is called the AST (Abstract syntax tree).
-## Lowering to HIR (High-level intermediate representation)
-- This stage will first build out all the definitions in each file into a data structure for searching and resolving.
-- After this we walk the AST and attempt to resolve first the relative paths if used, I.e. `use` statements or `Project::Struct::Function`
-references, while we do this we build out a scope structure to keep track of local declarations, function parameters to see if referenced
-values are valid. For example that they are referenced after declared and not before etc.
-## Type checking
-- After everything is resolved, we then do type checking. This ensures all operations on types are valid, function arguments are 
-supplied the expected type, the return type matches the declared type, assignments have the same type on both sides, etc.
-- This is also where type propagation is performed for "Infer" types.
-## Lowering to MIR (Middle-level Intermediate Respresentation) / Optimisation
-- This stage would involve further lowering the representation to something closer to what a compiler would ultimately output in assembly,
-this form would be easier to optimise, but is optional.
-## Code generation / Execution
-- Either the type-checking stage or the MIR output is a valid representation to start either generating assembly code output,
-or feeding into an interpreter for execution.
+> **Note**: Kitlang is a hobby project for personal use and demonstrating compiler construction principles. Kitlang is still a work in progress and many features are either not implemented entirely, only partially implemented, or is still in progress of being tested and worked on. Kitlang is _**NOT**_ ready for any serious application in it's current state and using it as such may lead to instability and undefined behaviour.
 
-# Interpreter
-## Notes
-The current interpreter implementation is almost entirely subject to change, as it stands the interpreter will interpret the MIR directly. Eventually this MIR will be lowered further into actually assembly instructions before being assembled into a final executable.
+## Features
 
-# To-do list
-## Parser
-- Improve type parsing.
-- Implement array expressions/types.
-- Implement tuple expressions/types.
-- Implement type casting expressions.
-- Implement assign binary operations.
+- **Rust-like Syntax**: Familiar syntax for developers with Rust experience.
+- **Static Type System**: Strong type checking with type inference support.
+- **Safety**: Ownership-inspired semantics and compile-time safety checks.
+- **Flexible**: Separation of data and code, does not force object-orientation.
 
-## HIR
-### Resolver
-- Factor in "use" statements when resolving.
-- Correctly resolve local only references.
+## Example Kitlang Code
 
-### Eventually:
-- Implement enums and match statements.
+```rust
+pub struct Vec2 {
+    x: f32,
+    y: f32,
+}
 
-# Timeline
-## High priority
-- Add proper error handling like in the parser for other stages of the compiler.
-- Add documentation for HIR and MIR and interpreter.
-- Add documentation for the [`Visitor`] traits.
-- Create tests for HIR and MIR lowering.
+impl Vec2 {
+    pub fn distance_sqr(self, other: Vec2) -> f32 {
+        let x_diff = other.x - self.x;
+        let y_diff = other.y - self.y;
+        (x_diff * x_diff) + (y_diff * y_diff)
+    }
+}
 
-## Medium priority
-- Implement `Use` statement.
-- Revisit renaming especially for parser.
-- Add proper logging for things that are not diagnostic but for compiler debugging.
+pub fn main() {
+    let coord_1 = Vec2 { x: 5, y: 0 };
+    let coord_2 = Vec2 { x: 10, y: 10 };
 
-## Low Priority
-- Update syntax docs.
-- Add proper configuration (This will be especially important to add when working on the `Use` statement)
+    let distance_squared = coord_1.distance_sqr(coord_2);
+
+    println("Distance squared: " + to_string(distance_squared));
+}
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Rust 2024 edition (nightly is currently required for some features)
+- Cargo
+
+### Installation
+
+Add Kitlang to your `Cargo.toml`:
+
+```toml
+[dependencies]
+kitlang = { git = "https://github.com/zephhhhhh/kitlang" }
+```
+
+Or clone the repository:
+
+```bash
+git clone https://github.com/zephhhhhh/kitlang.git
+cd kitlang
+cargo build --release
+```
+
+### Basic Usage
+
+```rust
+fn main() {
+    // TODO.. Add basic embedded use example..
+}
+```
+
+## Architecture
+
+Kitlang follows a traditional multi-pass compiler architecture:
+
+### 1. **Lexer** (Tokenization)
+- Converts raw source code into a stream of tokens for syntactic analysis.
+
+### 2. **Parser** (Syntactic Analysis)
+- Builds an Abstract Syntax Tree (AST) from tokens. At this stage, identifiers are unresolved strings, representing the structure but not the semantic meaning.
+
+### 3. **HIR Lowering** (High-level Intermediate Representation)
+- Builds a definition registry for name resolution
+- Resolves paths (e.g., `use` statements, `Module::Struct::method`)
+- Constructs scope chains for local variables and function parameters
+
+### 4. **Type Checking**
+- Validates type correctness for all operations
+- Ensures function signatures match call sites
+- Verifies assignment type compatibility
+- Performs type inference for variables declared with no specified type
+
+### 5. **MIR Lowering** (Mid-level Intermediate Representation)
+- Transforms HIR into a simplified representation closer to assembly language, suitable for optimization passes, runtime interpretation and in future, compilation down into a native executable.
+
+### 6. **Interpretation / Code Generation**
+- Currently executes MIR directly via an interpreter. Future plans include lowering to assembly for native execution.
+
+## Project Structure
+
+```
+kitlang/
+└── src/
+    ├── lexer.rs           # Tokenization
+    ├── parser/            # Syntax analysis
+    ├── ast.rs             # Abstract Syntax Tree definitions
+    ├── intermediate/      # HIR, type checking, MIR
+    │   ├── hir/           # High-level IR
+    │   ├── mir/           # Mid-level IR
+    │   ├── resolver.rs    # Name resolution
+    │   └── type_check.rs  # Type system
+    └── interpreter/       # MIR interpreter
+```
+
+## Development Status and roadmap
+
+See [here](TODOs.md) for detailed roadmap and priorities.
+
+## Testing
+
+Run the test suite:
+
+```bash
+cargo test
+```
+
+Run specific test modules:
+
+```bash
+cargo test lexer
+```
+### Note
+Currently the test suite is limited in coverage and only covers the lexer stage. A more comprehensive test suite is in the roadmap for the near future.
+
+## Documentation
+
+- [Syntax Reference](Syntax.md) - Language syntax specification
+- [MIR Desugaring](mir_desugar.md) - MIR transformation details
+- API documentation: `cargo doc --open`
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Inspired by the syntax of the [Rust programming language](https://www.rust-lang.org/)
+- Rough project and compiler architecture influenced by the [rustc compiler](https://github.com/rust-lang/rust)

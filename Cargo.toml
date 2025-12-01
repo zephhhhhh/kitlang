@@ -1,16 +1,19 @@
 [package]
 name = "kitlang"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["zephhhhhh"]
+license = "MIT"
+description = "A statically-typed, Rust-inspired programming language designed for embedding"
+repository = "https://github.com/zephhhhhh/kitlang"
+keywords = ["compiler", "interpreter", "language", "embedded", "scripting"]
+categories = ["compilers", "scripting", "addon-support"]
 
 [lib]
 crate-type = ["lib"]
 
 [dependencies]
 unicode-xid = "0.2.6"
-thiserror = "2.0.12"
+thiserror = "2.0.17"
 slotmap = "1.0.7"
 paste = "1.0.15"
-# TODO: Re-implement this..
-rustc-arena-modified = "0.1.1"
