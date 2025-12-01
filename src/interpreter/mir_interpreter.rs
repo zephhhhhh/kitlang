@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use crate::ast::{BinaryOpKind, Literal, UnaryOpKind};
@@ -713,6 +714,15 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
+    pub fn new_with_program(program: ProgramType) -> Option<Self> {
+        let state = InterpreterState::new(&program)?;
+
+        Some(Self {
+            program: Some(RefCell::new(program)),
+            state: Some(state),
+        })
+    }
+
     pub fn load_program(&mut self, program: ProgramType) -> Option<()> {
         self.state = Some(InterpreterState::new(&program)?);
         self.program = Some(RefCell::new(program));
@@ -735,5 +745,50 @@ impl Interpreter {
         }
 
         None
+    }
+}
+
+pub type RegisterNativeFns = fn(interpreter: &mut Interpreter);
+
+fn internal_execute_mir(
+    interpreter: &mut Interpreter,
+    time_execution: bool,
+) -> crate::KitlangResult<Value> {
+    let (result_value, execution_time) = if time_execution {
+        crate::profiling::measure_execution(|| interpreter.execute_from_entry())
+    } else {
+        (interpreter.execute_from_entry(), Duration::ZERO)
+    };
+
+    if time_execution {
+        // TODO: Replace with logging...
+        println!(
+            "[Profiling] Program executed in {}.",
+            crate::profiling::format_duration(execution_time)
+        );
+    }
+
+    match result_value {
+        Some(v) => Ok(v),
+        None => Err(crate::KitlangError::ExecutionEndedUnexpectedly),
+    }
+}
+
+pub fn execute_mir_with_native_functions(
+    mir: MIR,
+    meta_data: &crate::prelude::ProgramMetaData,
+    register_fns: RegisterNativeFns,
+    time_execution: bool,
+) -> crate::KitlangResult<Value> {
+    if let Some(mut interpreter) = Interpreter::new_with_program(Program::new(
+        mir,
+        meta_data.type_registry.clone(),
+        meta_data.namespace.clone(),
+    )) {
+        register_fns(&mut interpreter);
+
+        internal_execute_mir(&mut interpreter, time_execution)
+    } else {
+        Err(crate::KitlangError::FailedToFindEntryPoint)
     }
 }

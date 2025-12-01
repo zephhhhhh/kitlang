@@ -42,3 +42,14 @@ macro_rules! impl_native_fn_interface {
 }
 
 impl_native_fn_interface!(MIR, MIRInterpreterState, MIRValue);
+
+#[macro_export]
+macro_rules! register_native_fn {
+    ($interpreter: expr, $fn: ident) => {
+        $interpreter.register_native_function(stringify!($fn), $fn);
+    };
+    ($interpreter: expr, $fn: ident, $($rest: ident),+) => {
+        register_native_fn!($interpreter, $fn);
+        register_native_fn!($interpreter, $($rest),*);
+    }
+}

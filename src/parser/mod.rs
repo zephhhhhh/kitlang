@@ -6,8 +6,10 @@ use crate::ast::{
 };
 
 use crate::lexer::tokenise_stripped;
-use crate::parser::errors::{PResult, ParseError, ParseErrorKind};
+use crate::parser::errors::PResult;
 use crate::token::{Keyword, Punctuation, Token, TokenKind};
+
+pub use crate::parser::errors::{ParseError, ParseErrorKind};
 
 mod errors;
 mod expr;

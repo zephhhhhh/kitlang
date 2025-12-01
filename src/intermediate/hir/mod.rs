@@ -2,10 +2,12 @@ use ::std::fmt::Debug;
 
 use crate::ast::{ASTRoot, SourceSpan};
 
-use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
+use crate::intermediate::hir::errors::LowerResult;
 use crate::intermediate::hir::nodes::{HIRNode, Item, OwningNode, OwningNodeKind};
 use crate::intermediate::resolver::{Namespace, TypeRegistry, resolve_paths};
 use crate::intermediate::type_check::{TypeMap, run_type_checker};
+
+pub use crate::intermediate::hir::errors::{LoweringError, LoweringErrorKind};
 
 mod lowerer;
 
