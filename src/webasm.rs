@@ -35,10 +35,11 @@ pub fn wasm_execute_source_string(source: &str) -> Result<JsValue, JsValue> {
             native fn to_lower(s: string) -> string;
             native fn println(s: string);
             native fn is_empty(s: string) -> bool;
-            native fn int_to_string(i: int) -> string;
+            native fn int_to_string(i: i32) -> string;
+
         "#;
 
-        let final_str = source.to_string() + definitions;
+        let final_str = definitions.to_string() + source;
 
         internal_execute_source_string(&final_str)
     } else {
