@@ -6,7 +6,11 @@ use crate::ast::{BinaryOpKind, Ident, Literal, Mutability, UnaryOpKind};
 use crate::intermediate::hir::OwnerDefId;
 use crate::intermediate::resolver::TypeID;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BasicBlockId(pub u32);
 
 impl BasicBlockId {
@@ -29,6 +33,7 @@ impl Debug for BasicBlockId {
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct LocalId(pub u32);
 
 impl LocalId {
@@ -164,6 +169,7 @@ impl RValue {
 /// Defines a `slot` that is the target for a value to be assigned or copied into.
 /// This can either be a [`LocalId`] or a `Field` defined in a [`LocalId`].
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AssignTarget {
     Local(LocalId),
     Field(LocalId, usize /*FieldIndex*/),

@@ -428,11 +428,11 @@ impl TypeRegistry {
     }
 
     pub fn get_from_type_id(&self, id: TypeID) -> Option<&ADTTypeInfo> {
-        self.store.get(id as usize)
+        self.store.get(id)
     }
 
     pub fn get_from_type_id_mut(&mut self, id: TypeID) -> Option<&mut ADTTypeInfo> {
-        self.store.get_mut(id as usize)
+        self.store.get_mut(id)
     }
 
     pub fn find_type_id_from_path(&self, path: &IdentPath) -> Option<TypeID> {
@@ -488,11 +488,11 @@ impl AssociatedReferenceMapper {
         // Manually traverse impl items..
         let impls = self.impl_path_lut.clone();
         for (impl_id, impl_path) in impls {
-            if let Some(node) = hlir.owning_node(impl_id) {
-                if let Some(impl_info) = node.hir_impl_ref() {
-                    self.reset_path_to(impl_path);
-                    self.visit_impl(impl_info, hlir);
-                }
+            if let Some(node) = hlir.owning_node(impl_id)
+                && let Some(impl_info) = node.hir_impl_ref()
+            {
+                self.reset_path_to(impl_path);
+                self.visit_impl(impl_info, hlir);
             }
         }
 
@@ -568,18 +568,21 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             self.get_namespace_mut(&current_path)
                 .expect("Namespace path exists.")
                 .items
-                .insert(module_ident.clone(), Namespace {
-                    ident: module_ident.clone(),
-                    kind: NamespaceKind::Module,
-                    items: HashMap::new(),
-                    id: ResolvedID::OwnerDef(module.owner_id),
-                    vis: if local {
-                        Visibility::Private
-                    } else {
-                        Visibility::Public
+                .insert(
+                    module_ident.clone(),
+                    Namespace {
+                        ident: module_ident.clone(),
+                        kind: NamespaceKind::Module,
+                        items: HashMap::new(),
+                        id: ResolvedID::OwnerDef(module.owner_id),
+                        vis: if local {
+                            Visibility::Private
+                        } else {
+                            Visibility::Public
+                        },
+                        local,
                     },
-                    local,
-                });
+                );
 
             self.push_to_current_path(&module_ident);
             self.super_module(module, hlir);
@@ -607,23 +610,26 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             );
         }
 
-        namespace.items.insert(function_ident.clone(), Namespace {
-            ident: function_ident.clone(),
-            kind: NamespaceKind::Function,
-            items: HashMap::new(),
-            id: ResolvedID::OwnerDef(function.owner_id),
-            vis: if local {
-                Visibility::Private
-            } else {
-                Visibility::Public
+        namespace.items.insert(
+            function_ident.clone(),
+            Namespace {
+                ident: function_ident.clone(),
+                kind: NamespaceKind::Function,
+                items: HashMap::new(),
+                id: ResolvedID::OwnerDef(function.owner_id),
+                vis: if local {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                },
+                local,
             },
-            local,
-        });
+        );
 
-        if let Some(adt_impl_ty_id) = self.active_adt {
-            if let Some(adt_info) = self.type_registry.get_from_type_id_mut(adt_impl_ty_id) {
-                adt_info.associated_defs.push(function.owner_id);
-            }
+        if let Some(adt_impl_ty_id) = self.active_adt
+            && let Some(adt_info) = self.type_registry.get_from_type_id_mut(adt_impl_ty_id)
+        {
+            adt_info.associated_defs.push(function.owner_id);
         }
 
         self.push_to_current_path(&function_ident);
@@ -673,14 +679,17 @@ impl HLIRVisitor for AssociatedReferenceMapper {
         self.get_namespace_mut(&current_path)
             .expect("Namespace path exists.")
             .items
-            .insert(struct_ident.clone(), Namespace {
-                ident: struct_ident,
-                kind: NamespaceKind::Struct(struct_type_id),
-                items: HashMap::new(),
-                id: ResolvedID::OwnerDef(structure.owner_id),
-                vis: structure.vis,
-                local,
-            });
+            .insert(
+                struct_ident.clone(),
+                Namespace {
+                    ident: struct_ident,
+                    kind: NamespaceKind::Struct(struct_type_id),
+                    items: HashMap::new(),
+                    id: ResolvedID::OwnerDef(structure.owner_id),
+                    vis: structure.vis,
+                    local,
+                },
+            );
     }
 
     fn visit_enum(&mut self, enumeration: &super::hir::nodes::Enum, _hlir: &HLIR) {
@@ -690,14 +699,17 @@ impl HLIRVisitor for AssociatedReferenceMapper {
         self.get_namespace_mut(&current_path)
             .expect("Namespace path exists.")
             .items
-            .insert(struct_ident.clone(), Namespace {
-                ident: struct_ident.clone(),
-                kind: NamespaceKind::Enum,
-                items: HashMap::new(),
-                id: ResolvedID::OwnerDef(enumeration.owner_id),
-                vis: enumeration.vis,
-                local,
-            });
+            .insert(
+                struct_ident.clone(),
+                Namespace {
+                    ident: struct_ident.clone(),
+                    kind: NamespaceKind::Enum,
+                    items: HashMap::new(),
+                    id: ResolvedID::OwnerDef(enumeration.owner_id),
+                    vis: enumeration.vis,
+                    local,
+                },
+            );
     }
 
     fn visit_constant(&mut self, constant: &super::hir::nodes::Constant, _hlir: &HLIR) {
@@ -707,14 +719,17 @@ impl HLIRVisitor for AssociatedReferenceMapper {
         self.get_namespace_mut(&current_path)
             .expect("Namespace path exists.")
             .items
-            .insert(const_ident.clone(), Namespace {
-                ident: const_ident.clone(),
-                kind: NamespaceKind::Constant,
-                items: HashMap::new(),
-                id: ResolvedID::OwnerDef(constant.owner_id),
-                vis: constant.vis,
-                local,
-            });
+            .insert(
+                const_ident.clone(),
+                Namespace {
+                    ident: const_ident.clone(),
+                    kind: NamespaceKind::Constant,
+                    items: HashMap::new(),
+                    id: ResolvedID::OwnerDef(constant.owner_id),
+                    vis: constant.vis,
+                    local,
+                },
+            );
     }
 
     fn visit_impl(&mut self, impl_info: &super::hir::nodes::Impl, hlir: &HLIR) {

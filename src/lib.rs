@@ -20,6 +20,9 @@ pub mod profiling;
 pub mod spanned_error;
 pub mod token;
 
+#[cfg(feature = "webasm")]
+pub mod webasm;
+
 // Outward facing API..
 
 /// Represents errors from different stages in the compilation process.

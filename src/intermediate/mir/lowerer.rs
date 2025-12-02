@@ -154,15 +154,16 @@ impl<'a> HIRToMIRFuncLowerer<'a> {
             block_stack: Vec::new(),
             state: HIRToMIRFuncLowererState::default(),
         };
-        if let Some(node) = hlir.owning_node(func_id) {
-            if let Some(func) = node.hir_function_ref() {
-                if let Some(func_body) = &func.body {
-                    f.func_body_id = func_body.block;
-                    f.visit_function(func, hlir);
-                    return Some(f.body);
-                }
-            }
+
+        if let Some(node) = hlir.owning_node(func_id)
+            && let Some(func) = node.hir_function_ref()
+            && let Some(func_body) = &func.body
+        {
+            f.func_body_id = func_body.block;
+            f.visit_function(func, hlir);
+            return Some(f.body);
         }
+
         None
     }
 }
@@ -238,18 +239,18 @@ impl HIRToMIRFuncLowerer<'_> {
         }
 
         let next_block_id = self.body.next_block_id();
-        if let Some(builder) = self.builder_mut() {
-            if let Some(exit_kind) = &builder.directive {
-                match exit_kind {
-                    BlockExitKind::Goto(goto_target) => {
-                        if *goto_target != next_block_id {
-                            self.emit_and_replace_block();
-                        }
-                    }
-                    BlockExitKind::Return => return self.emit_block(),
-                    _ => {
+        if let Some(builder) = self.builder_mut()
+            && let Some(exit_kind) = &builder.directive
+        {
+            match exit_kind {
+                BlockExitKind::Goto(goto_target) => {
+                    if *goto_target != next_block_id {
                         self.emit_and_replace_block();
                     }
+                }
+                BlockExitKind::Return => return self.emit_block(),
+                _ => {
+                    self.emit_and_replace_block();
                 }
             }
         }
@@ -566,10 +567,10 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
             }
             ExprKind::Assign(hir_id, hir_id1) => {
                 if let Some(target) = self.visit_expr_assigned(*hir_id, hlir) {
-                    if let Some(local) = self.body.local(target.local_id()) {
-                        if !local.mutable.is_mutable() {
-                            eprintln!("Cannot assign to immutable variable!");
-                        }
+                    if let Some(local) = self.body.local(target.local_id())
+                        && !local.mutable.is_mutable()
+                    {
+                        eprintln!("Cannot assign to immutable variable!");
                     }
                     if let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) {
                         self.builder_mut_expect()
@@ -903,15 +904,14 @@ pub fn lower_hir_to_mir(hlir: &HLIR, type_info: &ProgramMetaData) -> LowerResult
     let mut native_function_links = HashMap::<OwnerDefId, String>::new();
 
     for i in hlir.owner_id_iter() {
-        if let Some(node) = hlir.owning_node(i) {
-            if let Some(func) = node.hir_function_ref() {
-                if func.native {
-                    native_function_links.insert(i, func.ident.string());
-                } else if let Some(result_body) =
-                    HIRToMIRFuncLowerer::from_func_id(hlir, type_info, i)
-                {
-                    bodies.insert(i, result_body);
-                }
+        if let Some(node) = hlir.owning_node(i)
+            && let Some(func) = node.hir_function_ref()
+        {
+            if func.native {
+                native_function_links.insert(i, func.ident.string());
+            } else if let Some(result_body) = HIRToMIRFuncLowerer::from_func_id(hlir, type_info, i)
+            {
+                bodies.insert(i, result_body);
             }
         }
     }

@@ -191,21 +191,21 @@ impl SpannedErrorBuilder {
             final_output += header_line;
         }
 
-        if self.show_location {
-            if let Some(first_line) = self.lines.first() {
-                let file_name = self
-                    .file_name
-                    .as_ref()
-                    .map(|f| format!("{f}:"))
-                    .unwrap_or_default();
-                let line = first_line.line_number;
-                let char_index = self
-                    .error_span
-                    .start
-                    .saturating_sub(first_line.line_start_global_index)
-                    .saturating_add(1);
-                final_output += &format!("  --> {file_name}{line}:{char_index}\n");
-            }
+        if self.show_location
+            && let Some(first_line) = self.lines.first()
+        {
+            let file_name = self
+                .file_name
+                .as_ref()
+                .map(|f| format!("{f}:"))
+                .unwrap_or_default();
+            let line = first_line.line_number;
+            let char_index = self
+                .error_span
+                .start
+                .saturating_sub(first_line.line_start_global_index)
+                .saturating_add(1);
+            final_output += &format!("  --> {file_name}{line}:{char_index}\n");
         }
 
         if self.pad_around_source_view {

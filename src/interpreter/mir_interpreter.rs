@@ -12,6 +12,9 @@ use crate::intermediate::mir::{
 use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeRegistry};
 use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub namespace: Namespace,
@@ -32,6 +35,7 @@ impl Program {
 pub type ProgramType = Program;
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ADTValueKind {
     Struct(Vec<Value>),
 }
@@ -45,6 +49,7 @@ impl std::fmt::Display for ADTValueKind {
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Value {
     #[default]
     Unit,
@@ -737,11 +742,11 @@ impl Interpreter {
     }
 
     pub fn execute_from_entry(&mut self) -> Option<Value> {
-        if let Some(state) = self.state.as_mut() {
-            if let Some(program) = self.program.as_ref() {
-                let program_ref = program.borrow();
-                return state.execute_from_entry(&program_ref);
-            }
+        if let Some(state) = self.state.as_mut()
+            && let Some(program) = self.program.as_ref()
+        {
+            let program_ref = program.borrow();
+            return state.execute_from_entry(&program_ref);
         }
 
         None
