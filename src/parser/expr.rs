@@ -23,7 +23,7 @@ impl Parser<'_, '_> {
         if let Some(puncts) = self.get_punctuation_sequence::<2>(offset) {
             if !matches!(
                 puncts[1],
-                Punctuation::Bang | Punctuation::Minus | Punctuation::Star | Punctuation::OpenParen
+                Punctuation::Bang | Punctuation::Minus | Punctuation::Star | Punctuation::OpenParen | Punctuation::Colon
             ) {
                 return Ok(match puncts {
                     [Punctuation::Eq, Punctuation::Eq] => Some(BinaryOpKind::Equal),
