@@ -39,7 +39,7 @@ pub fn wasm_execute_source_string(source: &str) -> Result<JsValue, JsValue> {
 
         "#;
 
-        let final_str = definitions.to_string() + source;
+        let final_str = source.to_string() + definitions;
 
         internal_execute_source_string(&final_str)
     } else {
