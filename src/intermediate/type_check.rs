@@ -250,16 +250,30 @@ impl TypeChecker<'_> {
             HIRNode::Param(parameter) => {
                 Self::get_type_of_function_param(parameter.fn_id, id, id.id.0, hlir)
             }
-            HIRNode::Block(_block) => todo!(),
-            HIRNode::Expr(_expr) => todo!(),
             HIRNode::Statement(statement) => match &statement.kind {
                 StatementKind::Let(let_statement) => Ok(let_statement.ty.clone()),
-                StatementKind::Item(_owner_def_id) => todo!(),
-                StatementKind::Expr(_hir_id) => todo!(),
-                StatementKind::Semi(_hir_id) => todo!(),
+                StatementKind::Item(_owner_def_id) => Err(type_fail!(
+                    hlir,
+                    id,
+                    "eval non-expression of item statement not implemented."
+                )),
+                StatementKind::Expr(_hir_id) => Err(type_fail!(
+                    hlir,
+                    id,
+                    "eval non-expression of item expr not implemented."
+                )),
+                StatementKind::Semi(_hir_id) => Err(type_fail!(
+                    hlir,
+                    id,
+                    "eval non-expression of item semi-expr not implemented."
+                )),
             },
-            HIRNode::Field(_struct_field) => todo!(),
-            HIRNode::Path(_ref_path) => todo!(),
+            invalid_for_non_expr => Err(type_fail!(
+                hlir,
+                id,
+                "Node is not valid for non-expression type eval: {:?}",
+                invalid_for_non_expr
+            )),
         }
     }
 
@@ -496,7 +510,7 @@ impl TypeChecker<'_> {
                     )),
                 }
             }
-            // ExprKind::Index(hir_id, hir_id1) => todo!(),
+            // ExprKind::Index(hir_id, hir_id1) => {},
             ExprKind::FieldAccess(hir_id, ident) => {
                 let expr_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
                 match expr_ty {
@@ -552,9 +566,19 @@ impl TypeChecker<'_> {
                 if let Some(resolved_id) = ref_path.resolved_id() {
                     match resolved_id {
                         ResolvedID::Hir(hir_id) => self.eval_non_expr_hir_id(hir_id, hlir),
-                        ResolvedID::Def(_def_id) => todo!(),
-                        ResolvedID::OwnerDef(_owner_def_id) => todo!(),
-                        ResolvedID::TypeDef(_type_id) => todo!(),
+                        ResolvedID::Def(_def_id) => {
+                            Err(type_fail!(hlir, expr.id, "Def resolution not implemented."))
+                        }
+                        ResolvedID::OwnerDef(_owner_def_id) => Err(type_fail!(
+                            hlir,
+                            expr.id,
+                            "Owner def resolution not implemented."
+                        )),
+                        ResolvedID::TypeDef(_type_id) => Err(type_fail!(
+                            hlir,
+                            expr.id,
+                            "Type def resolution not implemented."
+                        )),
                     }
                 } else {
                     Err(type_fail!(
@@ -659,9 +683,11 @@ impl TypeChecker<'_> {
                 self.eval_and_infer_let_statement(statement.id, let_statement, hlir)?;
                 Ok(Type::unit())
             }
-            StatementKind::Item(_owner_def_id) => {
-                todo!("TODO ITEM!");
-            }
+            StatementKind::Item(_owner_def_id) => Err(type_fail!(
+                hlir,
+                statement.id,
+                "Eval item statement not implemented."
+            )),
             StatementKind::Expr(expr_id) => self.eval_expr_type_by_id(*expr_id, hlir),
             StatementKind::Semi(expr_id) => {
                 self.eval_expr_type_by_id(*expr_id, hlir)?;

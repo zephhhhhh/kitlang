@@ -1,5 +1,5 @@
-use paste::paste;
 use super::mir_interpreter::Value as MIRValue;
+use paste::paste;
 
 macro_rules! impl_native_fn_interface {
     ($ident: ident, $interpreter_ty: ty, $value_ty: ty) => {

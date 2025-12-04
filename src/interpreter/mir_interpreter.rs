@@ -146,27 +146,27 @@ impl Value {
         match self {
             Value::Unit => None,
             Value::Integer(i) => match op {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(Value::Integer(!i)),
                 UnaryOpKind::Negate => Some(Value::Integer(-i)),
             },
             Value::UnsignedInteger(i) => match op {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(Value::UnsignedInteger(!i)),
                 UnaryOpKind::Negate => None,
             },
             Value::Float(f) => match op {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => None,
                 UnaryOpKind::Negate => Some(Value::Float(-f)),
             },
             Value::String(_s) => match op {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => None,
                 UnaryOpKind::Negate => None,
             },
             Value::Boolean(b) => match op {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(Value::Boolean(!b)),
                 UnaryOpKind::Negate => None,
             },

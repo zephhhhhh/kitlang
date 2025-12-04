@@ -113,8 +113,10 @@ impl Parser<'_, '_> {
                 Keyword::This => self.parse_self(),
                 Keyword::Break => self.parse_break(),
                 _ => {
-                    println!("Not implemented: {:?}", kw);
-                    todo!()
+                    return Err(ParseError::new(
+                        ParseErrorKind::UnimplementedFeature(format!("Keyword: {:?}", kw)),
+                        token,
+                    ));
                 }
             },
             TokenKind::Ident(_) | TokenKind::Punctuation(Punctuation::Colon) => {
@@ -232,7 +234,12 @@ impl Parser<'_, '_> {
                 self.cursor.advance();
                 kind
             }
-            _ => todo!(),
+            _ => {
+                return Err(ParseError::new(
+                    ParseErrorKind::UnknownLiteralKind(token.kind.clone()),
+                    self.finish_span(span_start),
+                ));
+            }
         };
 
         Ok(Expression::new_boxed(

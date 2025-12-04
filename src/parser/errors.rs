@@ -67,6 +67,11 @@ pub enum ParseErrorKind {
 
     #[error("A function marked 'native' cannot define a function body")]
     NativeFunctionCannotDefineABody,
+
+    #[error("Feature not implemented: {0}")]
+    UnimplementedFeature(String),
+    #[error("Unknown literal kind: {0:?}")]
+    UnknownLiteralKind(TokenKind),
 }
 
 /// Represents an error while parsing the [`Token`]s

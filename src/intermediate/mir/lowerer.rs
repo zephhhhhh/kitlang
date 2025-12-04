@@ -693,7 +693,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     eprintln!("Failed to eval all args!");
                 }
             }
-            // ExprKind::Index(hir_id, hir_id1) => todo!(),
+            // ExprKind::Index(hir_id, hir_id1) => {},
             ExprKind::FieldAccess(hir_id, ident) => {
                 if let Some(target_local) = self.visit_expr_assigned(*hir_id, hlir) {
                     if let Some(Type::Resolved(KitTy::Abstract(type_id))) =
@@ -831,7 +831,12 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     if let Some(target) = self.visit_expr_assigned(*return_expr_id, hlir) {
                         RValue::Unchanged(Operand::Copy(target))
                     } else {
-                        panic!("Failed to get return value expression.");
+                        self.errors
+                            .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                                "Failed to get return value expression".to_string(),
+                                hlir.span_by_hir_id(*return_expr_id),
+                            )));
+                        RValue::unit()
                     }
                 } else {
                     RValue::unit()

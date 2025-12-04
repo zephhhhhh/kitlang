@@ -7,7 +7,7 @@ use crate::intermediate::hir::nodes::{
     Parameter, RefPath, Statement, StatementKind, Struct, StructField, StructFieldInit,
     StructInitialisation, Type, UsePath,
 };
-use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+use crate::intermediate::hir::{HLIR, HirId, LoweringError, LoweringErrorKind, OwnerDefId};
 
 struct HLIRLowerer<'a> {
     hlir: &'a mut HLIR,
@@ -29,7 +29,10 @@ impl HLIRLowerer<'_> {
             }
             _ => {
                 // This shouldn't be possible..
-                panic!("Non-allowed item type in impl block?");
+                Err(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                    "Non-allowed item type in impl block?".into(),
+                    Some(item.span),
+                )))
             }
         }
     }
@@ -383,7 +386,10 @@ impl HLIRLowerer<'_> {
         if let HIRNode::Block(block) = self.hlir.get_hir_node_mut_unchecked(block_id) {
             block.statements = statement_node_ids;
         } else {
-            panic!("WHAT");
+            Err(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                "Failed to get block node after insertion?? WHAT".into(),
+                None,
+            )))?;
         }
 
         Ok(block_id)

@@ -665,34 +665,38 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 .insert(function_ident.clone(), function.owner_id);
         }
 
-        let namespace = self
+        if self
             .get_namespace_mut(&current_path)
-            .expect("Namespace path exists");
-
-        if namespace.items.contains_key(&function_ident) {
-            // error here.
-            // TODO: REMOVE THESE TEMP PANICS EVERYWHERE
-            panic!(
-                "Namespace {} already contains item: {}",
-                current_path, function_ident
-            );
+            .expect("Namespace path exists")
+            .items
+            .contains_key(&function_ident)
+        {
+            self.errors
+                .push(LoweringError::new(LoweringErrorKind::ItemAlreadyDefined(
+                    function.ident.span,
+                    function_ident.clone(),
+                    current_path.to_string(),
+                )));
         }
 
-        namespace.items.insert(
-            function_ident.clone(),
-            Namespace {
-                ident: function_ident.clone(),
-                kind: NamespaceKind::Function,
-                items: HashMap::new(),
-                id: ResolvedID::OwnerDef(function.owner_id),
-                vis: if local {
-                    Visibility::Private
-                } else {
-                    Visibility::Public
+        self.get_namespace_mut(&current_path)
+            .expect("Namespace path exists")
+            .items
+            .insert(
+                function_ident.clone(),
+                Namespace {
+                    ident: function_ident.clone(),
+                    kind: NamespaceKind::Function,
+                    items: HashMap::new(),
+                    id: ResolvedID::OwnerDef(function.owner_id),
+                    vis: if local {
+                        Visibility::Private
+                    } else {
+                        Visibility::Public
+                    },
+                    local,
                 },
-                local,
-            },
-        );
+            );
 
         if let Some(adt_impl_ty_id) = self.active_adt
             && let Some(adt_info) = self.type_registry.get_from_type_id_mut(adt_impl_ty_id)
@@ -739,7 +743,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             ))
         } else {
             // idk..
-            panic!("Failed to get some resolved struct fields.");
+            // TODO: REDO THESE ERRORS.
+            self.errors
+                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                    "Failed to get some resolved struct fields.".to_string(),
+                    Some(structure.ident.span),
+                )));
+            0
         };
 
         let local = self.should_be_local(&current_path);

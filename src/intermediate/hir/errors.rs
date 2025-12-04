@@ -31,6 +31,13 @@ pub enum LoweringErrorKind {
 
     #[error("Cannot assign to an immutable variable.")]
     CannotAssignToImmutableVariable(SourceSpan),
+
+    #[error("Item '{1}' is already defined within the scope '{2}'!")]
+    ItemAlreadyDefined(SourceSpan, String, String),
+
+    // TODO: REMOVE THIS LATER.
+    #[error("{0}")]
+    RemoveMeMessage(String, Option<SourceSpan>),
 }
 
 /// Represents an error while parsing the [`ASTRoot`] into High-level IR.
@@ -84,6 +91,25 @@ impl LoweringError {
                     .print_header_line("Cannot assign to an immutable variable.")
                     .generate_highlight()
                     .generate_output()
+            }
+            LoweringErrorKind::ItemAlreadyDefined(span, item, scope) => {
+                SpannedErrorBuilder::new(source_string, *span)
+                    .print_header_line(format!(
+                        "Item '{}' is already defined within the scope '{}'.",
+                        item, scope
+                    ))
+                    .generate_highlight()
+                    .generate_output()
+            }
+            LoweringErrorKind::RemoveMeMessage(msg, span) => {
+                if let Some(span) = span {
+                    SpannedErrorBuilder::new(source_string, *span)
+                        .print_header_line(msg)
+                        .generate_highlight()
+                        .generate_output()
+                } else {
+                    msg.clone()
+                }
             }
             e => format!("Failed to lower to HIR: {:?}", e),
         }

@@ -27,7 +27,8 @@ impl KitInt {
 
     pub fn bit_width(&self) -> u64 {
         match *self {
-            KitInt::ISize => todo!(),
+            // For now we will just use the size of a I64 on all targets.
+            KitInt::ISize => 64,
             KitInt::I8 => 8,
             KitInt::I16 => 16,
             KitInt::I32 => 32,
@@ -171,31 +172,31 @@ impl KitTy {
         match self {
             KitTy::Unit => None,
             KitTy::Int(kit_int) => match op_kind {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(KitTy::Int(*kit_int)),
                 UnaryOpKind::Negate => Some(KitTy::Int(*kit_int)),
             },
             KitTy::UInt(kit_uint) => match op_kind {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(KitTy::UInt(*kit_uint)),
                 UnaryOpKind::Negate => None,
             },
             KitTy::Float(kit_float) => match op_kind {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => None,
                 UnaryOpKind::Negate => Some(KitTy::Float(*kit_float)),
             },
             KitTy::Boolean => match op_kind {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(KitTy::Boolean),
                 UnaryOpKind::Negate => None,
             },
             KitTy::Char => match op_kind {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 _ => None,
             },
             KitTy::String => match op_kind {
-                UnaryOpKind::Dereference => todo!(),
+                UnaryOpKind::Dereference => None,
                 _ => None,
             },
             KitTy::Abstract(_) => {
