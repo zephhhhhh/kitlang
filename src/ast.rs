@@ -154,6 +154,10 @@ impl IdentPath {
     }
 
     pub fn rebase_from_path(&self, base_path: &Self) -> Self {
+        if self.is_root_relative() {
+            return self.clone();
+        }
+
         let mut segments = base_path.segments().to_vec();
         segments.extend_from_slice(self.segments());
 
