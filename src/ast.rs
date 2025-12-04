@@ -274,6 +274,24 @@ impl IdentPath {
         }
         c
     }
+
+    /// Returns true if `self` is a subpath of `other`.
+    pub fn is_subpath_of(&self, other: &IdentPath) -> bool {
+        let self_segments = self.segments();
+        let other_segments = other.segments();
+
+        if self_segments.len() < other_segments.len() {
+            return false;
+        }
+
+        for (i, segment) in other_segments.iter().enumerate() {
+            if self_segments[i] != *segment {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 impl Display for IdentPath {

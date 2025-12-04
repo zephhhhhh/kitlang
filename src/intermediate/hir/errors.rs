@@ -61,17 +61,31 @@ impl LoweringError {
     pub fn format_as_error_message(&self, source_string: &str) -> String {
         match &self.error_kind {
             LoweringErrorKind::UnresolvedReferences(unresolved_references) => {
-                if let Some(first_error) = unresolved_references.references.first() {
-                    SpannedErrorBuilder::new(source_string, first_error.path.span)
-                        .print_header_line(format!(
-                            "Failed to resolve reference '{}'",
-                            first_error.path.path.to_ident().str()
-                        ))
+                let mut final_output = String::new();
+                for unresolved in &unresolved_references.references {
+                    if !final_output.is_empty() {
+                        final_output += "\n";
+                    }
+                    let header_line = match unresolved.failure {
+                        crate::intermediate::resolver::ResolutionFailure::NotFound => {
+                            format!(
+                                "Failed to resolve reference '{}'",
+                                unresolved.path.path.to_ident().str()
+                            )
+                        }
+                        crate::intermediate::resolver::ResolutionFailure::Inaccessible => {
+                            format!(
+                                "Cannot access referenced item '{}'",
+                                unresolved.path.path.to_ident().str()
+                            )
+                        }
+                    };
+                    final_output += &SpannedErrorBuilder::new(source_string, unresolved.path.span)
+                        .print_header_line(&header_line)
                         .generate_highlight()
-                        .generate_output()
-                } else {
-                    format!("Unresolved references: {:?}", unresolved_references)
+                        .generate_output();
                 }
+                final_output
             }
             LoweringErrorKind::TypeCheckFail(fails) => {
                 let mut final_output = String::new();
