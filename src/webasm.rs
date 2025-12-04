@@ -126,7 +126,7 @@ fn i32_to_string(a: &[Value]) -> String {
     String::new()
 }
 
-fn string_to_int(a: &[Value]) -> i32 {
+fn string_to_i32(a: &[Value]) -> i32 {
     if let Some(Value::String(s)) = a.first()
         && let Ok(i) = s.parse::<i32>()
     {
