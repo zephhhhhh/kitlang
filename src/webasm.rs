@@ -112,14 +112,14 @@ fn register_native_functions(interpreter: &mut Interpreter) {
         input_placeholder,
         to_lower,
         is_empty,
-        int_to_string,
-        string_to_int
+        i32_to_string,
+        string_to_i32
     );
 }
 
 // "Compiler" defined intrinsics.
 
-fn int_to_string(a: &[Value]) -> String {
+fn i32_to_string(a: &[Value]) -> String {
     if let Some(Value::Integer(i)) = a.first() {
         return i.to_string();
     }

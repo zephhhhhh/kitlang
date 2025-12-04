@@ -36,7 +36,7 @@ pub fn main() {
 
     let distance_squared = coord_1.distance_sqr(coord_2);
 
-    println("Distance squared: " + to_string(distance_squared));
+    println("Distance squared: " + i32_to_string(distance_squared));
 }
 ```
 
@@ -145,7 +145,7 @@ Currently the test suite is limited in coverage and only covers the lexer stage.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
+## Acknowledgements
 
 - Inspired by the syntax of the [Rust programming language](https://www.rust-lang.org/)
 - Rough project and compiler architecture influenced by the [rustc compiler](https://github.com/rust-lang/rust)
