@@ -36,7 +36,7 @@ pub fn main() {
 
     let distance_squared = coord_1.distance_sqr(coord_2);
 
-    println("Distance squared: " + i32_to_string(distance_squared));
+    println("Distance squared: " + f32_to_string(distance_squared));
 }
 ```
 

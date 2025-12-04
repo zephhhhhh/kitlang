@@ -113,7 +113,9 @@ fn register_native_functions(interpreter: &mut Interpreter) {
         to_lower,
         is_empty,
         i32_to_string,
-        string_to_i32
+        string_to_i32,
+        f32_to_string,
+        string_to_f32
     );
 }
 
@@ -133,6 +135,22 @@ fn string_to_i32(a: &[Value]) -> i32 {
         return i;
     }
     0
+}
+
+fn f32_to_string(a: &[Value]) -> String {
+    if let Some(Value::Float(f)) = a.first() {
+        return f.to_string();
+    }
+    String::new()
+}
+
+fn string_to_f32(a: &[Value]) -> f32 {
+    if let Some(Value::String(s)) = a.first()
+        && let Ok(f) = s.parse::<f32>()
+    {
+        return f;
+    }
+    0.0
 }
 
 fn is_empty(a: &[Value]) -> bool {
