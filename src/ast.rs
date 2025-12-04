@@ -142,7 +142,7 @@ impl IdentPath {
         Self::from_segments(segments.to_vec(), root_relative)
     }
 
-    pub fn rebase_from_path(&self, base_path: &Self) -> Option<Self> {
+    pub fn rebase_from_path_safe(&self, base_path: &Self) -> Option<Self> {
         if self.is_root_relative() {
             return None;
         }
@@ -153,7 +153,14 @@ impl IdentPath {
         Some(Self::from_segments(segments, base_path.is_root_relative()))
     }
 
-    pub fn rebase_from_string(&self, base_str: impl AsRef<str>) -> Option<Self> {
+    pub fn rebase_from_path(&self, base_path: &Self) -> Self {
+        let mut segments = base_path.segments().to_vec();
+        segments.extend_from_slice(self.segments());
+
+        Self::from_segments(segments, base_path.is_root_relative())
+    }
+
+    pub fn rebase_from_string(&self, base_str: impl AsRef<str>) -> Self {
         let base_path = Self::new(base_str);
         self.rebase_from_path(&base_path)
     }

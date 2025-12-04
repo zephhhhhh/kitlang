@@ -683,11 +683,7 @@ impl TypeChecker<'_> {
                 self.eval_and_infer_let_statement(statement.id, let_statement, hlir)?;
                 Ok(Type::unit())
             }
-            StatementKind::Item(_owner_def_id) => Err(type_fail!(
-                hlir,
-                statement.id,
-                "Eval item statement not implemented."
-            )),
+            StatementKind::Item(owner_def_id) => self.eval_owner_def(*owner_def_id, hlir),
             StatementKind::Expr(expr_id) => self.eval_expr_type_by_id(*expr_id, hlir),
             StatementKind::Semi(expr_id) => {
                 self.eval_expr_type_by_id(*expr_id, hlir)?;
@@ -735,6 +731,44 @@ impl TypeChecker<'_> {
             }
         }
         Ok(Type::unit())
+    }
+
+    fn eval_owner_def(
+        &mut self,
+        owner_def_id: OwnerDefId,
+        hlir: &mut HLIRDisjointMut<'_>,
+    ) -> TypeResult<Type> {
+        let Some(owning_node) = hlir.get_owning_node_mut(owner_def_id) else {
+            let span = hlir
+                .nonmut_ref()
+                .span_by_owner_id(owner_def_id)
+                .expect("Owning span exist.");
+            return Err(type_fail!(
+                span,
+                span,
+                "Eval owner def, failed to get owning node? {:?}",
+                owner_def_id
+            ));
+        };
+        let Some(owning_node_item) = owning_node.item_mut() else {
+            let span = owning_node.span().expect("Owning node span exists.");
+            return Err(type_fail!(
+                span,
+                span,
+                "Failed to get owning node item? Should be impossible."
+            ));
+        };
+        match &mut owning_node_item.kind {
+            super::hir::nodes::ItemKind::Function(function) => {
+                self.visit_function_mut(function, hlir);
+                Ok(Type::unit())
+            }
+            super::hir::nodes::ItemKind::Use(_use_path) => Ok(Type::unit()),
+            _not_eval => {
+                // These items are not evaluated by the type checker.
+                Ok(Type::unit())
+            }
+        }
     }
 }
 

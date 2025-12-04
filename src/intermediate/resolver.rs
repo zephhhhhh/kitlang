@@ -264,10 +264,11 @@ impl Namespace {
     }
 
     pub fn find_previous_module_from(&self, base: &IdentPath, path: &IdentPath) -> IdentPath {
-        let Some(final_path) = path.rebase_from_path(base) else {
-            return IdentPath::new_empty(true);
-        };
-        self.find_previous_module(&final_path)
+        // let Some(final_path) = path.rebase_from_path(base) else {
+        //     return IdentPath::new_empty(true);
+        // };
+        // self.find_previous_module(&final_path)
+        self.find_previous_module(&path.rebase_from_path(base))
     }
 
     pub fn find_definition_from_segments(&self, path: &[IdentPathSegment]) -> Option<&Namespace> {
@@ -283,7 +284,7 @@ impl Namespace {
     }
 
     pub fn find_definition_from(&self, base: &IdentPath, path: &IdentPath) -> Option<&Namespace> {
-        let final_path = path.rebase_from_path(base)?;
+        let final_path = path.rebase_from_path(base);
         self.find_definition_from_segments(final_path.segments())
     }
 }
@@ -564,6 +565,29 @@ impl AssociatedReferenceMapper {
         self.walk_mut(hlir);
 
         Ok((self.root_namespace.clone(), self.type_registry.clone()))
+    }
+
+    pub fn search_for_definition(
+        &self,
+        ident_path: &IdentPath,
+        base_path: &IdentPath,
+    ) -> Option<ResolvedID> {
+        let previous_major_scope = self.root_namespace.find_previous_module(base_path);
+
+        if ident_path.len() == 1
+            && let Some(id) = self.global_functions.get(ident_path.path_stem())
+        {
+            Some(ResolvedID::OwnerDef(*id))
+        } else if let Some(def) = self
+            .root_namespace
+            .find_definition(&ident_path.rebase_from_path(base_path))
+        {
+            Some(def.id)
+        } else {
+            self.root_namespace
+                .find_definition(&ident_path.rebase_from_path(&previous_major_scope))
+                .map(|def| def.id)
+        }
     }
 }
 
@@ -880,26 +904,11 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
     fn visit_path_mut(&mut self, _id: HirId, path: &mut RefPath, _hlir: &mut HLIRDisjointMut<'_>) {
         if !path.is_resolved() {
             let ident_path = path.ident_path();
-            let final_path = if ident_path.is_root_relative() {
-                ident_path.clone()
-            } else {
-                ident_path
-                    .rebase_from_path(
-                        &self
-                            .root_namespace
-                            .find_previous_module(self.current_path()),
-                    )
-                    .expect("Not root relative.")
-            };
-
-            if ident_path.len() == 1
-                && let Some(id) = self.global_functions.get(ident_path.path_stem())
-            {
-                path.resolve_to(ResolvedID::OwnerDef(*id));
-                println!("Found as global function: {}", final_path);
-            } else if let Some(def) = self.root_namespace.find_definition(&final_path) {
-                path.resolve_to(def.id);
+            if let Some(resolved) = self.search_for_definition(ident_path, self.current_path()) {
+                path.resolve_to(resolved);
             }
+            // No need to report the error, it will be reported automatically in the verification
+            // pass.
         }
     }
 
@@ -1016,16 +1025,11 @@ impl TypeResolver<'_> {
     }
 
     fn resolve_type(&self, path: &IdentPath) -> Option<TypeID> {
-        let final_path = if path.is_root_relative() {
-            path.clone()
-        } else {
-            path.rebase_from_path(
-                &self
-                    .root_namespace
-                    .find_previous_module(self.current_path()),
-            )
-            .expect("Not root relative.")
-        };
+        let final_path = path.rebase_from_path(
+            &self
+                .root_namespace
+                .find_previous_module(self.current_path()),
+        );
 
         let def = self.root_namespace.find_definition(&final_path)?;
         if let NamespaceKind::Struct(ty_id) = def.kind {
