@@ -8,7 +8,9 @@ use crate::intermediate::hir::nodes::{
     StatementKind, Type,
 };
 use crate::intermediate::hir::visitor::HLIRVisitor;
-use crate::intermediate::hir::{HLIR, HirId, OwnerDefId, ProgramMetaData};
+use crate::intermediate::hir::{
+    HLIR, HirId, LoweringError, LoweringErrorKind, OwnerDefId, ProgramMetaData,
+};
 
 use crate::intermediate::mir::{
     BasicBlock, BasicBlockId, BlockExitKind, Body, ExitDirective, LocalDefinition, LocalId,
@@ -137,6 +139,8 @@ struct HIRToMIRFuncLowerer<'a> {
     pub block_stack: Vec<HIRToMIRBlockBuilder>,
 
     pub state: HIRToMIRFuncLowererState,
+
+    pub errors: Vec<LoweringError>,
 }
 
 impl<'a> HIRToMIRFuncLowerer<'a> {
@@ -144,7 +148,7 @@ impl<'a> HIRToMIRFuncLowerer<'a> {
         hlir: &HLIR,
         meta_data: &'a ProgramMetaData,
         func_id: OwnerDefId,
-    ) -> Option<Body> {
+    ) -> Result<Body, Vec<LoweringError>> {
         let mut f = Self {
             program_meta_data: meta_data,
             body: Body::new_empty(),
@@ -153,6 +157,7 @@ impl<'a> HIRToMIRFuncLowerer<'a> {
             lut: HashMap::new(),
             block_stack: Vec::new(),
             state: HIRToMIRFuncLowererState::default(),
+            errors: Vec::new(),
         };
 
         if let Some(node) = hlir.owning_node(func_id)
@@ -161,10 +166,13 @@ impl<'a> HIRToMIRFuncLowerer<'a> {
         {
             f.func_body_id = func_body.block;
             f.visit_function(func, hlir);
-            return Some(f.body);
         }
 
-        None
+        if f.errors.is_empty() {
+            Ok(f.body)
+        } else {
+            Err(f.errors)
+        }
     }
 }
 
@@ -570,7 +578,10 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     if let Some(local) = self.body.local(target.local_id())
                         && !local.mutable.is_mutable()
                     {
-                        eprintln!("Cannot assign to immutable variable!");
+                        let err_span = hlir.span_by_hir_id(*hir_id).expect("Source span.");
+                        self.errors.push(LoweringError::new(
+                            LoweringErrorKind::CannotAssignToImmutableVariable(err_span),
+                        ));
                     }
                     if let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) {
                         self.builder_mut_expect()
@@ -909,9 +920,15 @@ pub fn lower_hir_to_mir(hlir: &HLIR, type_info: &ProgramMetaData) -> LowerResult
         {
             if func.native {
                 native_function_links.insert(i, func.ident.string());
-            } else if let Some(result_body) = HIRToMIRFuncLowerer::from_func_id(hlir, type_info, i)
-            {
-                bodies.insert(i, result_body);
+            } else {
+                match HIRToMIRFuncLowerer::from_func_id(hlir, type_info, i) {
+                    Ok(body) => {
+                        bodies.insert(i, body);
+                    }
+                    Err(e) => {
+                        return Err(e.first().expect("Is error").clone());
+                    }
+                }
             }
         }
     }

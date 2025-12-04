@@ -339,6 +339,11 @@ impl Parser<'_, '_> {
                 break;
             }
 
+            // Testing
+            if self.check_kind(Punctuation::OpenBrace) {
+                break;
+            }
+
             path_segments.push(self.expect_ident()?);
         }
 

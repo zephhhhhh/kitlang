@@ -197,6 +197,7 @@ pub enum NamespaceKind {
     Constant,
     Struct(TypeID),
     Enum,
+    Use(IdentPath),
 }
 
 impl NamespaceKind {
@@ -445,6 +446,8 @@ impl TypeRegistry {
 }
 
 struct AssociatedReferenceMapper {
+    pub global_functions: HashMap<String, OwnerDefId>,
+
     pub path_stack: Vec<IdentPath>,
     pub impl_path_lut: Vec<(OwnerDefId, IdentPath)>,
 
@@ -462,6 +465,7 @@ struct AssociatedReferenceMapper {
 impl AssociatedReferenceMapper {
     pub fn new() -> Self {
         Self {
+            global_functions: HashMap::new(),
             path_stack: vec![IdentPath::from_segments(Vec::new(), true)],
             impl_path_lut: Vec::new(),
             active_adt: None,
@@ -480,6 +484,58 @@ impl AssociatedReferenceMapper {
         self.reset_path_to(IdentPath::from_segments(Vec::new(), true));
     }
 
+    fn resolve_uses_in_namespace(
+        root_namespace: &Namespace,
+        namespace: &mut Namespace,
+        current_path: IdentPath,
+    ) {
+        let item_idents: Vec<String> = namespace.items.keys().cloned().collect();
+
+        for ident in item_idents {
+            if let Some(item_namespace) = namespace.items.get_mut(&ident) {
+                let mut next_path = current_path.clone();
+                next_path.push(&ident);
+
+                match &item_namespace.kind {
+                    NamespaceKind::Use(use_path) => {
+                        let target_path = if use_path.is_root_relative() {
+                            use_path.clone()
+                        } else {
+                            let mut resolved_path = current_path.clone();
+                            resolved_path.push_path(use_path);
+                            resolved_path
+                        };
+
+                        if let Some(target_namespace) = root_namespace.find_definition(&target_path)
+                        {
+                            let mut cloned = target_namespace.clone();
+                            cloned.ident = item_namespace.ident.clone();
+                            cloned.vis = item_namespace.vis;
+                            cloned.local = item_namespace.local;
+                            cloned.id = target_namespace.id;
+                            *item_namespace = cloned;
+
+                            Self::resolve_uses_in_namespace(
+                                root_namespace,
+                                item_namespace,
+                                next_path,
+                            );
+                        } else {
+                            // TODO: surface diagnostic once resolver errors are implemented.
+                            eprintln!(
+                                "Failed to resolve use path {:?} within namespace {:?}",
+                                target_path, current_path
+                            );
+                        }
+                    }
+                    _ => {
+                        Self::resolve_uses_in_namespace(root_namespace, item_namespace, next_path);
+                    }
+                }
+            }
+        }
+    }
+
     pub fn map_references(&mut self, hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
         // Map all except impls..
         self.visit_root(hlir);
@@ -495,6 +551,13 @@ impl AssociatedReferenceMapper {
                 self.visit_impl(impl_info, hlir);
             }
         }
+
+        let root_namespace_clone = self.root_namespace.clone();
+        Self::resolve_uses_in_namespace(
+            &root_namespace_clone,
+            &mut self.root_namespace,
+            IdentPath::new_empty(true),
+        );
 
         // Resolve references..
         self.reset_path();
@@ -596,6 +659,11 @@ impl HLIRVisitor for AssociatedReferenceMapper {
         let current_path = self.current_path().clone();
         let function_ident = function.ident.string();
         let local = self.should_be_local(&current_path);
+
+        if function.is_global {
+            self.global_functions
+                .insert(function_ident.clone(), function.owner_id);
+        }
 
         let namespace = self
             .get_namespace_mut(&current_path)
@@ -756,6 +824,30 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             }
         }
     }
+
+    fn visit_use(&mut self, use_info: &super::hir::nodes::UsePath, hlir: &HLIR) {
+        let current_path = self.current_path().clone();
+
+        for import in &use_info.imports {
+            let import_ident = import.segments().last().expect("Atleast one segment.");
+            self.get_namespace_mut(&current_path)
+                .expect("Namespace path exists.")
+                .items
+                .insert(
+                    import_ident.clone(),
+                    Namespace {
+                        ident: import_ident.clone(),
+                        kind: NamespaceKind::Use(import.clone()),
+                        items: HashMap::new(),
+                        id: ResolvedID::OwnerDef(OwnerDefId(0)),
+                        vis: use_info.vis,
+                        local: use_info.vis == Visibility::Private,
+                    },
+                );
+        }
+
+        self.super_use(use_info, hlir);
+    }
 }
 
 impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
@@ -790,7 +882,12 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
                     .expect("Not root relative.")
             };
 
-            if let Some(def) = self.root_namespace.find_definition(&final_path) {
+            if ident_path.len() == 1
+                && let Some(id) = self.global_functions.get(ident_path.path_stem())
+            {
+                path.resolve_to(ResolvedID::OwnerDef(*id));
+                println!("Found as global function: {}", final_path);
+            } else if let Some(def) = self.root_namespace.find_definition(&final_path) {
                 path.resolve_to(def.id);
             }
         }

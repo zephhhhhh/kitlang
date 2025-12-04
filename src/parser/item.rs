@@ -31,7 +31,20 @@ impl Parser<'_, '_> {
 
         let public = self.parse_visibility()?;
         let native = self.check_kind_advance(Keyword::Native);
+
+        let global_span_start = self.begin_span();
+        let global = self.check_kind_advance(Keyword::Global);
+        let global_span = self.finish_span(global_span_start);
+
         self.expect_kind(Keyword::Fn)?;
+
+        if global && !native {
+            return Err(ParseError::new(
+                ParseErrorKind::NonNativeGlobalFunction,
+                global_span,
+            ));
+        }
+
         let func_name = self.expect_ident_spanned()?;
 
         let func_sig_span_start = self.begin_span();
@@ -106,6 +119,7 @@ impl Parser<'_, '_> {
             function_sig,
             decl_span,
             is_method,
+            global,
             function_body,
         )));
 
@@ -293,18 +307,42 @@ impl Parser<'_, '_> {
         }
     }
 
+    pub fn parse_use_segment(&mut self) -> PResult<Vec<crate::ast::IdentPath>> {
+        const MAX_USE_SEGMENTS: usize = 2048;
+
+        let use_path_segment = self.parse_path()?;
+        if self.check_kind_advance(Punctuation::OpenBrace) {
+            let mut segments = vec![];
+            for _ in 0..MAX_USE_SEGMENTS {
+                let imported = self.parse_use_segment()?;
+                for p in &imported {
+                    segments.push(use_path_segment.extend_path(p));
+                }
+
+                self.check_kind_advance(Punctuation::Comma);
+                if self.check_kind_advance(Punctuation::CloseBrace) {
+                    break;
+                }
+            }
+
+            Ok(segments)
+        } else {
+            Ok(vec![use_path_segment])
+        }
+    }
+
     pub fn parse_use(&mut self) -> PResult<Item> {
         let span_start = self.begin_span();
 
         let public = self.parse_visibility()?;
         self.expect_kind(Keyword::Use)?;
 
-        let path = self.parse_spanned_path()?;
+        let imports = self.parse_use_segment()?;
 
         self.expect_kind(Punctuation::SemiColon)?;
 
         Ok(Item::new(
-            ItemKind::Use(UseImport::new(path)),
+            ItemKind::Use(UseImport::new(self.finish_span(span_start), imports)),
             public,
             self.finish_span(span_start),
         ))

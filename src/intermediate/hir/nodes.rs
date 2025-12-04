@@ -369,6 +369,7 @@ pub struct Function {
     pub vis: Visibility,
     pub native: bool,
     pub is_method: bool,
+    pub is_global: bool,
     pub sig: FunctionSig,
     pub decl_span: SourceSpan,
     pub full_span: SourceSpan,
@@ -439,9 +440,10 @@ pub struct Impl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UsePath {
     pub owner_id: OwnerDefId,
-    pub import_path: SpannedIdentPath,
+    pub imports: Vec<IdentPath>,
     pub span: SourceSpan,
     pub resolved_id: Option<ResolvedID>,
+    pub vis: Visibility,
 }
 
 // Item implementation..

@@ -1272,6 +1272,7 @@ pub struct Function {
     pub sig: FunctionSig,
     pub decl_span: SourceSpan,
     pub is_method: bool,
+    pub is_global: bool,
     pub body: Option<Box<Block>>,
 }
 
@@ -1283,6 +1284,7 @@ impl Function {
         sig: FunctionSig,
         decl_span: SourceSpan,
         is_method: bool,
+        is_global: bool,
         body: Option<Box<Block>>,
     ) -> Self {
         Self {
@@ -1291,6 +1293,7 @@ impl Function {
             sig,
             decl_span,
             is_method,
+            is_global,
             body,
         }
     }
@@ -1621,21 +1624,22 @@ impl Debug for StructInitialisation {
 /// Describes a `use` [`Item`] in the AST.
 #[derive(Clone, PartialEq)]
 pub struct UseImport {
-    /// Path to import.
-    pub path: SpannedIdentPath,
+    pub span: SourceSpan,
+    /// Paths to import.
+    pub imports: Vec<IdentPath>,
 }
 
 impl UseImport {
     #[inline]
-    pub fn new(path: SpannedIdentPath) -> Self {
-        Self { path }
+    pub fn new(span: SourceSpan, imports: Vec<IdentPath>) -> Self {
+        Self { span, imports }
     }
 }
 
 impl Debug for UseImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UseImport")
-            .field("path", &self.path)
+            .field("imports", &self.imports)
             .finish()
     }
 }

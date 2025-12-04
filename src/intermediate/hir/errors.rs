@@ -2,6 +2,7 @@ use ::std::fmt::Display;
 
 use thiserror::Error;
 
+use crate::ast::SourceSpan;
 use crate::intermediate::hir::HirId;
 use crate::intermediate::resolver::UnresolvedReferences;
 
@@ -27,6 +28,9 @@ pub enum LoweringErrorKind {
 
     #[error("Failed to validate types: {0:?}")]
     TypeCheckFail(Vec<TypeCheckFail>),
+
+    #[error("Cannot assign to an immutable variable.")]
+    CannotAssignToImmutableVariable(SourceSpan),
 }
 
 /// Represents an error while parsing the [`ASTRoot`] into High-level IR.
@@ -74,6 +78,12 @@ impl LoweringError {
                         .generate_output();
                 }
                 final_output
+            }
+            LoweringErrorKind::CannotAssignToImmutableVariable(span) => {
+                SpannedErrorBuilder::new(source_string, *span)
+                    .print_header_line("Cannot assign to an immutable variable.")
+                    .generate_highlight()
+                    .generate_output()
             }
             e => format!("Failed to lower to HIR: {:?}", e),
         }

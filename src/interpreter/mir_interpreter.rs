@@ -1,5 +1,5 @@
 use std::time::Duration;
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap};
 
 use crate::ast::{BinaryOpKind, Literal, UnaryOpKind};
 
@@ -445,11 +445,10 @@ impl ExecutionFrame {
     }
 }
 
-#[derive(Clone)]
 pub struct InterpreterState {
     pub entry: OwnerDefId,
 
-    pub native_functions: HashMap<String, Arc<KitlangMIRNativeFn>>,
+    pub native_functions: HashMap<String, Box<KitlangMIRNativeFn>>,
 
     pub execution_frames: Vec<ExecutionFrame>,
 }
@@ -485,8 +484,8 @@ impl InterpreterState {
     }
 
     pub fn call_native_function(&mut self, name: &str, args: &[Value]) -> Option<Value> {
-        if let Some(func) = self.native_functions.get(name).cloned() {
-            func(self, args)
+        if let Some(f) = self.native_functions.get_mut(name) {
+            f(args)
         } else {
             eprintln!("Failed to find native function: {}", name);
             None
@@ -712,7 +711,7 @@ impl InterpreterState {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct Interpreter {
     pub program: Option<RefCell<ProgramType>>,
     pub state: Option<InterpreterState>,

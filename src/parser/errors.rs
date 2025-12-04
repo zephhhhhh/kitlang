@@ -35,6 +35,9 @@ pub enum ParseErrorKind {
     #[error("Expected identifier, but none was found")]
     ExpectedIdentifierFoundNone,
 
+    #[error("Found a non-native global function, only native global functions are allowed")]
+    NonNativeGlobalFunction,
+
     #[error("Parameter 'self' must be the first argument in the function parameters")]
     SelfMustBeFirstArgument,
     #[error(

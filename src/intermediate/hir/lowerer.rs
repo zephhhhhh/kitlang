@@ -52,7 +52,9 @@ impl HLIRLowerer<'_> {
             ast::ItemKind::Enum(e) => self.lower_enum(e, item.span, parent_node, item.vis),
             ast::ItemKind::Struct(s) => self.lower_struct(s, item.span, parent_node, item.vis),
             ast::ItemKind::Impl(im) => self.lower_impl(im, item.span, parent_node),
-            ast::ItemKind::Use(useimport) => self.lower_use(useimport, item.span, parent_node),
+            ast::ItemKind::Use(useimport) => {
+                self.lower_use(useimport, item.span, parent_node, item.vis)
+            }
         }
     }
 
@@ -134,6 +136,7 @@ impl HLIRLowerer<'_> {
             vis,
             native: f.native,
             is_method: f.is_method,
+            is_global: f.is_global,
             sig: FunctionSig {
                 parameters: f
                     .sig
@@ -330,13 +333,15 @@ impl HLIRLowerer<'_> {
         useimport: &ast::UseImport,
         span: SourceSpan,
         owner_node: OwnerDefId,
+        vis: Visibility,
     ) -> LowerResult<OwnerDefId> {
         let use_node_id = self.hlir.next_owner_id();
         let use_item = Item::new(ItemKind::Use(UsePath {
             owner_id: use_node_id,
-            import_path: useimport.path.clone(),
+            imports: useimport.imports.clone(),
             span,
             resolved_id: None,
+            vis,
         }));
         self.hlir.insert_owning_node_with_parent(
             OwningNode::new(OwningNodeKind::Item(use_item)),

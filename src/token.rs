@@ -153,7 +153,7 @@ impl Keyword {
     /// or `mut`, rather something that can start an `expression` or `item` such as `let`)
     #[inline]
     pub fn is_significant(self) -> bool {
-        !matches!(self, Self::Pub | Self::Mut | Self::Native)
+        !matches!(self, Self::Pub | Self::Mut | Self::Native | Self::Global)
     }
 
     /// Returns true if the [`Keyword`] is a valid keyword that can start an `Item` expression,
