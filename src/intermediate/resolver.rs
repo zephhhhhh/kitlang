@@ -567,6 +567,20 @@ impl AssociatedReferenceMapper {
         Ok((self.root_namespace.clone(), self.type_registry.clone()))
     }
 
+    fn search_backtracking_for_definition(&self, ident_path: &IdentPath, mut base_path: IdentPath) -> Option<ResolvedID> {
+        if let Some(def) = self.root_namespace.find_definition(&ident_path.rebase_from_path(&base_path)) {
+            return Some(def.id);
+        }
+
+        let namespace = self.get_namespace(&base_path)?;
+        if namespace.kind == NamespaceKind::Module {
+            None
+        } else {
+            base_path.pop();
+            self.search_backtracking_for_definition(ident_path, base_path)
+        }
+    }
+
     pub fn search_for_definition(
         &self,
         ident_path: &IdentPath,
@@ -578,16 +592,29 @@ impl AssociatedReferenceMapper {
             && let Some(id) = self.global_functions.get(ident_path.path_stem())
         {
             Some(ResolvedID::OwnerDef(*id))
-        } else if let Some(def) = self
-            .root_namespace
-            .find_definition(&ident_path.rebase_from_path(base_path))
-        {
-            Some(def.id)
+        } else if let Some(def) = self.search_backtracking_for_definition(ident_path, base_path.clone()) {
+            Some(def)
         } else {
             self.root_namespace
                 .find_definition(&ident_path.rebase_from_path(&previous_major_scope))
                 .map(|def| def.id)
         }
+
+
+        // if ident_path.len() == 1
+        //     && let Some(id) = self.global_functions.get(ident_path.path_stem())
+        // {
+        //     Some(ResolvedID::OwnerDef(*id))
+        // } else if let Some(def) = self
+        //     .root_namespace
+        //     .find_definition(&ident_path.rebase_from_path(base_path))
+        // {
+        //     Some(def.id)
+        // } else {
+        //     self.root_namespace
+        //         .find_definition(&ident_path.rebase_from_path(&previous_major_scope))
+        //         .map(|def| def.id)
+        // }
     }
 }
 
