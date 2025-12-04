@@ -31,8 +31,8 @@ impl Vec2 {
 }
 
 pub fn main() {
-    let coord_1 = Vec2 { x: 5, y: 0 };
-    let coord_2 = Vec2 { x: 10, y: 10 };
+    let coord_1 = Vec2 { x: 5.0, y: 0.0 };
+    let coord_2 = Vec2 { x: 10.0, y: 10.0 };
 
     let distance_squared = coord_1.distance_sqr(coord_2);
 
