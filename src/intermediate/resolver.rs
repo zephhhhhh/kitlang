@@ -251,7 +251,7 @@ impl Namespace {
             let new_segs = &path_segments[0..i];
             if matches!(
                 self.find_definition_from_segments(new_segs)?.kind,
-                NamespaceKind::Module | NamespaceKind::Function | NamespaceKind::Struct(_)
+                NamespaceKind::Module | NamespaceKind::Function
             ) {
                 return Some(IdentPath::from_segments_slice(new_segs, true));
             }
@@ -472,7 +472,7 @@ impl TypeRegistry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolutionFailure {
     NotFound,
     Inaccessible,
@@ -493,7 +493,7 @@ struct AssociatedReferenceMapper {
 
     // TODO: Implement these errors!!
     pub errors: Vec<LoweringError>,
-    pub resolution_failures: HashMap<HirId, ResolutionFailure>,
+    pub resolution_failures: Vec<(HirId, SpannedIdentPath, ResolutionFailure)>,
 }
 
 impl AssociatedReferenceMapper {
@@ -507,7 +507,7 @@ impl AssociatedReferenceMapper {
             root_namespace: Namespace::default_root_definition(),
             stage1_complete: false,
             errors: Vec::new(),
-            resolution_failures: HashMap::new(),
+            resolution_failures: Vec::new(),
         }
     }
 
@@ -571,10 +571,7 @@ impl AssociatedReferenceMapper {
         }
     }
 
-    pub fn map_references(
-        &mut self,
-        hlir: &mut HLIR,
-    ) -> LowerResult<(Namespace, TypeRegistry, HashMap<HirId, ResolutionFailure>)> {
+    pub fn map_references(&mut self, hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
         // Map all except impls..
         self.visit_root(hlir);
         self.stage1_complete = true;
@@ -601,11 +598,23 @@ impl AssociatedReferenceMapper {
         self.reset_path();
         self.walk_mut(hlir);
 
-        Ok((
-            self.root_namespace.clone(),
-            self.type_registry.clone(),
-            self.resolution_failures.clone(),
-        ))
+        if !self.resolution_failures.is_empty() {
+            return Err(LoweringError::new(LoweringErrorKind::UnresolvedReferences(
+                UnresolvedReferences {
+                    references: self
+                        .resolution_failures
+                        .iter()
+                        .map(|(a, b, c)| UnresolvedReference {
+                            id: *a,
+                            path: b.clone(),
+                            failure: *c,
+                        })
+                        .collect(),
+                },
+            )));
+        }
+
+        Ok((self.root_namespace.clone(), self.type_registry.clone()))
     }
 
     fn find_last_enclosing_path(&self, path: &IdentPath) -> Option<IdentPath> {
@@ -635,6 +644,35 @@ impl AssociatedReferenceMapper {
         }
     }
 
+    fn is_accessed_public(&self, target_path: &IdentPath) -> bool {
+        let Some(target_namespace) = self.get_namespace(target_path) else {
+            return false;
+        };
+        let result = target_namespace.vis == Visibility::Public;
+
+        // if !result {
+        //     println!("Access check for '{}' FAILED", target_path);
+        // }
+        // //println!("Access check for '{}' : {}", target_path, result);
+
+        result
+    }
+
+    fn validate_local_access(&self, target_path: &IdentPath, base_path: &IdentPath) -> bool {
+        let Some(target_namespace) = self.get_namespace(target_path) else {
+            return false;
+        };
+        if target_namespace.local {
+            let Some(enclosing_path) = self.find_last_enclosing_path(target_path) else {
+                return false;
+            };
+            if !base_path.is_subpath_of(&enclosing_path) {
+                return false;
+            }
+        }
+        true
+    }
+
     pub fn search_for_definition(
         &self,
         ident_path: &IdentPath,
@@ -647,15 +685,33 @@ impl AssociatedReferenceMapper {
         } else if let Some((p, def)) =
             self.search_backtracking_for_definition(ident_path, base_path.clone())
         {
-            let found_namespace = self.get_namespace(&p).expect("Exists.");
-            if found_namespace.local {
-                let found_enclosing = self
-                    .find_last_enclosing_path(&p)
-                    .expect("Must have enclosing namespace.");
-                if !base_path.is_subpath_of(&found_enclosing) {
-                    return Err(ResolutionFailure::Inaccessible);
-                }
+            if !self.validate_local_access(&p, base_path) {
+                return Err(ResolutionFailure::Inaccessible);
             }
+
+            // // Validate access..
+            // if !p.is_empty() {
+            //     let to_check = IdentPath::from_segments_slice(&p.segments()[0..1], true);
+            //     if !self.validate_local_access(base_path, &to_check) {
+            //         return Err(ResolutionFailure::Inaccessible);
+            //     }
+
+            //     if p.len() > 1 {
+            //         for i in 1..p.len() {
+            //             let to_check = IdentPath::from_segments_slice(&p.segments()[0..=i], true);
+            //             let to_check_rebased = &to_check.rebase_from_path(base_path);
+            //             if !self.is_accessed_public(to_check_rebased) {
+            //                 println!(
+            //                     "{p:?} Failed check at: {to_check_rebased:?} from {base_path:?}  ->  {ident_path:?}"
+            //                 );
+            //                 return Err(ResolutionFailure::Inaccessible);
+            //             }
+            //         }
+            //     }
+            // }
+
+            // println!("Checking access for '{}' from base path '{}'", p, base_path);
+
             Ok(def)
         } else {
             Err(ResolutionFailure::NotFound)
@@ -734,11 +790,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                         kind: NamespaceKind::Module,
                         items: HashMap::new(),
                         id: ResolvedID::OwnerDef(module.owner_id),
-                        vis: if local {
-                            Visibility::Private
-                        } else {
-                            Visibility::Public
-                        },
+                        vis: module.vis,
                         local,
                     },
                 );
@@ -785,11 +837,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                     kind: NamespaceKind::Function,
                     items: HashMap::new(),
                     id: ResolvedID::OwnerDef(function.owner_id),
-                    vis: if local {
-                        Visibility::Private
-                    } else {
-                        Visibility::Public
-                    },
+                    vis: function.vis,
                     local,
                 },
             );
@@ -981,13 +1029,13 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
                     path.resolve_to(resolved);
                 }
                 Err(ResolutionFailure::Inaccessible) => {
-                    self.resolution_failures
-                        .insert(id, ResolutionFailure::Inaccessible);
+                    self.resolution_failures.push((
+                        id,
+                        path.spanned_ident_path().clone(),
+                        ResolutionFailure::Inaccessible,
+                    ));
                 }
-                Err(ResolutionFailure::NotFound) => {
-                    self.resolution_failures
-                        .insert(id, ResolutionFailure::NotFound);
-                }
+                _ => {}
             }
         }
     }
@@ -1036,8 +1084,6 @@ impl Debug for UnresolvedReferences {
 }
 
 struct UnresolvedReferenceChecker {
-    pub resolution_failures: HashMap<HirId, ResolutionFailure>,
-
     pub unresolved_references: Vec<UnresolvedReference>,
 }
 
@@ -1047,11 +1093,7 @@ impl HLIRVisitor for UnresolvedReferenceChecker {
             self.unresolved_references.push(UnresolvedReference {
                 path: ident_path.clone(),
                 id,
-                failure: self
-                    .resolution_failures
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or(ResolutionFailure::NotFound),
+                failure: ResolutionFailure::NotFound,
             });
         }
 
@@ -1060,9 +1102,8 @@ impl HLIRVisitor for UnresolvedReferenceChecker {
 }
 
 impl UnresolvedReferenceChecker {
-    pub fn new(resolution_failures: HashMap<HirId, ResolutionFailure>) -> Self {
+    pub fn new() -> Self {
         Self {
-            resolution_failures,
             unresolved_references: Vec::new(),
         }
     }
@@ -1313,9 +1354,7 @@ fn resolve_types(
     resolver.resolve_types(hlir)
 }
 
-fn resolve_associated_references(
-    hlir: &mut HLIR,
-) -> LowerResult<(Namespace, TypeRegistry, HashMap<HirId, ResolutionFailure>)> {
+fn resolve_associated_references(hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
     let mut resolver = AssociatedReferenceMapper::new();
     let namespaces = resolver.map_references(hlir)?;
 
@@ -1327,21 +1366,18 @@ fn resolve_scope_paths(hlir: &mut HLIR) -> LowerResult<()> {
     resolver.resolve(hlir)
 }
 
-fn verify_references(
-    hlir: &mut HLIR,
-    resolution_failures: HashMap<HirId, ResolutionFailure>,
-) -> LowerResult<()> {
-    UnresolvedReferenceChecker::new(resolution_failures).verify_references(hlir)
+fn verify_references(hlir: &mut HLIR) -> LowerResult<()> {
+    UnresolvedReferenceChecker::new().verify_references(hlir)
 }
 
 pub fn resolve_paths(hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
     resolve_scope_paths(hlir)?;
-    let (namespace, mut registry, resolution_failures) = resolve_associated_references(hlir)?;
+    let (namespace, mut registry) = resolve_associated_references(hlir)?;
 
     registry = resolve_types(hlir, &namespace, registry)?;
 
     // Verify all references have been resolved.
-    verify_references(hlir, resolution_failures)?;
+    verify_references(hlir)?;
 
     Ok((namespace, registry))
 }

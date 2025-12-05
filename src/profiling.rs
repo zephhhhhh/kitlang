@@ -1,4 +1,8 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(not(feature = "webasm"))]
+use std::time::Instant;
+#[cfg(feature = "webasm")]
+use web_time::Instant;
 
 use humanize_duration::{Truncate, prelude::*};
 
@@ -26,10 +30,17 @@ where
     F: FnOnce() -> R,
 {
     let (result, duration) = measure_execution(f);
+    #[cfg(not(feature = "webasm"))]
     println!(
         "[Profiling] '{}' executed in {}.",
         name,
         format_duration(duration)
     );
+    #[cfg(feature = "webasm")]
+    crate::webasm::log(&format!(
+        "[Profiling] '{}' executed in {}.",
+        name,
+        format_duration(duration)
+    ));
     result
 }

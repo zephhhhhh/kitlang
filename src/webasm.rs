@@ -14,7 +14,7 @@ thread_local! {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
+    pub fn log(s: &str);
 }
 
 #[wasm_bindgen]
@@ -52,36 +52,24 @@ fn add_native_functions(interpreter: &mut Interpreter) {
         for (name, func) in slot.borrow().iter() {
             let js_func = func.clone();
             interpreter.register_native_function(name, move |args: &[Value]| {
-                log("Called alert");
-                let js_args = js_sys::Array::new();
-                for arg in args {
-                    let js_value = match arg {
-                        Value::Integer(i) => JsValue::from_f64(*i as f64),
-                        Value::String(s) => JsValue::from_str(s),
-                        _ => JsValue::NULL,
-                    };
-                    js_args.push(&js_value);
-                }
+                let js_args = args.iter().map(to_js_value).collect::<js_sys::Array>();
                 match js_func.call1(&JsValue::NULL, &JsValue::from(js_args)) {
                     Ok(result) => {
-                        log(&format!("Native function returned: {:?}", result));
-                        if let Some(s) = result.as_string() {
-                            Some(Value::String(s))
-                        } else if let Some(f) = result.as_f64() {
-                            Some(Value::Integer(f as i64))
-                        } else {
-                            Some(Value::Unit)
-                        }
+                        log(&format!("Native JS function returned: {:?}", result));
+                        Some(from_js_value(&result))
                     }
-                    Err(_) => None,
+                    Err(e) => {
+                        log(&format!("Error calling native JS function: {:?}", e));
+                        None
+                    }
                 }
             });
         }
     });
 }
 
-fn internal_execute_source_string(source: &str) -> Result<JsValue, JsValue> {
-    match crate::prelude::execute_source_string(source, register_native_functions, false) {
+fn internal_execute_source_string(source: &str, time_execution: bool) -> Result<JsValue, JsValue> {
+    match crate::prelude::execute_source_string(source, register_native_functions, time_execution) {
         Ok(value) => serde_json::to_string(&value)
             .map_err(|e| JsValue::from_str(&e.to_string()))
             .map(|s| JsValue::from_str(&s)),
@@ -90,13 +78,16 @@ fn internal_execute_source_string(source: &str) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn wasm_execute_source_string(source: &str) -> Result<JsValue, JsValue> {
-    internal_execute_source_string(source)
+pub fn wasm_execute_source_string(source: &str, time_execution: bool) -> Result<JsValue, JsValue> {
+    internal_execute_source_string(source, time_execution)
 }
 
 #[wasm_bindgen]
-pub fn wasm_execute_source_string_with_native_fns(source: &str) -> Result<JsValue, JsValue> {
-    match crate::prelude::execute_source_string(source, add_native_functions, false) {
+pub fn wasm_execute_source_string_with_native_fns(
+    source: &str,
+    time_execution: bool,
+) -> Result<JsValue, JsValue> {
+    match crate::prelude::execute_source_string(source, add_native_functions, time_execution) {
         Ok(value) => serde_json::to_string(&value)
             .map_err(|e| JsValue::from_str(&e.to_string()))
             .map(|s| JsValue::from_str(&s)),
@@ -117,6 +108,57 @@ fn register_native_functions(interpreter: &mut Interpreter) {
         f32_to_string,
         string_to_f32
     );
+}
+
+// Value conversions
+
+/// Converts a [`Value`] into a [`JsValue`].
+fn to_js_value(value: &Value) -> JsValue {
+    match value {
+        Value::Integer(i) => JsValue::from_f64(*i as f64),
+        Value::UnsignedInteger(i) => JsValue::from_f64(*i as f64),
+        Value::Float(f) => JsValue::from_f64(*f),
+        Value::String(s) => JsValue::from_str(s),
+        Value::Boolean(b) => JsValue::from_bool(*b),
+        Value::Unit => JsValue::NULL,
+        _ => JsValue::UNDEFINED,
+    }
+}
+
+/// Converts a [`JsValue`] into a [`Value`].
+fn from_js_value(value: &JsValue) -> Value {
+    if value.is_string()
+        && let Some(s) = value.as_string()
+    {
+        return Value::String(s);
+    }
+
+    if value.is_instance_of::<js_sys::Number>()
+        && let Some(f) = value.as_f64()
+    {
+        if f.fract() == 0.0 {
+            return Value::Integer(f as i64);
+        } else {
+            return Value::Float(f);
+        }
+    }
+
+    if value.is_instance_of::<js_sys::Boolean>() {
+        return value
+            .as_bool()
+            .map(Value::Boolean)
+            .unwrap_or(Value::Boolean(false));
+    }
+
+    Value::Unit
+}
+
+fn expect_string_value(value: &Value) -> String {
+    if let Value::String(s) = value {
+        s.clone()
+    } else {
+        String::new()
+    }
 }
 
 // "Compiler" defined intrinsics.
@@ -180,22 +222,21 @@ fn to_lower(a: &[Value]) -> String {
 }
 
 fn input(a: &[Value]) -> String {
+    if a.len() != 1 {
+        return String::new();
+    }
+
     let mut result = String::new();
     INPUT.with(|slot| {
         if let Some(cb) = &*slot.borrow() {
-            let input_arg = if let Some(Value::String(s)) = a.first() {
-                s.clone()
-            } else {
-                String::new()
-            };
+            let input_arg = expect_string_value(&a[0]);
             if let Ok(js_value) = cb.call2(
                 &JsValue::NULL,
                 &JsValue::from_str(&input_arg),
                 &JsValue::NULL,
-            ) {
-                if let Some(s) = js_value.as_string() {
-                    result = s;
-                }
+            ) && let Some(s) = js_value.as_string()
+            {
+                result = s;
             }
         }
     });
@@ -203,27 +244,22 @@ fn input(a: &[Value]) -> String {
 }
 
 fn input_placeholder(a: &[Value]) -> String {
+    if a.len() != 2 {
+        return String::new();
+    }
+
     let mut result = String::new();
     INPUT.with(|slot| {
         if let Some(cb) = &*slot.borrow() {
-            let input_arg = if let Some(Value::String(s)) = a.first() {
-                s.clone()
-            } else {
-                String::new()
-            };
-            let placeholder_arg = if let Some(Value::String(s)) = a.get(1) {
-                s.clone()
-            } else {
-                String::new()
-            };
+            let input_arg = expect_string_value(&a[0]);
+            let default_arg = expect_string_value(&a[1]);
             if let Ok(js_value) = cb.call2(
                 &JsValue::NULL,
                 &JsValue::from_str(&input_arg),
-                &JsValue::from_str(&placeholder_arg),
-            ) {
-                if let Some(s) = js_value.as_string() {
-                    result = s;
-                }
+                &JsValue::from_str(&default_arg),
+            ) && let Some(s) = js_value.as_string()
+            {
+                result = s;
             }
         }
     });

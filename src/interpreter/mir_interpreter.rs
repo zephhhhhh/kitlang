@@ -766,10 +766,16 @@ fn internal_execute_mir(
 
     if time_execution {
         // TODO: Replace with logging...
+        #[cfg(not(feature = "webasm"))]
         println!(
             "[Profiling] Program executed in {}.",
             crate::profiling::format_duration(execution_time)
         );
+        #[cfg(feature = "webasm")]
+        crate::webasm::log(&format!(
+            "[Profiling] Program executed in {}.",
+            crate::profiling::format_duration(execution_time)
+        ));
     }
 
     match result_value {
