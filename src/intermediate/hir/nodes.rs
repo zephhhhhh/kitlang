@@ -124,6 +124,24 @@ impl From<KitTy> for Type {
     }
 }
 
+impl From<&KitTy> for Type {
+    fn from(value: &KitTy) -> Self {
+        Self::Resolved(*value)
+    }
+}
+
+impl From<crate::ast::Ty> for Type {
+    fn from(value: crate::ast::Ty) -> Self {
+        Self::Unresolved(value)
+    }
+}
+
+impl From<&crate::ast::Ty> for Type {
+    fn from(value: &crate::ast::Ty) -> Self {
+        Self::Unresolved(value.clone())
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub enum HIRNode {
     Param(Parameter),

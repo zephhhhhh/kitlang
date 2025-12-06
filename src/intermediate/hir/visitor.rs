@@ -18,10 +18,10 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 /// to the [`HLIR`].
 pub trait HLIRVisitor {
     fn super_root(&mut self, hlir: &HLIR) {
-        if let Some(root_node) = hlir.owning_node(OwnerDefId::ROOT_NODE) {
-            if let Some(root_module) = root_node.hir_module_ref() {
-                self.visit_module(root_module, hlir);
-            }
+        if let Some(root_node) = hlir.owning_node(OwnerDefId::ROOT_NODE)
+            && let Some(root_module) = root_node.hir_module_ref()
+        {
+            self.visit_module(root_module, hlir);
         }
     }
     fn super_module(&mut self, module: &Module, hlir: &HLIR) {

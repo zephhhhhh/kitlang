@@ -96,12 +96,41 @@ impl TypeChecker<'_> {
     pub fn current_expected_return(&self) -> Option<Type> {
         self.return_type_stack.last().cloned()
     }
+
+    pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
+        match ty.into() {
+            Type::Unresolved(ty) => ty.get_type_ident(),
+            Type::Resolved(KitTy::Abstract(ty_id)) => {
+                let abs_ty = self.type_registry.get_from_type_id(ty_id)?;
+                let type_path = abs_ty.defined_in.extend_ident(&abs_ty.type_ident.ident);
+                Some(type_path.to_string())
+            }
+            Type::Resolved(kit_ty) => kit_ty.to_type_str(),
+        }
+    }
+
+    pub fn type_name(&self, ty: impl Into<Type>) -> String {
+        self.try_type_name(ty)
+            .unwrap_or_else(|| String::from("UnknownType"))
+    }
 }
 
 impl TypeChecker<'_> {
-    fn resolved_type(id: HirId, t: &Type, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<KitTy> {
+    fn resolved_type(
+        &self,
+        id: HirId,
+        t: &Type,
+        hlir: &mut HLIRDisjointMut<'_>,
+    ) -> TypeResult<KitTy> {
         t.resolved()
-            .ok_or_else(|| type_fail!(hlir.as_ref(), id, "Failed to resolve expression type."))
+            .ok_or_else(|| {
+                type_fail!(
+                    hlir.as_ref(),
+                    id,
+                    "Failed to resolve expression type, result: `{}`",
+                    self.type_name(t.clone())
+                )
+            })
             .cloned()
     }
 }
@@ -307,8 +336,8 @@ impl TypeChecker<'_> {
             ExprKind::BinaryOp(binary_op_kind, hir_id, hir_id1) => {
                 let lhs = self.eval_expr_type_by_id(*hir_id, hlir)?;
                 let rhs = self.eval_expr_type_by_id(*hir_id1, hlir)?;
-                let lhs_r = Self::resolved_type(*hir_id, &lhs, hlir)?;
-                let rhs_r = Self::resolved_type(*hir_id1, &rhs, hlir)?;
+                let lhs_r = self.resolved_type(*hir_id, &lhs, hlir)?;
+                let rhs_r = self.resolved_type(*hir_id1, &rhs, hlir)?;
 
                 if let Some(resulting_type) = lhs_r.binary_op_result_type(&rhs_r, *binary_op_kind) {
                     Ok(Type::Resolved(resulting_type))
@@ -316,16 +345,16 @@ impl TypeChecker<'_> {
                     Err(type_fail!(
                         hlir,
                         expr.id,
-                        "Failed to determine binary operation result type! {:?} {:?} {:?}",
-                        lhs,
-                        binary_op_kind,
-                        rhs
+                        "Failed to determine binary operation result type! `{}` {} `{}`",
+                        self.type_name(lhs),
+                        binary_op_kind.symbols(),
+                        self.type_name(rhs)
                     ))
                 }
             }
             ExprKind::UnaryOp(unary_op_kind, hir_id) => {
                 let rhs = self.eval_expr_type_by_id(*hir_id, hlir)?;
-                let rhs_r = Self::resolved_type(*hir_id, &rhs, hlir)?;
+                let rhs_r = self.resolved_type(*hir_id, &rhs, hlir)?;
 
                 if let Some(resulting_type) = rhs_r.unary_op_result_type(*unary_op_kind) {
                     Ok(Type::Resolved(resulting_type))
@@ -333,14 +362,15 @@ impl TypeChecker<'_> {
                     Err(type_fail!(
                         hlir,
                         expr.id,
-                        "Failed to determine unary op result type: {:?}",
-                        unary_op_kind
+                        "Failed to determine unary op result type: {} `{}`",
+                        unary_op_kind.symbols(),
+                        self.type_name(rhs)
                     ))
                 }
             }
             ExprKind::If(hir_id, hir_id1, hir_id2) => {
                 let condition_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
-                let condition_ty_r = Self::resolved_type(*hir_id, &condition_ty, hlir)?;
+                let condition_ty_r = self.resolved_type(*hir_id, &condition_ty, hlir)?;
                 if condition_ty_r != KitTy::Boolean {
                     return Err(type_fail!(
                         hlir,
@@ -359,9 +389,9 @@ impl TypeChecker<'_> {
                         Err(type_fail!(
                             hlir,
                             expr.id,
-                            "If block and else expression types do not match. If block: {:?}, else: {:?}",
-                            if_block_ty,
-                            else_block_ty
+                            "If block and else expression types do not match. If block: `{}`, else: `{}`",
+                            self.type_name(if_block_ty),
+                            self.type_name(else_block_ty)
                         ))
                     }
                 } else {
@@ -370,7 +400,7 @@ impl TypeChecker<'_> {
             }
             ExprKind::While(hir_id, hir_id1) => {
                 let condition_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
-                let condition_ty_r = Self::resolved_type(*hir_id, &condition_ty, hlir)?;
+                let condition_ty_r = self.resolved_type(*hir_id, &condition_ty, hlir)?;
 
                 if condition_ty_r != KitTy::Boolean {
                     return Err(type_fail!(
@@ -387,8 +417,8 @@ impl TypeChecker<'_> {
             ExprKind::Assign(hir_id, hir_id1) => {
                 let lhs = self.eval_expr_type_by_id(*hir_id, hlir)?;
                 let rhs = self.eval_expr_type_by_id(*hir_id1, hlir)?;
-                let assign_target = Self::resolved_type(*hir_id, &lhs, hlir)?;
-                let value_type = Self::resolved_type(*hir_id1, &rhs, hlir)?;
+                let assign_target = self.resolved_type(*hir_id, &lhs, hlir)?;
+                let value_type = self.resolved_type(*hir_id1, &rhs, hlir)?;
 
                 if assign_target == value_type {
                     Ok(Type::Resolved(assign_target))
@@ -396,9 +426,9 @@ impl TypeChecker<'_> {
                     Err(type_fail!(
                         hlir,
                         expr.id,
-                        "Assign type mismatch! {:?} = {:?}",
-                        assign_target,
-                        value_type
+                        "Assign type mismatch! `{}` = `{}`",
+                        self.type_name(assign_target),
+                        self.type_name(value_type)
                     ))
                 }
             }
@@ -414,7 +444,7 @@ impl TypeChecker<'_> {
                     return Err(type_fail!(
                         hlir,
                         expr.id,
-                        "Function argument count mismatch. Expected: {}, Found: {}",
+                        "Function argument count mismatch. Expected: {}, supplied: {}",
                         func_args.len(),
                         user_params.len()
                     ));
@@ -425,9 +455,9 @@ impl TypeChecker<'_> {
                         return Err(type_fail!(
                             hlir,
                             *prov_id,
-                            "Function parameter type mismatch. Expected: {}, Found: {}",
-                            expected,
-                            provided
+                            "Function parameter type mismatch. Expected `{}`, found: `{}`",
+                            self.type_name(expected.clone()),
+                            self.type_name(provided.clone())
                         ));
                     }
                 }
@@ -474,7 +504,7 @@ impl TypeChecker<'_> {
                             return Err(type_fail!(
                                 hlir,
                                 *hir_id,
-                                "Method called with incorrect number of arguments! Expected: {}, Supplied: {}",
+                                "Method called with incorrect number of arguments! Expected: {}, supplied: {}",
                                 func.sig.parameters.len().saturating_sub(1),
                                 user_params.len(),
                             ));
@@ -487,9 +517,9 @@ impl TypeChecker<'_> {
                                 return Err(type_fail!(
                                     hlir,
                                     *prov_id,
-                                    "Method parameter type mismatch. Expected: {}, Found: {}",
-                                    expected,
-                                    provided
+                                    "Method parameter type mismatch. Expected `{}`, found `{}`",
+                                    self.type_name(expected.clone()),
+                                    self.type_name(provided.clone())
                                 ));
                             }
                         }
@@ -500,13 +530,13 @@ impl TypeChecker<'_> {
                         hlir,
                         *hir_id,
                         "Method access type unresolved. {:?}",
-                        t
+                        self.type_name(t)
                     )),
                     Type::Resolved(t) => Err(type_fail!(
                         hlir,
                         *hir_id,
                         "Can't access methods of type: {:?}",
-                        t
+                        self.type_name(t)
                     )),
                 }
             }
@@ -529,13 +559,13 @@ impl TypeChecker<'_> {
                         hlir,
                         *hir_id,
                         "Field access type unresolved. {:?}",
-                        t
+                        self.type_name(t)
                     )),
                     Type::Resolved(t) => Err(type_fail!(
                         hlir,
                         *hir_id,
                         "Can't access fields of type: {:?}",
-                        t
+                        self.type_name(t)
                     )),
                 }
             }
@@ -599,7 +629,7 @@ impl TypeChecker<'_> {
                             hlir,
                             expr.id,
                             "Return with no value, when function expected to return: {}",
-                            expected_return
+                            self.type_name(expected_return)
                         ))
                     } else {
                         Ok(Type::unit())
@@ -664,8 +694,8 @@ impl TypeChecker<'_> {
                 id,
                 "Let statement type mismatch. Tried to assign {}: {} = {}",
                 let_statement.ident.str(),
-                let_statement.ty,
-                init_ty
+                self.type_name(let_statement.ty.clone()),
+                self.type_name(init_ty.clone())
             ))
         } else {
             Ok(init_ty.clone())

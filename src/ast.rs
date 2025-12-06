@@ -417,6 +417,18 @@ pub enum UnaryOpKind {
     Negate,
 }
 
+impl UnaryOpKind {
+    /// Returns the combination of characters that represent this operation.
+    #[inline]
+    pub fn symbols(self) -> &'static str {
+        match self {
+            UnaryOpKind::Dereference => "*",
+            UnaryOpKind::Not => "!",
+            UnaryOpKind::Negate => "-",
+        }
+    }
+}
+
 /// Kinds of "Binary" operations. A binary operation is an operation that acts on _two_ values.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub enum BinaryOpKind {
@@ -473,6 +485,31 @@ impl BinaryOpKind {
             | Self::ShiftLeft
             | Self::ShiftRight => 2,
             _ => 1,
+        }
+    }
+
+    /// Returns the combination of characters that represent this operation.
+    #[inline]
+    pub fn symbols(self) -> &'static str {
+        match self {
+            BinaryOpKind::Add => "+",
+            BinaryOpKind::Sub => "-",
+            BinaryOpKind::Mul => "*",
+            BinaryOpKind::Div => "/",
+            BinaryOpKind::Mod => "%",
+            BinaryOpKind::And => "&&",
+            BinaryOpKind::Or => "||",
+            BinaryOpKind::BitwiseXOR => "^",
+            BinaryOpKind::BitwiseAND => "&",
+            BinaryOpKind::BitwiseOR => "|",
+            BinaryOpKind::ShiftLeft => "<<",
+            BinaryOpKind::ShiftRight => ">>",
+            BinaryOpKind::Equal => "==",
+            BinaryOpKind::NotEqual => "!=",
+            BinaryOpKind::LessThan => "<",
+            BinaryOpKind::GreaterThan => ">",
+            BinaryOpKind::LessThanOrEqual => "<=",
+            BinaryOpKind::GreaterThanOrEqual => ">=",
         }
     }
 }

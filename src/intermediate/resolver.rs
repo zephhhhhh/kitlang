@@ -333,7 +333,7 @@ impl ADTKind {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct ADTTypeInfo {
     pub owner_id: OwnerDefId,
     pub type_id: TypeID,
@@ -434,7 +434,7 @@ impl ADTTypeInfo {
 pub type TypeID = usize;
 const PLACEHOLDER_TYPE_ID: TypeID = usize::MAX;
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct TypeRegistry {
     all_paths: Vec<(IdentPath, TypeID)>,
     lut: HashMap<IdentPath, TypeID>,
