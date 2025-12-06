@@ -14,7 +14,6 @@ pub mod ast;
 pub mod intermediate;
 pub mod interpreter;
 pub mod lexer;
-pub mod logging;
 pub mod parser;
 pub mod prelude;
 pub mod profiling;
