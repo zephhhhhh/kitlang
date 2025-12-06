@@ -14,6 +14,7 @@ pub mod ast;
 pub mod intermediate;
 pub mod interpreter;
 pub mod lexer;
+pub mod logging;
 pub mod parser;
 pub mod prelude;
 pub mod profiling;
@@ -22,6 +23,9 @@ pub mod token;
 
 #[cfg(feature = "webasm")]
 pub mod webasm;
+
+#[cfg(feature="logging")]
+use log::*;
 
 // Outward facing API..
 
@@ -86,6 +90,25 @@ pub fn execute_source_string(
     }?;
 
     execute_mir_with_native_functions(mir, &meta_data, native_functions, time_execution)
+}
+
+/// Call this function to initialise logging, if the `logging` feature is enabled.
+pub fn init_logging() {
+    #[cfg(all(feature = "logging", not(feature="webasm")))]
+    fn setup_logging() {
+        simplelog::CombinedLogger::init(vec![
+            simplelog::TermLogger::new(
+                LevelFilter::Debug,
+                simplelog::Config::default(),
+                simplelog::TerminalMode::Mixed,
+                simplelog::ColorChoice::Auto,
+            )
+        ]).expect("Failed to initialize logging");
+
+        info!("Logging initialized.");
+    }
+    #[cfg(all(feature = "logging", not(feature="webasm")))]
+    setup_logging();
 }
 
 #[cfg(test)]

@@ -4,6 +4,8 @@ use std::time::Instant;
 #[cfg(feature = "webasm")]
 use web_time::Instant;
 
+use log::*;
+
 use humanize_duration::{Truncate, prelude::*};
 
 /// Measures the execution time of a provided lambda function (closure) and returns the result of
@@ -30,17 +32,10 @@ where
     F: FnOnce() -> R,
 {
     let (result, duration) = measure_execution(f);
-    #[cfg(not(feature = "webasm"))]
-    println!(
+    debug!(
         "[Profiling] '{}' executed in {}.",
         name,
         format_duration(duration)
     );
-    #[cfg(feature = "webasm")]
-    crate::webasm::log(&format!(
-        "[Profiling] '{}' executed in {}.",
-        name,
-        format_duration(duration)
-    ));
     result
 }

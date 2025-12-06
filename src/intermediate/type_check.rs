@@ -15,6 +15,8 @@ use crate::intermediate::types::{KitFloat, KitInt, KitTy};
 use super::hir::nodes::{Function, LetStatement};
 use super::hir::visitor::HLIRDisjointMut;
 
+use log::*;
+
 macro_rules! type_fail {
     ($msg: expr) => {
         TypeCheckFail::new(SourceSpan::null_span(), $msg)
@@ -638,7 +640,7 @@ impl TypeChecker<'_> {
             }
             ExprKind::Continue | ExprKind::Break => Ok(Type::unit()),
             unk => {
-                eprintln!("Error unknown expression type: {:?}", unk);
+                error!("Error unknown expression type: {:?}", unk);
                 Ok(Type::unit())
             }
         }

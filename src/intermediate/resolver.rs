@@ -14,6 +14,8 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 use super::hir::nodes::ItemKind;
 use super::types::KitTy;
 
+use log::*;
+
 #[derive(Debug, Clone, PartialEq)]
 struct LocalScope {
     pub scope_ident: Option<String>,
@@ -557,7 +559,7 @@ impl AssociatedReferenceMapper {
                             );
                         } else {
                             // TODO: surface diagnostic once resolver errors are implemented.
-                            eprintln!(
+                            error!(
                                 "Failed to resolve use path {:?} within namespace {:?}",
                                 target_path, current_path
                             );
@@ -974,7 +976,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 self.super_impl(impl_info, hlir);
                 self.active_adt = None;
             } else {
-                eprintln!("Failed to get impl adt id for '{}'", self.current_path());
+                error!("Failed to get impl adt id for '{}'", self.current_path());
             }
         }
     }
@@ -1165,7 +1167,7 @@ impl TypeResolver<'_> {
         if let NamespaceKind::Struct(ty_id) = def.kind {
             Some(ty_id)
         } else {
-            eprintln!(
+            error!(
                 "Type path is not a struct: {path:?}, but instead: {:?}",
                 def.kind
             );
@@ -1220,7 +1222,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                         struct_init.ty_path =
                             RefPath::Resolved(ty_path.clone(), ResolvedID::TypeDef(type_id));
                     } else {
-                        eprintln!("Failed to resolve struct init type!");
+                        error!("Failed to resolve struct init type!");
                     }
                 }
             }
@@ -1251,14 +1253,14 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                     if let Some(type_id) = self.resolve_type(type_path) {
                         *arg = Type::Resolved(KitTy::Abstract(type_id));
                     } else {
-                        eprintln!("Failed to resolve function arg type path: {:?}", arg);
+                        error!("Failed to resolve function arg type path: {:?}", arg);
                     }
                 }
                 Type::Unresolved(crate::ast::Ty::This(_s)) => {
                     if let Some(impl_ty) = &self.current_impl {
                         *arg = impl_ty.clone();
                     } else {
-                        eprintln!("Failed to resolve self function arg.");
+                        error!("Failed to resolve self function arg.");
                     }
                 }
                 _ => {}
@@ -1267,7 +1269,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                 if let Some(type_id) = self.resolve_type(type_path) {
                     *arg = Type::Resolved(KitTy::Abstract(type_id));
                 } else {
-                    eprintln!("Failed to resolve function arg type path: {:?}", arg);
+                    error!("Failed to resolve function arg type path: {:?}", arg);
                 }
             }
         }
@@ -1276,7 +1278,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             if let Some(type_id) = self.resolve_type(type_path) {
                 function.sig.output = Type::Resolved(KitTy::Abstract(type_id));
             } else {
-                eprintln!("Failed to resolve function type path");
+                error!("Failed to resolve function type path");
             }
         }
 
@@ -1291,7 +1293,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
         self.push_to_current_path(structure.ident.str());
         let current_struct_path = self.current_path().clone();
         let Some(current_struct_type_id) = self.resolve_type(&current_struct_path) else {
-            eprintln!("Failed to resolve struct: {:?} type id!", structure.ident);
+            error!("Failed to resolve struct: {:?} type id!", structure.ident);
             return;
         };
         for field_id in &structure.fields {
@@ -1314,7 +1316,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                     {
                         field_info.ty = Type::Resolved(KitTy::Abstract(type_id));
                     } else {
-                        eprintln!("Failed to find field info: {:?}", field.ident.str());
+                        error!("Failed to find field info: {:?}", field.ident.str());
                     }
                 }
             }
@@ -1340,7 +1342,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             self.super_impl_mut(impl_info, hlir);
             self.current_impl = None;
         } else {
-            eprintln!("Failed to get type id for info: {:?}", impl_info.self_ty);
+            error!("Failed to get type id for info: {:?}", impl_info.self_ty);
         }
     }
 }

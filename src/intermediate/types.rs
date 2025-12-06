@@ -3,6 +3,8 @@ use crate::{
     intermediate::resolver::TypeID,
 };
 
+use log::*;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitInt {
     ISize,
@@ -147,7 +149,7 @@ impl KitTy {
             }
             ASTTy::Infer | ASTTy::This(_) => None,
             a => {
-                eprintln!("KitTy conversion not implemented for: {:?}", a);
+                error!("KitTy conversion not implemented for: {:?}", a);
                 None
             }
         }
@@ -200,7 +202,7 @@ impl KitTy {
                 _ => None,
             },
             KitTy::Abstract(_) => {
-                println!("Tried to do abstract result type for unary.");
+                warn!("Tried to do abstract result type for unary.");
                 None
             }
         }
@@ -358,7 +360,7 @@ impl KitTy {
             KitTy::Char => char_result_type(other, op_kind),
             KitTy::String => string_result_type(other, op_kind),
             KitTy::Abstract(_) => {
-                println!("Tried to do abstract result type.");
+                warn!("Tried to do abstract result type.");
                 None
             }
         }

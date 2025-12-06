@@ -4,17 +4,14 @@ use crate::interpreter::mir_interpreter::{Interpreter, Value};
 use crate::register_native_fn;
 use wasm_bindgen::prelude::*;
 
+#[cfg(feature = "logging")]
+use log::*;
+
 thread_local! {
     static PRINT_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
     static INPUT: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
 
     static NATIVE_FNS: RefCell<Vec<(String, js_sys::Function)>> = const { RefCell::new(Vec::new()) };
-}
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    pub fn log(s: &str);
 }
 
 #[wasm_bindgen]
@@ -55,11 +52,11 @@ fn add_native_functions(interpreter: &mut Interpreter) {
                 let js_args = args.iter().map(to_js_value).collect::<js_sys::Array>();
                 match js_func.call1(&JsValue::NULL, &JsValue::from(js_args)) {
                     Ok(result) => {
-                        log(&format!("Native JS function returned: {:?}", result));
+                        info!("Native JS function returned: {:?}", result);
                         Some(from_js_value(&result))
                     }
                     Err(e) => {
-                        log(&format!("Error calling native JS function: {:?}", e));
+                        error!("Error calling native JS function: {:?}", e);
                         None
                     }
                 }
@@ -93,6 +90,18 @@ pub fn wasm_execute_source_string_with_native_fns(
             .map(|s| JsValue::from_str(&s)),
         Err(err) => Err(JsValue::from_str(&err.format_as_error_message(source))),
     }
+}
+
+#[wasm_bindgen]
+pub fn init_logging() {
+    #[cfg(feature = "logging")]
+    fn setup_logging() {
+        console_log::init_with_level(log::Level::Debug).expect("Failed to initialize logging");
+
+        info!("Logging initialized.");
+    }
+    #[cfg(feature = "logging")]
+    setup_logging();
 }
 
 fn register_native_functions(interpreter: &mut Interpreter) {

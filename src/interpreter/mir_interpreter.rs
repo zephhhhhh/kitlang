@@ -15,6 +15,8 @@ use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn}
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use log::*;
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub namespace: Namespace,
@@ -487,7 +489,7 @@ impl InterpreterState {
         if let Some(f) = self.native_functions.get_mut(name) {
             f(args)
         } else {
-            eprintln!("Failed to find native function: {}", name);
+            error!("Failed to find native function: {}", name);
             None
         }
     }
@@ -541,7 +543,7 @@ impl InterpreterState {
         } else if let Some(native_function_name) = program.mir.native_function_links.get(&id) {
             self.call_native_function(native_function_name, args)
         } else {
-            eprintln!("Unknown function reference: {:?}", id);
+            error!("Unknown function reference: {:?}", id);
 
             None
         }
@@ -554,7 +556,7 @@ impl InterpreterState {
         args: &[Value],
     ) -> Option<Value> {
         if body.arg_count != args.len() as u32 {
-            eprintln!(
+            error!(
                 "Argument count mismatch! {} != {}",
                 body.arg_count,
                 args.len()
@@ -589,7 +591,7 @@ impl InterpreterState {
                         },
                         Operand::Literal(Literal::Boolean(b)) => *b,
                         _ => {
-                            eprintln!("Invalid branch operand type! {:?}", operand);
+                            error!("Invalid branch operand type! {:?}", operand);
                             return None;
                         }
                     };
@@ -635,7 +637,7 @@ impl InterpreterState {
             Operand::Unit => Some(Value::Unit),
             Operand::Literal(literal) => Some(literal.into()),
             Operand::Const => {
-                eprintln!("Warning: Const not implemented! Continuing...");
+                error!("Warning: Const not implemented! Continuing...");
                 Some(Value::Unit)
             }
         }
@@ -667,7 +669,7 @@ impl InterpreterState {
                     if let Some(values) = adt_values {
                         Some(Value::ADT(ADTValueKind::Struct(values)))
                     } else {
-                        eprintln!("Failed to evaluate all field values!");
+                        error!("Failed to evaluate all field values!");
                         None
                     }
                 }
@@ -690,8 +692,8 @@ impl InterpreterState {
     pub fn perform_assignment(&mut self, target: AssignTarget, new_value: Value) {
         let local_mut = self.perform_deref_mut(target);
         if !local_mut.are_matching_types(&new_value) && !local_mut.is_unit() {
-            println!(
-                "Warning: Non matching types {:?}: {:?} => {:?}",
+            warn!(
+                "Non matching types {:?}: {:?} => {:?}",
                 target, local_mut, new_value
             );
         }
@@ -704,7 +706,7 @@ impl InterpreterState {
                 if let Some(new_value) = self.eval_rvalue(rvalue) {
                     self.perform_assignment(*target, new_value);
                 } else {
-                    eprintln!("Failed to evaluate Rvalue: {:?}", rvalue);
+                    error!("Failed to evaluate Rvalue: {:?}", rvalue);
                 }
             }
         }
@@ -765,17 +767,10 @@ fn internal_execute_mir(
     };
 
     if time_execution {
-        // TODO: Replace with logging...
-        #[cfg(not(feature = "webasm"))]
-        println!(
+        debug!(
             "[Profiling] Program executed in {}.",
             crate::profiling::format_duration(execution_time)
         );
-        #[cfg(feature = "webasm")]
-        crate::webasm::log(&format!(
-            "[Profiling] Program executed in {}.",
-            crate::profiling::format_duration(execution_time)
-        ));
     }
 
     match result_value {

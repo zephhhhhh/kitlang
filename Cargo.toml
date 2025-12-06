@@ -13,7 +13,8 @@ categories = ["compilers", "scripting", "addon-support"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = []
+default = ["logging"]
+logging = ["dep:log", "dep:simplelog", "dep:console_log"]
 webasm = ["serde", "dep:wasm-bindgen", "dep:js-sys", "dep:web-time"]
 serde = ["dep:serde", "dep:serde_json"]
 
@@ -29,3 +30,8 @@ js-sys = { version = "0.3.83", optional = true }
 serde = { version = "1.0.228", features = ["derive"], optional = true}
 serde_json = { version = "1.0.145", optional = true }
 web-time = { version = "1.1.0", optional = true }
+
+log = { version = "0.4.29", optional = true }
+
+simplelog = { version = "0.12.2", optional = true }
+console_log = { version = "1.0", features = ["color"], optional = true }

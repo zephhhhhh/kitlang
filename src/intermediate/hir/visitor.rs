@@ -4,6 +4,8 @@ use crate::intermediate::hir::nodes::{
 };
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
+use log::*;
+
 /// Provides an interface from traversing the HLIR tree.
 ///
 /// Functions named `super_` are default implementations that traverse the tree further, and
@@ -107,7 +109,7 @@ pub trait HLIRVisitor {
                 if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id) {
                     self.visit_block(block, hlir);
                 } else {
-                    eprintln!("Not a block");
+                    error!("Not a block");
                 }
             }
             ExprKind::BinaryOp(_, hir_id, hir_id1) => {

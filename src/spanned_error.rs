@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use crate::ast::SourceSpan;
 
+use log::*;
+
 /// Represents a single line in the the "source" view of an error message output.
 /// Each source code line can have zero or more 'comment' lines, that can provide more information
 /// or highlight the problem area.
@@ -234,7 +236,7 @@ impl SpannedErrorBuilder {
 fn substr_safe(s: &str, range: Range<u32>) -> &str {
     let (r_min, r_max) = (range.start, range.end);
     if r_max < r_min {
-        println!(
+        error!(
             "Custom backtrace: {}",
             std::backtrace::Backtrace::force_capture()
         );
