@@ -67,7 +67,7 @@ impl SpannedErrorLine {
 
     /// Adds a comment to this line, that underlines all the characters that are within the span of
     /// the provided error span.
-    pub fn highlight_from_span(&mut self, span: SourceSpan, highlight: &str) {
+    pub fn highlight_from_span(&mut self, span: SourceSpan, highlight: &str, error: bool) {
         if self.end_of_line_index() < span.start {
             return;
         }
@@ -101,7 +101,12 @@ impl SpannedErrorLine {
 
             #[cfg(feature = "colour")]
             {
-                highlight_str += &format!("{highlight_color}{}{color_reset}", actual_str_bit);
+                let highlight = if error {
+                    color_red
+                } else {
+                    highlight_color
+                };
+                highlight_str += &format!("{highlight}{}{color_reset}", actual_str_bit);
             }
             #[cfg(not(feature = "colour"))]
             {
@@ -166,7 +171,7 @@ impl SpannedErrorBuilder {
     /// span with an underline.
     pub fn generate_highlight(&mut self) -> &mut Self {
         for line in self.lines.iter_mut() {
-            line.highlight_from_span(self.error_span, "^");
+            line.highlight_from_span(self.error_span, "^", self.hard_error);
         }
         self
     }
