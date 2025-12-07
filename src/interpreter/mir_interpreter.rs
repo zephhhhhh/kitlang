@@ -383,11 +383,13 @@ impl ExecutionFrame {
     }
 
     pub fn field_access(&self, id: LocalId, field_index: usize) -> Option<&Value> {
-        self.value(self.perform_deref(AssignTarget::Local(id)))?.field(field_index)
+        self.value(self.perform_deref(AssignTarget::Local(id)))?
+            .field(field_index)
     }
 
     pub fn field_access_mut(&mut self, id: LocalId, field_index: usize) -> Option<&mut Value> {
-        self.value_mut(self.perform_deref(AssignTarget::Local(id)))?.field_mut(field_index)
+        self.value_mut(self.perform_deref(AssignTarget::Local(id)))?
+            .field_mut(field_index)
     }
 
     pub fn field_access_expect(&self, id: LocalId, field_index: usize) -> &Value {
@@ -581,6 +583,7 @@ impl InterpreterState {
 
         let mut current_block = body.block(BasicBlockId::ENTRY_BLOCK)?;
 
+        // TODO: I must have been drunk writing this, but this needs to be fixed.
         for _i in 0..10000 {
             for statement in &current_block.statements {
                 self.execute_statement(statement);
@@ -622,7 +625,6 @@ impl InterpreterState {
                             Operand::Const => Value::Unit,
                         })
                         .collect();
-                    //println!("{:?} = Call{{ {:?}, args = {:?} }} -> {:?}", local_id, owner_def_id, args, basic_block_id);
 
                     let result = self.execute_function(program, *owner_def_id, &args)?;
                     self.perform_assignment(AssignTarget::from_local(*local_id), result);

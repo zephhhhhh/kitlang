@@ -572,60 +572,65 @@ impl TypeChecker<'_> {
                 }
             }
             ExprKind::StructInit(struct_initialisation) => {
-                if let RefPath::Resolved(_, r) = struct_initialisation.ty_path {
-                    if let ResolvedID::TypeDef(type_id) = r {
-                        let struct_type = Type::Resolved(KitTy::Abstract(type_id));
-                        let struct_adt = self.type_registry.get_from_type_id(type_id).ok_or_else(|| {
+                let RefPath::Resolved(_, r) = &struct_initialisation.ty_path else {
+                    return Err(type_fail!(
+                        struct_initialisation.ty_path.span(),
+                        "Struct initialisation type not resolved?"
+                    ));
+                };
+                let ResolvedID::TypeDef(type_id) = r else {
+                    return Err(type_fail!(
+                        struct_initialisation.ty_path.span(),
+                        "Incorrect struct initialisation resolved type?"
+                    ));
+                };
+                let struct_type = Type::Resolved(KitTy::Abstract(*type_id));
+                let struct_adt =
+                    self.type_registry
+                        .get_from_type_id(*type_id)
+                        .ok_or_else(|| {
                             type_fail!(
                                 struct_initialisation.ty_path.span(),
                                 "Struct initialisation type not found?"
                             )
                         })?;
 
-                        struct_initialisation
-                            .fields
-                            .iter()
-                            .map(|si| {
-                                let init_type = self.eval_expr_type_by_id(si.expr, hlir)?;
-                                let expected_type = struct_adt.get_field_by_ident(si.ident.str()).ok_or_else(|| {
-                                    type_fail!(
-                                        hlir,
-                                        si.expr,
-                                        "Struct `{}` has no field named `{}`",
-                                        self.type_name(struct_type.clone()),
-                                        si.ident.str()
-                                    )
-                                })?.ty.clone();
+                struct_initialisation
+                    .fields
+                    .iter()
+                    .map(|si| {
+                        let init_type = self.eval_expr_type_by_id(si.expr, hlir)?;
+                        let expected_type = struct_adt
+                            .get_field_by_ident(si.ident.str())
+                            .ok_or_else(|| {
+                                type_fail!(
+                                    hlir,
+                                    si.expr,
+                                    "Struct `{}` has no field named `{}`",
+                                    self.type_name(struct_type.clone()),
+                                    si.ident.str()
+                                )
+                            })?
+                            .ty
+                            .clone();
 
-                                if init_type != expected_type {
-                                    return Err(type_fail!(
-                                        hlir,
-                                        si.expr,
-                                        "Type mismatch for field `{}` on `{}`: expected `{}`, found `{}`",
-                                        si.ident.str(),
-                                        self.type_name(struct_type.clone()),
-                                        self.type_name(expected_type),
-                                        self.type_name(init_type)
-                                    ));
-                                }
-                                
-                                Ok((init_type, si.expr))
-                            })
-                            .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
+                        if init_type != expected_type {
+                            return Err(type_fail!(
+                                hlir,
+                                si.expr,
+                                "Type mismatch for field `{}` on `{}`: expected `{}`, found `{}`",
+                                si.ident.str(),
+                                self.type_name(struct_type.clone()),
+                                self.type_name(expected_type),
+                                self.type_name(init_type)
+                            ));
+                        }
 
-                        Ok(Type::Resolved(KitTy::Abstract(type_id)))
-                    } else {
-                        Err(type_fail!(
-                            struct_initialisation.ty_path.span(),
-                            "Incorrect struct initialisation resolved type?"
-                        ))
-                    }
-                } else {
-                    Err(type_fail!(
-                        struct_initialisation.ty_path.span(),
-                        "Struct initialisation type not resolved?"
-                    ))
-                }
+                        Ok((init_type, si.expr))
+                    })
+                    .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
+
+                Ok(Type::Resolved(KitTy::Abstract(*type_id)))
             }
             ExprKind::Path(ref_path) => {
                 if let Some(resolved_id) = ref_path.resolved_id() {

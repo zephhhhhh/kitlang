@@ -203,10 +203,10 @@ impl HLIR {
     }
 
     fn update_parent_item_list(&mut self, new_node: OwnerDefId, parent_id: OwnerDefId) {
-        if let Some(parent) = self.owning_node_mut(parent_id) {
-            if let Some(parent_module) = parent.hir_module_mut() {
-                parent_module.item_ids.push(new_node);
-            }
+        if let Some(parent) = self.owning_node_mut(parent_id)
+            && let Some(parent_module) = parent.hir_module_mut()
+        {
+            parent_module.item_ids.push(new_node);
         }
     }
 }

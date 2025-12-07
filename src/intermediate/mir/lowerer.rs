@@ -24,7 +24,6 @@ use super::AssignTarget;
 
 use log::*;
 
-
 #[derive(Debug, Default)]
 struct HIRToMIRBlockBuilder {
     pub directive: Option<BlockExitKind>,

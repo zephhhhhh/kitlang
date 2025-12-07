@@ -20,6 +20,7 @@ impl Parser<'_, '_> {
     fn is_binary_op(&self, offset: u32) -> PResult<Option<BinaryOpKind>> {
         let next_token = self.peek_at(offset)?;
 
+        #[allow(clippy::collapsible_if)]
         if let Some(puncts) = self.get_punctuation_sequence::<2>(offset) {
             if !matches!(
                 puncts[1],
@@ -187,17 +188,17 @@ impl Parser<'_, '_> {
             }
 
             let new_statement = self.parse_statement()?;
-            if let Some(last) = statements.last() {
-                if let StatementKind::Expr(e) = &last.kind {
-                    // If the last statement was an expression (no trailing semi-colon) and the
-                    // expression was not an expression which can omit the semi-colon (such as if,
-                    // while, etc..), we throw an error..
-                    if !e.kind.can_be_non_semi() {
-                        return Err(ParseError::new(
-                            ParseErrorKind::ExpectedSemiColon,
-                            last.span,
-                        ));
-                    }
+            if let Some(last) = statements.last()
+                && let StatementKind::Expr(e) = &last.kind
+            {
+                // If the last statement was an expression (no trailing semi-colon) and the
+                // expression was not an expression which can omit the semi-colon (such as if,
+                // while, etc..), we throw an error..
+                if !e.kind.can_be_non_semi() {
+                    return Err(ParseError::new(
+                        ParseErrorKind::ExpectedSemiColon,
+                        last.span,
+                    ));
                 }
             }
             statements.push(new_statement);

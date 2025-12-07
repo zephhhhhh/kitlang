@@ -350,10 +350,10 @@ pub type DisjointItem = Disjoint<Item>;
 /// and are only used within the scope of the trait function bodies.
 pub trait HLIRVisitorMut<'a> {
     fn super_root_mut(&mut self, hlir: &mut HLIRDisjointMut<'a>) {
-        if let Some(root_node) = hlir.owning_node_mut(OwnerDefId::ROOT_NODE) {
-            if let Some(root_module) = root_node.value_mut().hir_module_mut() {
-                self.visit_module_mut(root_module, hlir);
-            }
+        if let Some(root_node) = hlir.owning_node_mut(OwnerDefId::ROOT_NODE)
+            && let Some(root_module) = root_node.value_mut().hir_module_mut()
+        {
+            self.visit_module_mut(root_module, hlir);
         }
     }
     fn super_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'a>) {
@@ -451,10 +451,10 @@ pub trait HLIRVisitorMut<'a> {
         match &mut expr.kind {
             ExprKind::Path(ref_path) => self.visit_path_mut(expr.id, ref_path, hlir),
             ExprKind::Block(hir_id) => {
-                if let Some(node) = hlir.hir_node_mut(*hir_id) {
-                    if let HIRNode::Block(block) = node.value_mut() {
-                        self.visit_block_mut(block, hlir);
-                    }
+                if let Some(node) = hlir.hir_node_mut(*hir_id)
+                    && let HIRNode::Block(block) = node.value_mut()
+                {
+                    self.visit_block_mut(block, hlir);
                 }
             }
             ExprKind::BinaryOp(_, hir_id, hir_id1) => {

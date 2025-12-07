@@ -23,7 +23,7 @@ pub mod token;
 #[cfg(feature = "webasm")]
 pub mod webasm;
 
-#[cfg(feature="logging")]
+#[cfg(feature = "logging")]
 use log::*;
 
 // Outward facing API..
@@ -93,20 +93,19 @@ pub fn execute_source_string(
 
 /// Call this function to initialise logging, if the `logging` feature is enabled.
 pub fn init_logging() {
-    #[cfg(all(feature = "logging", not(feature="webasm")))]
+    #[cfg(all(feature = "logging", not(feature = "webasm")))]
     fn setup_logging() {
-        simplelog::CombinedLogger::init(vec![
-            simplelog::TermLogger::new(
-                LevelFilter::Debug,
-                simplelog::Config::default(),
-                simplelog::TerminalMode::Mixed,
-                simplelog::ColorChoice::Auto,
-            )
-        ]).expect("Failed to initialize logging");
+        simplelog::CombinedLogger::init(vec![simplelog::TermLogger::new(
+            LevelFilter::Debug,
+            simplelog::Config::default(),
+            simplelog::TerminalMode::Mixed,
+            simplelog::ColorChoice::Auto,
+        )])
+        .expect("Failed to initialize logging");
 
         info!("Logging initialized.");
     }
-    #[cfg(all(feature = "logging", not(feature="webasm")))]
+    #[cfg(all(feature = "logging", not(feature = "webasm")))]
     setup_logging();
 }
 
