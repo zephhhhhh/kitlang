@@ -13,7 +13,8 @@ categories = ["compilers", "scripting", "addon-support"]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["logging"]
+default = ["logging", "colour"]
+colour = ["dep:inline_colorization"]
 logging = ["dep:log", "dep:simplelog", "dep:console_log"]
 webasm = ["serde", "dep:wasm-bindgen", "dep:js-sys", "dep:web-time"]
 serde = ["dep:serde", "dep:serde_json"]
@@ -24,6 +25,8 @@ thiserror = "2.0.17"
 slotmap = "1.0.7"
 paste = "1.0.15"
 humanize-duration = "0.0.7"
+
+inline_colorization = { version = "0.1.6", optional = true }
 
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3.83", optional = true }

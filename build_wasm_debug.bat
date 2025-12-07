@@ -1,1 +1,1 @@
-wasm-pack build --debug --target web -- --features "webasm logging"
+wasm-pack build --debug --target web -- --features "webasm logging colour"

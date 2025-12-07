@@ -4,6 +4,17 @@ use crate::ast::SourceSpan;
 
 use log::*;
 
+#[cfg(feature = "colour")]
+use inline_colorization::*;
+
+#[cfg(feature = "colour")]
+#[allow(non_upper_case_globals)]
+const prefix_color: &str = color_blue;
+
+#[cfg(feature = "colour")]
+#[allow(non_upper_case_globals)]
+const highlight_color: &str = color_bright_yellow;
+
 /// Represents a single line in the the "source" view of an error message output.
 /// Each source code line can have zero or more 'comment' lines, that can provide more information
 /// or highlight the problem area.
@@ -40,7 +51,18 @@ impl SpannedErrorLine {
     /// Get the prefix printed before a line, containing the line number aligned to the right hand
     /// side, with space padding to the left to maintain a consistent width.
     fn get_prefix_on_source(&self, line_no_width: usize) -> String {
-        format!(" {:>width$} | ", self.line_number, width = line_no_width)
+        #[cfg(feature = "colour")]
+        {
+            format!(
+                "{prefix_color} {:>width$} | {color_reset}",
+                self.line_number,
+                width = line_no_width
+            )
+        }
+        #[cfg(not(feature = "colour"))]
+        {
+            format!(" {:>width$} | ", self.line_number, width = line_no_width)
+        }
     }
 
     /// Adds a comment to this line, that underlines all the characters that are within the span of
@@ -76,7 +98,15 @@ impl SpannedErrorLine {
                 .cycle()
                 .take(end.saturating_sub(final_start) as usize)
                 .collect();
-            highlight_str += &actual_str_bit;
+
+            #[cfg(feature = "colour")]
+            {
+                highlight_str += &format!("{highlight_color}{}{color_reset}", actual_str_bit);
+            }
+            #[cfg(not(feature = "colour"))]
+            {
+                highlight_str += &actual_str_bit;
+            }
 
             self.add_comment_line(&highlight_str);
         }
@@ -111,6 +141,8 @@ pub struct SpannedErrorBuilder {
 
     pub error_span: SourceSpan,
     pub lines: Vec<SpannedErrorLine>,
+
+    pub hard_error: bool,
 }
 
 impl SpannedErrorBuilder {
@@ -125,6 +157,8 @@ impl SpannedErrorBuilder {
 
             error_span: span,
             lines,
+
+            hard_error: true,
         }
     }
 
@@ -159,7 +193,21 @@ impl SpannedErrorBuilder {
 
     /// Add any string as a header line above the source code view.
     pub fn print_header_line(&mut self, line: impl AsRef<str>) -> &mut Self {
-        self.header_lines.push(format!("{}\n", line.as_ref()));
+        let header_line = if self.hard_error {
+            #[cfg(feature = "colour")]
+            {
+                format!(
+                    "{color_red}Error:{color_white} {}{color_reset}\n",
+                    line.as_ref()
+                )
+            }
+            #[cfg(not(feature = "colour"))]
+            format!("Error: {}\n", line.as_ref())
+        } else {
+            format!("{}\n", line.as_ref())
+        };
+
+        self.header_lines.push(header_line);
         self
     }
 
@@ -174,6 +222,14 @@ impl SpannedErrorBuilder {
     /// Constructs a blank prefix line that is padded to maintain the same width as the other
     /// prefixed lines with a specified max line number character width.
     fn get_blank_prefix(line_no_width: usize) -> String {
+        #[cfg(feature = "colour")]
+        {
+            format!(
+                "{prefix_color} {} | {color_reset}",
+                " ".repeat(line_no_width)
+            )
+        }
+        #[cfg(not(feature = "colour"))]
         format!(" {} | ", " ".repeat(line_no_width))
     }
 
@@ -207,7 +263,15 @@ impl SpannedErrorBuilder {
                 .start
                 .saturating_sub(first_line.line_start_global_index)
                 .saturating_add(1);
-            final_output += &format!("  --> {file_name}{line}:{char_index}\n");
+            #[cfg(feature = "colour")]
+            {
+                final_output +=
+                    &format!("{prefix_color}  --> {color_reset}{file_name}{line}:{char_index}\n");
+            }
+            #[cfg(not(feature = "colour"))]
+            {
+                final_output += &format!("  --> {file_name}{line}:{char_index}\n");
+            }
         }
 
         if self.pad_around_source_view {
