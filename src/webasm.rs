@@ -97,8 +97,6 @@ pub fn init_logging() {
     #[cfg(feature = "logging")]
     fn setup_logging() {
         console_log::init_with_level(log::Level::Debug).expect("Failed to initialize logging");
-
-        info!("Logging initialized.");
     }
     #[cfg(feature = "logging")]
     setup_logging();

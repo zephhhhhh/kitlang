@@ -102,8 +102,6 @@ pub fn init_logging() {
             simplelog::ColorChoice::Auto,
         )])
         .expect("Failed to initialize logging");
-
-        info!("Logging initialized.");
     }
     #[cfg(all(feature = "logging", not(feature = "webasm")))]
     setup_logging();

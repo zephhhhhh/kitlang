@@ -646,20 +646,6 @@ impl AssociatedReferenceMapper {
         }
     }
 
-    fn is_accessed_public(&self, target_path: &IdentPath) -> bool {
-        let Some(target_namespace) = self.get_namespace(target_path) else {
-            return false;
-        };
-        let result = target_namespace.vis == Visibility::Public;
-
-        // if !result {
-        //     println!("Access check for '{}' FAILED", target_path);
-        // }
-        // //println!("Access check for '{}' : {}", target_path, result);
-
-        result
-    }
-
     fn validate_local_access(&self, target_path: &IdentPath, base_path: &IdentPath) -> bool {
         let Some(target_namespace) = self.get_namespace(target_path) else {
             return false;
@@ -673,6 +659,16 @@ impl AssociatedReferenceMapper {
             }
         }
         true
+    }
+
+    pub fn matching_segment_count(path_a: &IdentPath, path_b: &IdentPath) -> usize {
+        let len = path_a.len().min(path_b.len());
+        for i in 0..len {
+            if path_a.segments()[i] != path_b.segments()[i] {
+                return i;
+            }
+        }
+        len
     }
 
     pub fn search_for_definition(
@@ -691,28 +687,57 @@ impl AssociatedReferenceMapper {
                 return Err(ResolutionFailure::Inaccessible);
             }
 
-            // // Validate access..
-            // if !p.is_empty() {
-            //     let to_check = IdentPath::from_segments_slice(&p.segments()[0..1], true);
-            //     if !self.validate_local_access(base_path, &to_check) {
-            //         return Err(ResolutionFailure::Inaccessible);
-            //     }
+            if let Some(prev_base_path) = self.find_last_enclosing_path(base_path) {
+                let segment_match = Self::matching_segment_count(&p, &prev_base_path);
+                let matched_base_path = IdentPath::from_segments_slice(
+                    prev_base_path
+                        .segments()
+                        .get(0..segment_match)
+                        .unwrap_or(&[]),
+                    true,
+                );
 
-            //     if p.len() > 1 {
-            //         for i in 1..p.len() {
-            //             let to_check = IdentPath::from_segments_slice(&p.segments()[0..=i], true);
-            //             let to_check_rebased = &to_check.rebase_from_path(base_path);
-            //             if !self.is_accessed_public(to_check_rebased) {
-            //                 println!(
-            //                     "{p:?} Failed check at: {to_check_rebased:?} from {base_path:?}  ->  {ident_path:?}"
-            //                 );
-            //                 return Err(ResolutionFailure::Inaccessible);
-            //             }
-            //         }
-            //     }
-            // }
+                if segment_match >= p.len() {
+                    // Fully matched, no need to check further.
+                    return Ok(def);
+                }
 
-            // println!("Checking access for '{}' from base path '{}'", p, base_path);
+                let local_check = matched_base_path.extend(&p.segments()[segment_match]);
+                if !self.validate_local_access(&local_check, &matched_base_path) {
+                    error!("{p} Failed local access check");
+                    error!(
+                        "Checked path: `{}` from `{}`  ->  `{}`",
+                        local_check, matched_base_path, ident_path
+                    );
+                    error!("Base path: `{}`", base_path);
+                    return Err(ResolutionFailure::Inaccessible);
+                }
+
+                if segment_match.saturating_add(1) >= p.len() {
+                    // Fully matched, no need to check further.
+                    return Ok(def);
+                }
+
+                let len_to_check = p.len().saturating_sub(segment_match);
+
+                for i in 1..len_to_check {
+                    let to_check = prev_base_path.extend_path(&IdentPath::from_segments_slice(
+                        &p.segments()[segment_match..=segment_match + i],
+                        true,
+                    ));
+
+                    let visible = self
+                        .get_namespace(&to_check)
+                        .map(|n| n.vis == Visibility::Public || n.kind == NamespaceKind::Function)
+                        .unwrap_or_default();
+                    if !visible {
+                        error!(
+                            "{p} Failed check at: `{to_check}` from `{base_path}`  ->  `{ident_path}`"
+                        );
+                        return Err(ResolutionFailure::Inaccessible);
+                    }
+                }
+            }
 
             Ok(def)
         } else {
