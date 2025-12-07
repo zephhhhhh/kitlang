@@ -284,6 +284,30 @@ impl Value {
             Value::ADT(_) => todo!(),
         }
     }
+
+    pub fn is_reference(&self) -> bool {
+        matches!(self, Self::Ref(_))
+    }
+
+    #[inline]
+    pub fn field(&self, index: usize) -> Option<&Value> {
+        match self {
+            Value::ADT(adtvalue_kind) => match adtvalue_kind {
+                ADTValueKind::Struct(values) => values.get(index),
+            },
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn field_mut(&mut self, index: usize) -> Option<&mut Value> {
+        match self {
+            Value::ADT(adtvalue_kind) => match adtvalue_kind {
+                ADTValueKind::Struct(values) => values.get_mut(index),
+            },
+            _ => None,
+        }
+    }
 }
 
 impl From<Literal> for Value {
@@ -359,23 +383,11 @@ impl ExecutionFrame {
     }
 
     pub fn field_access(&self, id: LocalId, field_index: usize) -> Option<&Value> {
-        let value = self.local(id)?;
-        match value {
-            Value::ADT(adtvalue_kind) => match adtvalue_kind {
-                ADTValueKind::Struct(values) => values.get(field_index),
-            },
-            _ => None,
-        }
+        self.value(self.perform_deref(AssignTarget::Local(id)))?.field(field_index)
     }
 
     pub fn field_access_mut(&mut self, id: LocalId, field_index: usize) -> Option<&mut Value> {
-        let value = self.local_mut(id)?;
-        match value {
-            Value::ADT(adtvalue_kind) => match adtvalue_kind {
-                ADTValueKind::Struct(values) => values.get_mut(field_index),
-            },
-            _ => None,
-        }
+        self.value_mut(self.perform_deref(AssignTarget::Local(id)))?.field_mut(field_index)
     }
 
     pub fn field_access_expect(&self, id: LocalId, field_index: usize) -> &Value {
