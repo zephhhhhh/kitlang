@@ -197,7 +197,7 @@ impl SpannedErrorBuilder {
             #[cfg(feature = "colour")]
             {
                 format!(
-                    "{color_red}Error:{color_white} {}{color_reset}\n",
+                    "{color_red}Error:{color_bright_white} {}{color_reset}\n",
                     line.as_ref()
                 )
             }
