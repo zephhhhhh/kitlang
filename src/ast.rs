@@ -522,7 +522,7 @@ pub enum ItemKind {
     /// A `use` declaration, akin to an import.
     Use(UseImport),
     /// A `const` expression.
-    /// # Example
+    /// # Kit Example
     /// `pub const PI: f32 = 3.141;`
     Const(Box<Constant>),
     /// Function declaration with an optional function body.
@@ -539,7 +539,7 @@ pub enum ItemKind {
 
 impl ItemKind {
     /// Get the human readable name _only_ of the [`ItemKind`].
-    /// # Example
+    /// # Example usage
     /// `ItemKind::Fn(..).get_name()` = "Function"
     #[inline]
     pub fn get_name(&self) -> &'static str {
@@ -765,7 +765,6 @@ impl Debug for Ty {
 // TODO: Add a `SourceSpan` to everything.
 
 /// A "top-level" item in the AST.
-/// # Examples
 /// Functions, Constants, Structs, etc..
 #[derive(Clone, PartialEq)]
 pub struct Item {
@@ -887,8 +886,8 @@ impl BinaryOpKind {
 #[derive(Clone, PartialEq)]
 pub enum ExpressionKind {
     /// A "block" of code.
-    /// # Example
-    /// ```
+    /// # Kit Example
+    /// ```ignore
     /// <Expression>;
     /// // Outer block..
     /// let x = 20;
@@ -899,24 +898,24 @@ pub enum ExpressionKind {
     /// ```
     Block(Box<Block>),
     /// A [`Literal`] value, of either a number, boolean or string type.
-    /// # Example
+    /// # Kit Example
     /// `20`, `"Hello!"`, `true`.
     Literal(Literal),
     /// Binary operation between two expressions.
     /// # Notes
     /// The tuple values are: ([`BinaryOpKind`], lhs, rhs).
-    /// # Example
+    /// # Kit Example
     /// `20 + 70`, `42 == 42`, `random_number() + 42`.
     BinaryOp(BinaryOpKind, Box<Expression>, Box<Expression>),
     /// A unary operation on an expression.
-    /// # Example
+    /// # Kit Example
     /// `!variable`.
-    Unary(UnaryOpKind, Box<Expression>),
+    UnaryOp(UnaryOpKind, Box<Expression>),
     /// If statement, with a block or "body", and an optional "else" case block.
     /// # Notes
     /// The tuple values are: (condition_expression, if_true_block, else_block).
-    /// # Example
-    /// ```
+    /// # Kit Example
+    /// ```ignore
     /// if random_number() == 20 {
     ///     <Expression>;
     /// }
@@ -925,8 +924,8 @@ pub enum ExpressionKind {
     /// While loop, with a block or "body", and an optional "else" case block.
     /// # Notes
     /// The tuple values are: (condition_expression, loop_block).
-    /// # Example
-    /// ```
+    /// # Kit Example
+    /// ```ignore
     /// while i > 0 {
     ///     i = i - 1
     /// }
@@ -935,42 +934,42 @@ pub enum ExpressionKind {
     /// Assignment of an already declared value.
     /// # Notes
     /// The tuple values are: (variable_to_be_assigned_to, new_value)
-    /// # Examples
+    /// # Kit Example
     /// `x = x + 1`
     Assign(Box<Expression>, Box<Expression>),
     /// Calling a free function, or using the call operator of an object.
     /// # Notes
     /// The tuple values are: (call_target, parameters)
-    /// # Example
-    /// ```
+    /// # Kit Example
+    /// ```ignore
     /// random_number(0, 20)
     /// ```
     Call(Box<Expression>, Vec<Box<Expression>>),
     /// Call a method function of an object, or the 'dot' operator.
-    /// # Example
-    /// ```
+    /// # Kit Example
+    /// ```ignore
     /// vec2.to_string()
     /// ```
     MethodCall(Box<MethodCall>),
     /// Index into an array or an object that implements the indexing operator.
     /// # Notes
     /// The tuple values are: (object_to_be_indexed, index)
-    /// # Example
-    /// ```
+    /// # Kit Example
+    /// ```ignore
     /// list_of_names[2]
     /// ```
     Index(Box<Expression>, Box<Expression>),
     /// Access a data field on an object.
     /// # Notes
     /// The tuple values are: (object_to_access, field_to_access)
-    /// # Examples
-    /// ```
+    /// # Kit Examples
+    /// ```ignore
     /// vec2.x
     /// ```
     FieldAccess(Box<Expression>, Ident),
     /// Initialise a struct with specified field values.
-    /// # Examples
-    /// ```
+    /// # Kit Example
+    /// ```ignore
     /// Vec2 {
     ///     x: 10,
     ///     y: 20
@@ -978,7 +977,7 @@ pub enum ExpressionKind {
     /// ```
     StructInit(Box<StructInitialisation>),
     /// An `Identifier` or `Path`.
-    /// # Example
+    /// # Kit Example
     /// `Module::Path::To::Function`, `x`.
     IdentPath(SpannedIdentPath),
     /// Skip the rest of the loop code and proceed to the next iteration early.
@@ -1005,7 +1004,7 @@ impl ExpressionKind {
     pub fn get_order(&self) -> ExpressionOrder {
         match self {
             ExpressionKind::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_order(),
-            ExpressionKind::Unary(_, _) => ExpressionOrder::Prefix,
+            ExpressionKind::UnaryOp(_, _) => ExpressionOrder::Prefix,
             ExpressionKind::Assign(_, _) => ExpressionOrder::Assign,
             ExpressionKind::Continue | ExpressionKind::Return(_) | ExpressionKind::Break => {
                 ExpressionOrder::Jump
@@ -1019,7 +1018,7 @@ impl ExpressionKind {
     pub fn get_association(&self) -> ExpressionAssociation {
         match self {
             ExpressionKind::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_association(),
-            ExpressionKind::Unary(_, _) => ExpressionAssociation::None,
+            ExpressionKind::UnaryOp(_, _) => ExpressionAssociation::None,
             ExpressionKind::Assign(_, _) => ExpressionAssociation::Right,
             _ => ExpressionAssociation::None,
         }
@@ -1037,7 +1036,7 @@ impl Debug for ExpressionKind {
                 .field(arg1)
                 .field(arg2)
                 .finish(),
-            Self::Unary(arg0, arg1) => f.debug_tuple("Unary").field(arg0).field(arg1).finish(),
+            Self::UnaryOp(arg0, arg1) => f.debug_tuple("Unary").field(arg0).field(arg1).finish(),
             Self::If(arg0, arg1, arg2) => f
                 .debug_tuple("If")
                 .field(arg0)
@@ -1436,8 +1435,8 @@ impl Debug for Struct {
 }
 
 /// The kind of variant of an [`Enum`].
-/// # Example
-/// ```
+/// # Kit Example
+/// ```ignore
 /// enum Person {
 ///     Alive(u32),
 ///     Dead {

@@ -423,7 +423,7 @@ impl HLIRLowerer<'_> {
                 let expr_2 = self.lower_expression(rhs, owner_node)?;
                 Ok(ExprKind::BinaryOp(*binary_op_kind, expr_1, expr_2))
             }
-            ast::ExpressionKind::Unary(unary_op_kind, rhs) => {
+            ast::ExpressionKind::UnaryOp(unary_op_kind, rhs) => {
                 let expr_1 = self.lower_expression(rhs, owner_node)?;
                 Ok(ExprKind::UnaryOp(*unary_op_kind, expr_1))
             }

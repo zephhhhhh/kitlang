@@ -290,7 +290,7 @@ impl Parser<'_, '_> {
         let target_expr = self.parse_expr_atom()?;
 
         Ok(Expression::new_boxed(
-            ExpressionKind::Unary(unary, target_expr),
+            ExpressionKind::UnaryOp(unary, target_expr),
             self.finish_span(span_start),
         ))
     }

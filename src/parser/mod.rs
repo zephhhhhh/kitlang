@@ -724,7 +724,7 @@ impl Parser<'_, '_> {
 // Parsing 'block' like structures.
 impl Parser<'_, '_> {
     /// Parses a 'block'-like pattern, where the expected token stream to parse resembles:
-    /// ```
+    /// ```ignore
     /// <OpenPunctuation>
     ///     <Element>+
     /// <ClosePunctuation>
@@ -760,7 +760,7 @@ impl Parser<'_, '_> {
     }
 
     /// Parses a 'block'-like pattern, where the expected token stream to parse resembles:
-    /// ```
+    /// ```ignore
     /// <OpenPunctuation>
     ///     <Element><Delimiter>
     ///     <Element><Delimiter>?
@@ -806,7 +806,7 @@ impl Parser<'_, '_> {
     }
 
     /// Parses a 'block'-like pattern, where the expected token stream to parse resembles:
-    /// ```
+    /// ```ignore
     /// <OpenPunctuation>
     ///     <Element><Delimiter>
     ///     <Element><Delimiter>?
@@ -835,7 +835,7 @@ impl Parser<'_, '_> {
     }
 
     /// Parses a 'block'-like pattern, where the expected token stream to parse resembles:
-    /// ```
+    /// ```ignore
     /// <OpenPunctuation>
     ///     <Element><Delimiter>
     ///     <Element><Delimiter>?
