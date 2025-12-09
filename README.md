@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://github.com/zephhhhhh/kitlang/actions/workflows/rust.yml/badge.svg)](https://github.com/zephhhhhh/kitlang/actions/workflows/rust.yml)
 
 A statically-typed, Rust-inspired programming language designed for embedding as a plugin, extension, or modding language.
 
@@ -124,7 +125,7 @@ See [here](TODOs.md) for detailed roadmap and priorities.
 Run the test suite:
 
 ```bash
-cargo test
+cargo test --tests
 ```
 
 Run specific test modules:
