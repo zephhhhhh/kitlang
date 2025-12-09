@@ -20,13 +20,13 @@
 - Add proper error handling like in the parser for other stages of the compiler.
 - Add documentation for HIR and MIR and interpreter.
 - Add documentation for the `Visitor` traits.
-- Create tests for HIR and MIR lowering.
+- Create tests for MIR lowering.
 
 ## Medium priority
-- Implement `Use` statement.
 - Revisit renaming especially for parser.
 - Add proper logging for things that are not diagnostic but for compiler debugging.
 
 ## Low Priority
 - Update syntax docs.
 - Add proper configuration (This will be especially important to add when working on the `Use` statement)
+- Update README with embedded use example.
