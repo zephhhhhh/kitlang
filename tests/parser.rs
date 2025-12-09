@@ -276,7 +276,37 @@ fn parse_if_else_expression() {
 
 #[test]
 fn parse_nested_if_statements() {
-    todo!();
+    let expr = wrap_expr_and_parse!("if true {
+        if false {
+            1
+        } else {
+            2
+        }
+    }");
+    
+    expect_match!(&expr.kind, ExpressionKind::If(cond, block, else_block) => {
+        expect_literal!(&cond.kind, Literal::Boolean(val) => {
+            assert!(val);
+        }, "Expected boolean literal as if condition");
+
+        expect_match!(&statement_any_expr(block, 0).kind, ExpressionKind::If(nested_cond, nested_block, nested_else_block) => {
+            expect_literal!(&nested_cond.kind, Literal::Boolean(val) => {
+                assert!(!val);
+            }, "Expected boolean literal as nested if condition");
+
+            expect_literal!(&statement_any_expr(nested_block, 0).kind, Literal::Integer(val) => {
+                assert_eq!(*val, 1);
+            }, "Expected integer literal inside nested if block");
+
+            expect_match!(&nested_else_block.as_ref().expect("Expected nested else block").kind, ExpressionKind::Block(b) => {
+                expect_literal!(&statement_any_expr(b, 0).kind, Literal::Integer(val) => {
+                    assert_eq!(*val, 2);
+                }, "Expected integer literal inside nested else block");
+            }, "Expected nested else block expression to be a block");
+        }, "Expected nested if expression");
+
+        assert!(else_block.is_none(), "Expected no else block");
+    }, "Expected if expression");
 }
 
 #[test]
@@ -368,7 +398,25 @@ fn parse_method_call() {
 
 #[test]
 fn parse_method_call_with_args() {
-    todo!();
+    let expr = wrap_expr_and_parse!(r#"obj.method(1, "str")"#);
+
+    expect_match!(&expr.kind, ExpressionKind::MethodCall(call_info) => {
+        expect_match!(&call_info.target_expr.kind, ExpressionKind::IdentPath(path) => {
+            assert_eq!(path.to_string(), "obj");
+        }, "Expected method call target to be an identifier path");
+
+        assert_eq!(call_info.method_ident.str(), "method");
+
+        assert_eq!(call_info.args.len(), 2);
+
+        expect_literal!(&call_info.args[0].kind, Literal::Integer(val) => {
+            assert_eq!(*val, 1);
+        }, "Expected first argument to be integer literal");
+
+        expect_literal!(&call_info.args[1].kind, Literal::String(val) => {
+            assert_eq!(val, "str");
+        }, "Expected second argument to be string literal");
+    }, "Expected method call");
 }
 
 #[test]
