@@ -1,10 +1,10 @@
-use kitlang::{
-    ast::{
-        ASTRoot, BinaryOpKind, Block, Expression, ExpressionKind, FunctionReturnTy, Item, ItemKind,
-        Literal, LocalKind, Mutability, Statement, StatementKind, Ty, UnaryOpKind, Visibility,
-    },
-    parser::{ParseError, parse_from_source},
+use kitlang::ast::{
+    ASTRoot, BinaryOpKind, Block, Expression, ExpressionKind, FunctionReturnTy, Item, ItemKind,
+    Literal, LocalKind, Mutability, StatementKind, Ty, UnaryOpKind, Visibility,
 };
+
+mod common;
+use common::*;
 
 // Helper functions/macros..
 
@@ -16,24 +16,14 @@ use kitlang::{
 ///    // $test_src
 /// }
 /// ```
-macro_rules! main_fn {
-    ($test_src:literal) => { concat!("fn main() { ", $test_src, " }") };
+macro_rules! wrap_and_parse_expr {
+    ($test_src:literal) => {
+        get_first_expr(&wrap_and_parse!(parse, $test_src)).clone()
+    };
 }
-macro_rules! wrap_and_parse_ast {
-    ($test_src:literal) => { parse_ok(main_fn!($test_src)) };
-}
-macro_rules! wrap_expr_and_parse {
-    ($test_src:literal) => { parse_first_expr(main_fn!($test_src)) };
-}
-macro_rules! wrap_statement_and_parse {
-    ($test_src:literal) => { parse_first_statement(main_fn!($test_src)) };
-}
-macro_rules! expect_match {
-    ($expr:expr, $pat:pat => $out:expr, $($fmta:tt)*) => {
-        match $expr {
-            $pat => $out,
-            _ => panic!("{}", format!($($fmta)*)),
-        }
+macro_rules! wrap_and_parse_statement {
+    ($test_src:literal) => {
+        get_first_statement(&wrap_and_parse!(parse, $test_src)).clone()
     };
 }
 
@@ -69,27 +59,6 @@ macro_rules! expect_ty {
     ($expr:expr, $expected:expr) => {
         assert_eq!($expr, $expected, "Expected type '{}' but found '{}'", $expected, e);
     };
-}
-
-/// Parse the source code, expect it to succeed, and return the AST.
-fn parse_ok(source: &str) -> kitlang::ast::ASTRoot {
-    parse_from_source(source).expect("Parse should succeed")
-}
-/// Parse the source code, expect it to fail, and return the parse error.
-fn parse_err(source: &str) -> ParseError {
-    parse_from_source(source).expect_err("Parse should fail")
-}
-
-/// Parse the source code, expect it to succeed, and return the first expression of the first function.
-fn parse_first_expr(source: &str) -> Expression {
-    let ast = parse_ok(source);
-    get_first_expr(&ast).clone()
-}
-
-/// Parse the source code, expect it to succeed, and return the first statement of the first function.
-fn parse_first_statement(source: &str) -> Statement {
-    let ast = parse_ok(source);
-    get_first_statement(&ast).clone()
 }
 
 // Helper getters..
@@ -133,28 +102,28 @@ fn get_first_expr(root: &ASTRoot) -> &Expression {
 
 #[test]
 fn parse_literal_integers() {
-    let expr = wrap_expr_and_parse!("42");
+    let expr = wrap_and_parse_expr!("42");
 
     expect_literal!(&expr, Literal::Integer(42));
 }
 
 #[test]
 fn parse_literal_floats() {
-    let expr = wrap_expr_and_parse!("7.12023");
+    let expr = wrap_and_parse_expr!("7.12023");
 
     expect_literal!(&expr, Literal::Float(7.12023));
 }
 
 #[test]
 fn parse_literal_strings() {
-    let expr = wrap_expr_and_parse!(r#""hello world""#);
+    let expr = wrap_and_parse_expr!(r#""hello world""#);
 
     expect_literal!(&expr, Literal::String("hello world".to_string()));
 }
 
 #[test]
 fn parse_literal_booleans() {
-    let ast = wrap_and_parse_ast!("true; false;");
+    let ast = wrap_and_parse!(parse, "true; false;");
 
     let true_expr = get_first_expr(&ast);
     let false_expr = get_nth_expr(&ast, 1);
@@ -163,24 +132,67 @@ fn parse_literal_booleans() {
     expect_literal!(false_expr, Literal::Boolean(false));
 }
 
-fn run_binary_op_test_cases(test_cases: &[(&str, BinaryOpKind)]) {
-    for (source, expected_op) in test_cases {
-        let expr = parse_first_expr(source);
+fn run_binary_op_test_cases(test_cases: &[(&str, BinaryOpKind, i64, i64)]) {
+    for (source, expected_op, expected_lhs, expected_rhs) in test_cases {
+        let ast = parse!(parse, source);
+        let func = first_as_function(&ast);
+        let body = func.body.as_ref().unwrap();
 
-        expect_match!(&expr.kind, ExpressionKind::BinaryOp(op, _, _) => {
+        if body.statements.is_empty() {
+            panic!("No statements found in function body ast: {:#?}", ast);
+        }
+
+        let expr = get_first_expr(&ast).clone();
+
+        expect_match!(&expr.kind, ExpressionKind::BinaryOp(op, lhs, rhs) => {
             assert_eq!(*op, *expected_op, "Failed for: {}", source);
+
+            expect_literal!(lhs, Literal::Integer(*expected_lhs));
+            expect_literal!(rhs, Literal::Integer(*expected_rhs));
         }, "Expected binary operation for: {}", source);
     }
+}
+
+macro_rules! binary_op_test_case {
+    ($symbol:literal, $expected_op:expr, $expected_lhs:literal, $expected_rhs:literal) => {
+        (
+            concat!(
+                "fn main() { ",
+                $expected_lhs,
+                " ",
+                $symbol,
+                " ",
+                $expected_rhs,
+                "; }"
+            ),
+            $expected_op,
+            $expected_lhs,
+            $expected_rhs,
+        )
+    };
 }
 
 #[test]
 fn parse_binary_ops_arithmetic() {
     let test_cases = vec![
-        (main_fn!("1 + 2;"), BinaryOpKind::Add),
-        (main_fn!("3 - 4;"), BinaryOpKind::Sub),
-        (main_fn!("5 * 6;"), BinaryOpKind::Mul),
-        (main_fn!("7 / 8;"), BinaryOpKind::Div),
-        (main_fn!("9 % 10;"), BinaryOpKind::Mod),
+        binary_op_test_case!("+", BinaryOpKind::Add, 1, 2),
+        binary_op_test_case!("-", BinaryOpKind::Sub, 3, 4),
+        binary_op_test_case!("*", BinaryOpKind::Mul, 5, 6),
+        binary_op_test_case!("/", BinaryOpKind::Div, 7, 8),
+        binary_op_test_case!("%", BinaryOpKind::Mod, 9, 10),
+    ];
+
+    run_binary_op_test_cases(&test_cases);
+}
+
+// TODO: FIX THIS CASE
+//#[test]
+fn parse_binary_ops_literal_signs_edge_case() {
+    let test_cases = vec![
+        ("fn main() { 1 +2; }", (BinaryOpKind::Add), 1, 2),
+        ("fn main() { 3+ 4; }", (BinaryOpKind::Add), 3, 4),
+        ("fn main() { 5 -6; }", (BinaryOpKind::Sub), 5, 6),
+        ("fn main() { 7- 8; }", (BinaryOpKind::Sub), 7, 8),
     ];
 
     run_binary_op_test_cases(&test_cases);
@@ -189,12 +201,12 @@ fn parse_binary_ops_arithmetic() {
 #[test]
 fn parse_binary_ops_comparison() {
     let test_cases = vec![
-        (main_fn!("1 == 2;"), BinaryOpKind::Equal),
-        (main_fn!("1 != 2;"), BinaryOpKind::NotEqual),
-        (main_fn!("1 < 2;"), BinaryOpKind::LessThan),
-        (main_fn!("1 > 2;"), BinaryOpKind::GreaterThan),
-        (main_fn!("1 <= 2;"), BinaryOpKind::LessThanOrEqual),
-        (main_fn!("1 >= 2;"), BinaryOpKind::GreaterThanOrEqual),
+        binary_op_test_case!("==", BinaryOpKind::Equal, 1, 2),
+        binary_op_test_case!("!=", BinaryOpKind::NotEqual, 3, 4),
+        binary_op_test_case!("<", BinaryOpKind::LessThan, 5, 6),
+        binary_op_test_case!(">", BinaryOpKind::GreaterThan, 7, 8),
+        binary_op_test_case!("<=", BinaryOpKind::LessThanOrEqual, 9, 10),
+        binary_op_test_case!(">=", BinaryOpKind::GreaterThanOrEqual, 11, 12),
     ];
 
     run_binary_op_test_cases(&test_cases);
@@ -203,8 +215,8 @@ fn parse_binary_ops_comparison() {
 #[test]
 fn parse_binary_ops_logical() {
     let test_cases = vec![
-        (main_fn!("true && false;"), BinaryOpKind::And),
-        (main_fn!("true || false;"), BinaryOpKind::Or),
+        binary_op_test_case!("&&", BinaryOpKind::And, 1, 1),
+        binary_op_test_case!("||", BinaryOpKind::Or, 0, 1),
     ];
 
     run_binary_op_test_cases(&test_cases);
@@ -213,11 +225,11 @@ fn parse_binary_ops_logical() {
 #[test]
 fn parse_binary_ops_bitwise() {
     let test_cases = vec![
-        (main_fn!("5 & 3;"), BinaryOpKind::BitwiseAND),
-        (main_fn!("5 | 3;"), BinaryOpKind::BitwiseOR),
-        (main_fn!("5 ^ 3;"), BinaryOpKind::BitwiseXOR),
-        (main_fn!("5 << 2;"), BinaryOpKind::ShiftLeft),
-        (main_fn!("5 >> 2;"), BinaryOpKind::ShiftRight),
+        binary_op_test_case!("&", BinaryOpKind::BitwiseAND, 1, 2),
+        binary_op_test_case!("|", BinaryOpKind::BitwiseOR, 3, 4),
+        binary_op_test_case!("^", BinaryOpKind::BitwiseXOR, 5, 6),
+        binary_op_test_case!("<<", BinaryOpKind::ShiftLeft, 7, 8),
+        binary_op_test_case!(">>", BinaryOpKind::ShiftRight, 9, 10),
     ];
 
     run_binary_op_test_cases(&test_cases);
@@ -226,15 +238,15 @@ fn parse_binary_ops_bitwise() {
 #[test]
 fn parse_unary_ops() {
     let test_cases = vec![
-        (main_fn!("-a;"), UnaryOpKind::Negate),
-        (main_fn!("!true;"), UnaryOpKind::Not),
-        (main_fn!("*ptr;"), UnaryOpKind::Dereference),
+        (main!("-a;"), UnaryOpKind::Negate),
+        (main!("!true;"), UnaryOpKind::Not),
+        (main!("*ptr;"), UnaryOpKind::Dereference),
     ];
 
     for (source, expected_op) in test_cases {
-        let expr = parse_first_expr(source);
+        let expr = get_first_expr(&parse!(parse, source)).clone();
 
-        expect_match!(&expr.kind, ExpressionKind::UnaryOp(op, _) => {
+        expect_match!(&expr.kind, ExpressionKind::UnaryOp(op, ..) => {
             assert_eq!(*op, expected_op, "Failed for: {}", source);
         }, "Expected unary operation for: {}", source);
     }
@@ -242,7 +254,7 @@ fn parse_unary_ops() {
 
 #[test]
 fn parse_block_expression() {
-    let expr = wrap_expr_and_parse!("{ 42 }");
+    let expr = wrap_and_parse_expr!("{ 42 }");
     let block = expect_block!(&expr);
 
     expect_literal!(statement_any_expr(block, 0), Literal::Integer(42));
@@ -250,7 +262,7 @@ fn parse_block_expression() {
 
 #[test]
 fn parse_if_expression() {
-    let expr = wrap_expr_and_parse!("if true { 1 }");
+    let expr = wrap_and_parse_expr!("if true { 1 }");
 
     expect_match!(&expr.kind, ExpressionKind::If(cond, block, else_block) => {
         expect_literal!(cond, Literal::Boolean(true));
@@ -263,7 +275,7 @@ fn parse_if_expression() {
 
 #[test]
 fn parse_if_else_expression() {
-    let expr = wrap_expr_and_parse!("if true { 1 } else { 2 }");
+    let expr = wrap_and_parse_expr!("if true { 1 } else { 2 }");
 
     expect_match!(&expr.kind, ExpressionKind::If(cond, block, else_block) => {
         expect_literal!(cond, Literal::Boolean(true));
@@ -277,14 +289,16 @@ fn parse_if_else_expression() {
 
 #[test]
 fn parse_nested_if_statements() {
-    let expr = wrap_expr_and_parse!("if true {
+    let expr = wrap_and_parse_expr!(
+        "if true {
         if a {
             1
         } else {
             2
         }
-    }");
-    
+    }"
+    );
+
     expect_match!(&expr.kind, ExpressionKind::If(cond, block, else_block) => {
         expect_literal!(cond, Literal::Boolean(true));
 
@@ -303,7 +317,7 @@ fn parse_nested_if_statements() {
 
 #[test]
 fn parse_while_loop() {
-    let expr = wrap_expr_and_parse!("while true { 1; }");
+    let expr = wrap_and_parse_expr!("while true { 1; }");
 
     expect_match!(&expr.kind, ExpressionKind::While(cond, body) => {
         expect_literal!(cond, Literal::Boolean(true));
@@ -314,7 +328,7 @@ fn parse_while_loop() {
 
 #[test]
 fn parse_return_expression() {
-    let expr = wrap_expr_and_parse!("return 42;");
+    let expr = wrap_and_parse_expr!("return 42;");
 
     expect_match!(&expr.kind, ExpressionKind::Return(ret_expr) => {
         expect_literal!(ret_expr.as_ref().expect("Expected return statement has expression."), Literal::Integer(42));
@@ -323,7 +337,7 @@ fn parse_return_expression() {
 
 #[test]
 fn parse_return_no_expression() {
-    let expr = wrap_expr_and_parse!("return;");
+    let expr = wrap_and_parse_expr!("return;");
 
     expect_match!(&expr.kind, ExpressionKind::Return(ret_expr) => {
         assert!(ret_expr.is_none(), "Expected return statement with no expression");
@@ -332,7 +346,7 @@ fn parse_return_no_expression() {
 
 #[test]
 fn parse_function_call() {
-    let expr = wrap_expr_and_parse!("test();");
+    let expr = wrap_and_parse_expr!("test();");
 
     expect_match!(&expr.kind, ExpressionKind::Call(func, args) => {
         assert_eq!(args.len(), 0);
@@ -342,7 +356,7 @@ fn parse_function_call() {
 
 #[test]
 fn parse_function_call_with_args() {
-    let expr = wrap_expr_and_parse!(r#"test(1, 2.2, "hello")"#);
+    let expr = wrap_and_parse_expr!(r#"test(1, 2.2, "hello")"#);
 
     expect_match!(&expr.kind, ExpressionKind::Call(func, args) => {
         assert_eq!(args.len(), 3);
@@ -357,7 +371,7 @@ fn parse_function_call_with_args() {
 
 #[test]
 fn parse_method_call() {
-    let expr = wrap_expr_and_parse!("obj.method()");
+    let expr = wrap_and_parse_expr!("obj.method()");
 
     expect_match!(&expr.kind, ExpressionKind::MethodCall(call_info) => {
         expect_path!(&call_info.target_expr, "obj");
@@ -368,7 +382,7 @@ fn parse_method_call() {
 
 #[test]
 fn parse_method_call_with_args() {
-    let expr = wrap_expr_and_parse!(r#"obj.method(1, "str")"#);
+    let expr = wrap_and_parse_expr!(r#"obj.method(1, "str")"#);
 
     expect_match!(&expr.kind, ExpressionKind::MethodCall(call_info) => {
         expect_path!(&call_info.target_expr, "obj");
@@ -382,7 +396,7 @@ fn parse_method_call_with_args() {
 
 #[test]
 fn parse_struct_initialisation() {
-    let expr = wrap_expr_and_parse!("Point { x: 1, y: 2 }");
+    let expr = wrap_and_parse_expr!("Point { x: 1, y: 2 }");
 
     expect_match!(&expr.kind, ExpressionKind::StructInit(init) => {
         assert_eq!(init.fields.len(), 2);
@@ -397,7 +411,7 @@ fn parse_struct_initialisation() {
 
 #[test]
 fn parse_member_access() {
-    let expr = wrap_expr_and_parse!("obj.field");
+    let expr = wrap_and_parse_expr!("obj.field");
 
     expect_match!(&expr.kind, ExpressionKind::FieldAccess(target, field_ident) => {
         expect_path!(&target, "obj");
@@ -407,7 +421,7 @@ fn parse_member_access() {
 
 #[test]
 fn parse_assignment() {
-    let expr = wrap_expr_and_parse!("x = 5");
+    let expr = wrap_and_parse_expr!("x = 5");
 
     expect_match!(&expr.kind, ExpressionKind::Assign(target, value) => {
         expect_path!(&target, "x");
@@ -418,7 +432,7 @@ fn parse_assignment() {
 
 #[test]
 fn parse_let_statement_basic() {
-    let stmt = wrap_statement_and_parse!("let x: i32 = 5;");
+    let stmt = wrap_and_parse_statement!("let x: i32 = 5;");
 
     expect_match!(&stmt.kind, StatementKind::Let(local) => {
         assert_eq!(local.ident.str(), "x");
@@ -434,7 +448,7 @@ fn parse_let_statement_basic() {
 
 #[test]
 fn parse_let_statement_mutable() {
-    let stmt = wrap_statement_and_parse!(
+    let stmt = wrap_and_parse_statement!(
         r#"let mut y: string = "TESTING TESTING HAHAHAHAHAHAHHAHAHAHAHHA";"#
     );
 
@@ -452,7 +466,7 @@ fn parse_let_statement_mutable() {
 
 #[test]
 fn parse_empty_statement() {
-    let stmt = wrap_statement_and_parse!(";");
+    let stmt = wrap_and_parse_statement!(";");
     assert!(matches!(stmt.kind, StatementKind::Empty));
 }
 
@@ -477,7 +491,7 @@ fn parse_function_with_params() {
 
     assert_eq!(func.sig.parameters[0].ident.str(), "a");
     expect_ty!(str, func.sig.parameters[0].ty, "i32");
-    
+
     assert_eq!(func.sig.parameters[1].ident.str(), "b");
     expect_ty!(str, func.sig.parameters[1].ty, "f32");
 }
@@ -678,7 +692,8 @@ fn parse_module_declaration() {
 
 #[test]
 fn parse_complete_program() {
-    let ast = parse_ok(r#"
+    let ast = parse_ok(
+        r#"
         pub struct Vec2 {
             x: f32,
             y: f32,
@@ -701,14 +716,15 @@ fn parse_complete_program() {
             let v2 = Vec2::new(3.0, 4.0);
             let dist = v1.distance(v2);
         }
-    "#);
+    "#,
+    );
 
     assert_eq!(ast.items.len(), 3);
 
     let structure = &ast.items[0];
     let strcture_impl = &ast.items[1];
     let main_fn = &ast.items[2];
-    
+
     expect_match!(&structure.kind, ItemKind::Struct(s) => {
         assert_eq!(s.ident.str(), "Vec2");
         assert_eq!(s.fields.len(), 2);
@@ -767,7 +783,7 @@ fn parse_complete_program() {
 
 #[test]
 fn parse_nested_blocks() {
-    let expr = wrap_expr_and_parse!(r#"{ { let x = 1; } }"#);
+    let expr = wrap_and_parse_expr!(r#"{ { let x = 1; } }"#);
 
     let block = expect_block!(&expr);
     let inner_block = expect_block!(statement_any_expr(block, 0));
@@ -782,9 +798,9 @@ fn parse_nested_blocks() {
 
 #[test]
 fn parse_complex_expression() {
-    let expr = wrap_expr_and_parse!("(1 + 2) * (3 - 4) / 5");
+    let expr = wrap_and_parse_expr!("(1 + 2) * (3 - 4) / 5");
 
-    // This should be: 
+    // This should be:
     //      - lhs_1 / 5
     //      - lhs_1 = lhs_2 * lhs_3
     //      - lhs_2 = 1 + 2
@@ -821,7 +837,7 @@ fn parse_complex_expression() {
 
 #[test]
 fn parse_chained_method_calls() {
-    let expr = wrap_expr_and_parse!("obj.method1().method2().method3()");
+    let expr = wrap_and_parse_expr!("obj.method1().method2().method3()");
 
     expect_match!(&expr.kind, ExpressionKind::MethodCall(call3) => {
         assert_eq!(call3.method_ident.str(), "method3");
@@ -845,12 +861,14 @@ fn parse_chained_method_calls() {
 
 #[test]
 fn parse_multiple_items() {
-    let ast = parse_ok(r#"
+    let ast = parse_ok(
+        r#"
         fn a() {}
         fn b() {}
         struct C {}
         impl C {}
-    "#);
+    "#,
+    );
     assert_eq!(ast.items.len(), 4);
 
     expect_match!(&ast.items[0].kind, ItemKind::Fn(func) => {
@@ -876,22 +894,22 @@ fn parse_multiple_items() {
 
 #[test]
 fn parse_error_missing_semicolon() {
-    let _err = parse_err("fn main() { let x = 5 }");
+    let _err = wrap_and_parse!(parse, err, "let x = 5");
 }
 
 #[test]
 fn parse_error_unclosed_brace() {
-    let _err = parse_err("fn main() { ");
+    let _err = parse!(parse, err, "fn main() { ");
 }
 
 #[test]
 fn parse_error_invalid_token() {
-    let _err = parse_err("fn main() { @ }");
+    let _err = wrap_and_parse!(parse, err, "@");
 }
 
 #[test]
 fn parse_error_self_outside_impl() {
-    let _err = parse_err("fn foo(self) {}");
+    let _err = parse!(parse, err, "fn foo(self) {}");
 }
 
 // TODO: I can think of more test cases, but this is good enough for now.

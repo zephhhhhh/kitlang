@@ -101,11 +101,7 @@ impl SpannedErrorLine {
 
             #[cfg(feature = "colour")]
             {
-                let highlight = if error {
-                    color_red
-                } else {
-                    highlight_color
-                };
+                let highlight = if error { color_red } else { highlight_color };
                 highlight_str += &format!("{highlight}{}{color_reset}", actual_str_bit);
             }
             #[cfg(not(feature = "colour"))]

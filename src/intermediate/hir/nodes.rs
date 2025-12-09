@@ -296,6 +296,7 @@ impl_item_kind_shorthand!(enum, ItemKind::Enum(e) => e, Enum);
 impl_item_kind_shorthand!(struct, ItemKind::Struct(s) => s, Struct);
 impl_item_kind_shorthand!(const, ItemKind::Constant(c) => c, Constant);
 impl_item_kind_shorthand!(impl, ItemKind::Impl(i) => i, Impl);
+impl_item_kind_shorthand!(use, ItemKind::Use(u) => u, UsePath);
 
 // Item kind tys..
 

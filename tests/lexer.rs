@@ -5,16 +5,24 @@ use kitlang::{
 
 // Helper functions/macros..
 macro_rules! int_literal {
-    ($val: literal) => { TokenKind::Literal(LiteralKind::Integer($val)) };
+    ($val: literal) => {
+        TokenKind::Literal(LiteralKind::Integer($val))
+    };
 }
 macro_rules! float_literal {
-    ($val: literal) => { TokenKind::Literal(LiteralKind::Float($val)) };
+    ($val: literal) => {
+        TokenKind::Literal(LiteralKind::Float($val))
+    };
 }
 macro_rules! identifier {
-    ($identifier_name: literal) => { TokenKind::Ident($identifier_name.to_string()) };
+    ($identifier_name: literal) => {
+        TokenKind::Ident($identifier_name.to_string())
+    };
 }
 macro_rules! tok_kind {
-    ($tokens: ident) => { $tokens.next().expect("Expected token to exist.").kind };
+    ($tokens: ident) => {
+        $tokens.next().expect("Expected token to exist.").kind
+    };
 }
 
 #[test]
