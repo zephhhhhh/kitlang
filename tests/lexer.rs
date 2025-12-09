@@ -5,28 +5,20 @@ use kitlang::{
 
 // Helper functions/macros..
 macro_rules! int_literal {
-    ($val: literal) => {
-        TokenKind::Literal(LiteralKind::Integer($val))
-    };
+    ($val: literal) => { TokenKind::Literal(LiteralKind::Integer($val)) };
 }
 macro_rules! float_literal {
-    ($val: literal) => {
-        TokenKind::Literal(LiteralKind::Float($val))
-    };
+    ($val: literal) => { TokenKind::Literal(LiteralKind::Float($val)) };
 }
 macro_rules! identifier {
-    ($identifier_name: literal) => {
-        TokenKind::Ident($identifier_name.to_string())
-    };
+    ($identifier_name: literal) => { TokenKind::Ident($identifier_name.to_string()) };
 }
 macro_rules! tok_kind {
-    ($tokens: ident) => {
-        $tokens.next().expect("Token should exist.").kind
-    };
+    ($tokens: ident) => { $tokens.next().expect("Expected token to exist.").kind };
 }
 
 #[test]
-fn cursor() {
+fn lexer_code_cursor() {
     let source_string = "abc     def";
     let mut cursor = CodeCursor::new(source_string);
 
@@ -75,7 +67,7 @@ fn verify_token_kinds(iter: &mut impl Iterator<Item = Token>, expected_kinds: &[
 }
 
 #[test]
-fn literals() {
+fn lexer_literal_parsing() {
     let mut tokens = tokenise_stripped(include_str!("scripts/lexer/literals.purr"));
 
     // This also makes sure comments are indeed being stripped..
@@ -111,7 +103,7 @@ fn literals() {
 }
 
 #[test]
-fn keywords_idents() {
+fn lexer_keywords_and_identifiers() {
     let mut tokens = tokenise_stripped(include_str!("scripts/lexer/keywords_idents.purr"));
 
     let expected_tokens = [
