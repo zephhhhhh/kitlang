@@ -297,25 +297,6 @@ fn is_newline_char(c: char) -> bool {
     c == '\r' || c == '\n'
 }
 
-/// Returns true if the char represents the sign of a number.
-fn is_sign_char(c: char) -> bool {
-    c == '-' || c == '+'
-}
-
-/// Conditionally negative a type based on a bool.
-fn negate_if<T: ::std::ops::Neg<Output = T>>(t: T, negative: bool) -> T {
-    if negative { t.neg() } else { t }
-}
-
-/// Returns true if the char sequence represents a numeric literal.
-fn is_numeric_literal_sequence(first_char: char, second_char: char) -> bool {
-    if is_sign_char(first_char) {
-        second_char.is_numeric()
-    } else {
-        first_char.is_numeric()
-    }
-}
-
 /// Holds the state of the lexing process, contains implementation of the lexer.
 #[derive(Debug)]
 struct Lexer<'a> {
@@ -353,9 +334,7 @@ impl<'a> Lexer<'a> {
                 }
             }
             c if unicode_xid::UnicodeXID::is_xid_start(c) => self.identifier(),
-            c if is_numeric_literal_sequence(c, self.cursor.peek_second()) => {
-                self.numeric_literal()
-            }
+            c if c.is_numeric() => self.numeric_literal(),
             c if Punctuation::is_punctuation(c) => self.punctuation(),
             '"' => self.string_literal(),
             _ => Some(Token::from_kind(TokenKind::Unknown)),
@@ -505,7 +484,7 @@ impl Lexer<'_> {
 
     /// Parses a numeric literal from the cursor.
     /// # Details
-    /// All support negative sign ('-'), positive sign ('+') and underscores ('_') for delimiting, underscores are to be
+    /// All support underscores ('_') for delimiting, underscores are to be
     /// read as non-influential characters.
     /// Can be of the form:
     /// *   Binary        ('0b01010101')
@@ -517,15 +496,7 @@ impl Lexer<'_> {
     fn numeric_literal(&mut self) -> Option<Token> {
         // FIXME: Does not allow for whitespace between sign and number.
         let pos = self.cursor.position();
-        let (negative, c1, c2) = {
-            let negative = self.cursor.peek() == '-';
-            if is_sign_char(self.cursor.peek()) {
-                self.cursor
-                    .consume()
-                    .expect("Consuming numeric sign can't fail.");
-            }
-            (negative, self.cursor.peek(), self.cursor.peek_second())
-        };
+        let (c1, c2) = (self.cursor.peek(), self.cursor.peek_second());
 
         let base = if c1 == '0' {
             match c2 {
@@ -544,24 +515,23 @@ impl Lexer<'_> {
             self.cursor.consume()?;
         }
 
+        let mut minus_allowed = false;
+
         let val_pos = self.cursor.position();
         self.cursor.consume_while(|c| {
-            c.is_digit(base) || c == '_' || c == '.' || c == 'e' || c == '-' || c == '+'
+            minus_allowed |= c == 'e';
+            c.is_digit(base) || c == '_' || c == '.' || c == 'e' || (c == '-' && minus_allowed)
         });
         let val_end = self.cursor.position();
 
         let value_string = self.substr(val_pos, val_end).replace('_', "");
 
         let literal = if value_string.contains(['e', '.']) {
-            if let Ok(v) = value_string.parse::<f64>() {
-                LiteralKind::Float(negate_if(v, negative))
-            } else {
-                return None;
-            }
-        } else if let Ok(v) = i64::from_str_radix(&value_string, base) {
-            LiteralKind::Integer(negate_if(v, negative))
+            value_string.parse::<f64>().ok().map(LiteralKind::Float)?
         } else {
-            return None;
+            i64::from_str_radix(&value_string, base)
+                .ok()
+                .map(LiteralKind::Integer)?
         };
 
         Some(Token::new(literal, pos, val_end))

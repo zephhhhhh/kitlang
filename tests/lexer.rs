@@ -83,12 +83,10 @@ fn lexer_literal_parsing() {
         // First block, testing integer, negative integer, float, negative float, and
         // differentiation between negative float and '-' symbol.
         int_literal!(10),
-        int_literal!(-10),
         float_literal!(0.2),
-        float_literal!(-0.212421),
         float_literal!(0.213),
         TokenKind::Punctuation(Punctuation::Minus),
-        float_literal!(-0.1),
+        float_literal!(0.1),
         // Second block, testing different number formats and radixes.
         int_literal!(15),
         int_literal!(65535),

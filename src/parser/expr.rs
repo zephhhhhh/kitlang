@@ -211,6 +211,8 @@ impl Parser<'_, '_> {
     }
 
     fn parse_literal(&mut self) -> PResult<Box<Expression>> {
+        let negative = self.check_kind_advance(Punctuation::Minus);
+
         let span_start = self.begin_span();
         let token = self.peek_at(0)?;
         let kind = match &token.kind {
@@ -241,6 +243,12 @@ impl Parser<'_, '_> {
                     self.finish_span(span_start),
                 ));
             }
+        };
+
+        let kind = match kind {
+            Literal::Float(f) if negative => Literal::Float(-f),
+            Literal::Integer(i) if negative => Literal::Integer(i.wrapping_neg()),
+            _ => kind,
         };
 
         Ok(Expression::new_boxed(

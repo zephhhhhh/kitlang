@@ -102,23 +102,20 @@ fn get_first_expr(root: &ASTRoot) -> &Expression {
 
 #[test]
 fn parse_literal_integers() {
-    let expr = wrap_and_parse_expr!("42");
-
-    expect_literal!(&expr, Literal::Integer(42));
+    expect_literal!(&wrap_and_parse_expr!("42"), Literal::Integer(42));
 }
 
 #[test]
 fn parse_literal_floats() {
-    let expr = wrap_and_parse_expr!("7.12023");
-
-    expect_literal!(&expr, Literal::Float(7.12023));
+    expect_literal!(&wrap_and_parse_expr!("7.12023"), Literal::Float(7.12023));
 }
 
 #[test]
 fn parse_literal_strings() {
-    let expr = wrap_and_parse_expr!(r#""hello world""#);
-
-    expect_literal!(&expr, Literal::String("hello world".to_string()));
+    expect_literal!(
+        &wrap_and_parse_expr!(r#""hello world""#),
+        Literal::String("hello world".to_string())
+    );
 }
 
 #[test]
@@ -185,8 +182,7 @@ fn parse_binary_ops_arithmetic() {
     run_binary_op_test_cases(&test_cases);
 }
 
-// TODO: FIX THIS CASE
-//#[test]
+#[test]
 fn parse_binary_ops_literal_signs_edge_case() {
     let test_cases = vec![
         ("fn main() { 1 +2; }", (BinaryOpKind::Add), 1, 2),
