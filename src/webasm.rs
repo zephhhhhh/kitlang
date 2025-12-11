@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use crate::interpreter::mir_interpreter::{Interpreter, Value};
-use crate::register_native_fn;
+use crate::{register_native_fn, wrap_native_fn};
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "logging")]
@@ -112,8 +112,12 @@ fn register_native_functions(interpreter: &mut Interpreter) {
         is_empty,
         i32_to_string,
         string_to_i32,
+        u32_to_string,
+        string_to_u32,
         f32_to_string,
-        string_to_f32
+        string_to_f32,
+        bool_to_string,
+        string_to_bool
     );
 }
 
@@ -160,115 +164,74 @@ fn from_js_value(value: &JsValue) -> Value {
     Value::Unit
 }
 
-fn expect_string_value(value: &Value) -> String {
-    if let Value::String(s) = value {
-        s.clone()
-    } else {
-        String::new()
-    }
-}
-
 // "Compiler" defined intrinsics.
 
-fn i32_to_string(a: &[Value]) -> String {
-    if let Some(Value::Integer(i)) = a.first() {
-        return i.to_string();
-    }
-    String::new()
-}
+wrap_native_fn!(i32_to_string(x: i32) -> String { 
+    x.to_string() 
+});
+wrap_native_fn!(string_to_i32(s: String) -> i32 {
+    s.parse::<i32>().unwrap_or(0)
+});
+wrap_native_fn!(f32_to_string(x: f32) -> String {
+    x.to_string()
+});
+wrap_native_fn!(string_to_f32(s: String) -> f32 {
+    s.parse::<f32>().unwrap_or(0.0)
+});
+wrap_native_fn!(u32_to_string(x: u32) -> String {
+    x.to_string()
+});
+wrap_native_fn!(string_to_u32(s: String) -> u32 {
+    s.parse::<u32>().unwrap_or(0)
+});
+wrap_native_fn!(bool_to_string(x: bool) -> String {
+    x.to_string()
+});
+wrap_native_fn!(string_to_bool(s: String) -> bool {
+    s.parse::<bool>().unwrap_or(false)
+});
 
-fn string_to_i32(a: &[Value]) -> i32 {
-    if let Some(Value::String(s)) = a.first()
-        && let Ok(i) = s.parse::<i32>()
-    {
-        return i;
-    }
-    0
-}
-
-fn f32_to_string(a: &[Value]) -> String {
-    if let Some(Value::Float(f)) = a.first() {
-        return f.to_string();
-    }
-    String::new()
-}
-
-fn string_to_f32(a: &[Value]) -> f32 {
-    if let Some(Value::String(s)) = a.first()
-        && let Ok(f) = s.parse::<f32>()
-    {
-        return f;
-    }
-    0.0
-}
-
-fn is_empty(a: &[Value]) -> bool {
-    if let Some(Value::String(s)) = a.first() {
-        return s.is_empty();
-    }
-    true
-}
-
-fn println(a: &[Value]) {
-    if let Some(v) = a.first() {
-        let string = v.repr_string();
-        PRINT_CALLBACK.with(|slot| {
-            if let Some(cb) = &*slot.borrow() {
-                cb.call1(&JsValue::NULL, &JsValue::from_str(&string))
-                    .unwrap();
-            }
-        });
-    }
-}
-
-fn to_lower(a: &[Value]) -> String {
-    if let Some(Value::String(s)) = a.first() {
-        return s.to_lowercase();
-    }
-    "".to_string()
-}
-
-fn input(a: &[Value]) -> String {
-    if a.len() != 1 {
-        return String::new();
-    }
-
+wrap_native_fn!(is_empty(s: String) -> bool {
+    s.is_empty()
+});
+wrap_native_fn!(println(s: String) {
+    PRINT_CALLBACK.with(|slot| {
+        if let Some(cb) = &*slot.borrow() {
+            cb.call1(&JsValue::NULL, &JsValue::from_str(&s))
+                .unwrap();
+        }
+    });
+});
+wrap_native_fn!(to_lower(s: String) -> String {
+    s.to_lowercase()
+});
+wrap_native_fn!(input(s: String) -> String {
     let mut result = String::new();
     INPUT.with(|slot| {
-        if let Some(cb) = &*slot.borrow() {
-            let input_arg = expect_string_value(&a[0]);
-            if let Ok(js_value) = cb.call2(
+        if let Some(cb) = &*slot.borrow()
+            && let Ok(js_value) = cb.call2(
                 &JsValue::NULL,
-                &JsValue::from_str(&input_arg),
+                &JsValue::from_str(&s),
                 &JsValue::NULL,
             ) && let Some(s) = js_value.as_string()
             {
                 result = s;
             }
-        }
     });
     result
-}
-
-fn input_placeholder(a: &[Value]) -> String {
-    if a.len() != 2 {
-        return String::new();
-    }
-
+});
+wrap_native_fn!(input_placeholder(s: String, s2: String) -> String {
     let mut result = String::new();
     INPUT.with(|slot| {
-        if let Some(cb) = &*slot.borrow() {
-            let input_arg = expect_string_value(&a[0]);
-            let default_arg = expect_string_value(&a[1]);
-            if let Ok(js_value) = cb.call2(
+        if let Some(cb) = &*slot.borrow()
+            && let Ok(js_value) = cb.call2(
                 &JsValue::NULL,
-                &JsValue::from_str(&input_arg),
-                &JsValue::from_str(&default_arg),
+                &JsValue::from_str(&s),
+                &JsValue::from_str(&s2),
             ) && let Some(s) = js_value.as_string()
             {
                 result = s;
             }
-        }
     });
     result
-}
+});

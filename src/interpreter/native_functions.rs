@@ -43,28 +43,6 @@ macro_rules! impl_native_fn_interface {
 
 impl_native_fn_interface!(MIR, MIRInterpreterState, MIRValue);
 
-// pub trait NativeFunctionInterface<Param>: Sized {
-//     fn call(&mut self, args: Param) -> Option<MIRValue>;
-// }
-
-// impl<F, P1> NativeFunctionInterface<(P1,)> for F
-// where
-//     F: FnMut(P1) -> Option<MIRValue> + 'static,
-// {
-//     fn call(&mut self, args: (P1,)) -> Option<MIRValue> {
-//         (self)(args.0)
-//     }
-// }
-
-// impl<F, P1, P2> NativeFunctionInterface<(P1, P2)> for F
-// where
-//     F: FnMut(P1, P2) -> Option<MIRValue> + 'static,
-// {
-//     fn call(&mut self, args: (P1, P2)) -> Option<MIRValue> {
-//         (self)(args.0, args.1)
-//     }
-// }
-
 #[macro_export]
 macro_rules! register_native_fn {
     ($interpreter: expr, $fn: ident) => {
@@ -75,3 +53,88 @@ macro_rules! register_native_fn {
         register_native_fn!($interpreter, $($rest),*);
     }
 }
+
+/// Macro to define a native function with automatic `&[Value]` parameter extraction
+///
+/// The macro creates a function that accepts `&[Value]` and internally calls the
+/// user-defined function with extracted parameters.
+#[macro_export]
+macro_rules! wrap_native_fn {
+    // Function with return type and body
+    ($fn_name:ident($($param_name:ident : $param_ty:ty),* $(,)?) -> $ret_ty:ty $body:block) => {
+        fn $fn_name(args: &[$crate::interpreter::mir_interpreter::Value]) -> $ret_ty {
+            fn _inner($($param_name: $param_ty),*) -> $ret_ty {
+                $body
+            }
+            
+            let mut idx = 0;
+            $(
+                let $param_name: $param_ty = {
+                    use $crate::interpreter::native_functions::ExtractValue;
+                    let val = args.get(idx).unwrap_or(&$crate::interpreter::mir_interpreter::Value::Unit);
+                    #[allow(unused_assignments)] { idx += 1; }
+                    ExtractValue::extract(val)
+                };
+            )*
+            
+            _inner($($param_name),*)
+        }
+    };
+
+    // Function without return type (returns Unit) with body
+    ($fn_name:ident($($param_name:ident : $param_ty:ty),* $(,)?) $body:block) => {
+        fn $fn_name(args: &[$crate::interpreter::mir_interpreter::Value]) {
+            fn _inner($($param_name: $param_ty),*) {
+                $body
+            }
+            
+            let mut idx = 0;
+            $(
+                let $param_name: $param_ty = {
+                    use $crate::interpreter::native_functions::ExtractValue;
+                    let val = args.get(idx).unwrap_or(&$crate::interpreter::mir_interpreter::Value::Unit);
+                    #[allow(unused_assignments)] { idx += 1; }
+                    ExtractValue::extract(val)
+                };
+            )*
+            
+            _inner($($param_name),*)
+        }
+    };
+}
+
+/// Helper trait for extracting values from `Value` enum
+pub trait ExtractValue {
+    fn extract(value: &MIRValue) -> Self;
+}
+
+macro_rules! impl_extract {
+    ($type:ty, $variant:ident, $convert:expr, $default:expr) => {
+        impl ExtractValue for $type {
+            fn extract(value: &MIRValue) -> Self {
+                if let MIRValue::$variant(inner) = value {
+                    $convert(inner)
+                } else {
+                    $default
+                }
+            }
+        }
+    };
+}
+
+impl_extract!(String, String, |s: &String| s.clone(), String::new());
+
+impl_extract!(u8, UnsignedInteger, |i: &u64| *i as u8, 0);
+impl_extract!(u16, UnsignedInteger, |i: &u64| *i as u16, 0);
+impl_extract!(u32, UnsignedInteger, |i: &u64| *i as u32, 0);
+impl_extract!(u64, UnsignedInteger, |i: &u64| *i, 0);
+
+impl_extract!(i8, Integer, |i: &i64| *i as i8, 0);
+impl_extract!(i16, Integer, |i: &i64| *i as i16, 0);
+impl_extract!(i32, Integer, |i: &i64| *i as i32, 0);
+impl_extract!(i64, Integer, |i: &i64| *i, 0);
+
+impl_extract!(f32, Float, |f: &f64| *f as f32, 0.0);
+impl_extract!(f64, Float, |f: &f64| *f, 0.0);
+
+impl_extract!(bool, Boolean, |b: &bool| *b, false);
