@@ -766,17 +766,17 @@ impl InterpreterState {
             },
             CastKind::Float(target_float_size) => match value {
                 Value::UnsignedInteger(v) => Some(Value::Float(match target_float_size {
-                    KitFloat::F16 => v as f16 as f64,
+                    KitFloat::F16 => v as f32 as f64,
                     KitFloat::F32 => v as f32 as f64,
                     KitFloat::F64 | KitFloat::F128 => v as f64,
                 })),
                 Value::Integer(v) => Some(Value::Float(match target_float_size {
-                    KitFloat::F16 => v as f16 as f64,
+                    KitFloat::F16 => v as f32 as f64,
                     KitFloat::F32 => v as f32 as f64,
                     KitFloat::F64 | KitFloat::F128 => v as f64,
                 })),
                 Value::Float(v) => Some(Value::Float(match target_float_size {
-                    KitFloat::F16 => v as f16 as f64,
+                    KitFloat::F16 => v as f32 as f64,
                     KitFloat::F32 => v as f32 as f64,
                     KitFloat::F64 | KitFloat::F128 => v,
                 })),
