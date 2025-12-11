@@ -157,6 +157,49 @@ impl KitTy {
 }
 
 impl KitTy {
+    pub fn is_primitive(&self) -> bool {
+        match self {
+            KitTy::Unit
+            | KitTy::Int(_)
+            | KitTy::UInt(_)
+            | KitTy::Float(_)
+            | KitTy::Boolean
+            | KitTy::Char
+            | KitTy::String => true,
+            KitTy::Abstract(_) => false,
+        }
+    }
+
+    pub fn is_unit(&self) -> bool {
+        matches!(self, KitTy::Unit)
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(self, KitTy::Int(_))
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, KitTy::Float(_))
+    }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self, KitTy::Boolean)
+    }
+
+    pub fn is_char(&self) -> bool {
+        matches!(self, KitTy::Char)
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self, KitTy::String)
+    }
+
+    pub fn is_abstract(&self) -> bool {
+        matches!(self, KitTy::Abstract(_))
+    }
+}
+
+impl KitTy {
     pub fn is_compatible(&self, other: &KitTy) -> bool {
         match self {
             KitTy::Unit => matches!(other, KitTy::Unit),
@@ -363,6 +406,24 @@ impl KitTy {
                 warn!("Tried to do abstract result type.");
                 None
             }
+        }
+    }
+
+    pub fn cast_result_type(&self, target: &KitTy) -> Option<KitTy> {
+        match (self, target) {
+            // Allow casting between same kinds..
+            (KitTy::Int(_), KitTy::Int(_))
+            | (KitTy::UInt(_), KitTy::UInt(_))
+            | (KitTy::Float(_), KitTy::Float(_)) => Some(*target),
+            // Allow casting between int/uint/float..
+            (KitTy::Int(_), KitTy::UInt(_))
+            | (KitTy::Int(_), KitTy::Float(_))
+            | (KitTy::UInt(_), KitTy::Int(_))
+            | (KitTy::UInt(_), KitTy::Float(_))
+            | (KitTy::Float(_), KitTy::Int(_))
+            | (KitTy::Float(_), KitTy::UInt(_)) => Some(*target),
+            // Disallow other casts for now..
+            _ => None,
         }
     }
 }

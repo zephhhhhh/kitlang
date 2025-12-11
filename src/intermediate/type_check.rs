@@ -677,6 +677,31 @@ impl TypeChecker<'_> {
                 }
             }
             ExprKind::Continue | ExprKind::Break => Ok(Type::unit()),
+            ExprKind::Cast(hir_id, target_type) => {
+                let expr_type = self.eval_expr_type_by_id(*hir_id, hlir)?;
+                let expr_type_r = self.resolved_type(*hir_id, &expr_type, hlir)?;
+
+                let target_type_r = *target_type.resolved().ok_or_else(|| {
+                    type_fail!(
+                        hlir,
+                        expr.id,
+                        "Failed to resolve cast target type: `{}`",
+                        self.type_name(target_type.clone())
+                    )
+                })?;
+
+                if let Some(cast_result_type) = expr_type_r.cast_result_type(&target_type_r) {
+                    Ok(Type::Resolved(cast_result_type))
+                } else {
+                    Err(type_fail!(
+                        hlir,
+                        expr.id,
+                        "Cannot cast type `{}` to `{}`",
+                        self.type_name(expr_type),
+                        self.type_name(target_type.clone())
+                    ))
+                }
+            }
             unk => {
                 error!("Error unknown expression type: {:?}", unk);
                 Ok(Type::unit())

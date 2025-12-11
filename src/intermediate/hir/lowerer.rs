@@ -487,6 +487,11 @@ impl HLIRLowerer<'_> {
                     fields: field_inits,
                 }))
             }
+            ast::ExpressionKind::Cast(expr_to_cast, target_type) => {
+                let expr_id = self.lower_expression(expr_to_cast, owner_node)?;
+                let ty = Type::from_ast_ty(target_type);
+                Ok(ExprKind::Cast(expr_id, ty))
+            }
         }?;
 
         let hir_expr = Expr {

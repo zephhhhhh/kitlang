@@ -5,6 +5,7 @@ use crate::ast::{BinaryOpKind, Ident, Literal, Mutability, UnaryOpKind};
 
 use crate::intermediate::hir::OwnerDefId;
 use crate::intermediate::resolver::TypeID;
+use crate::intermediate::types::{KitFloat, KitInt, KitTy, KitUInt};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -110,6 +111,24 @@ impl Debug for Operand {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CastKind {
+    Int(KitInt),
+    UInt(KitUInt),
+    Float(KitFloat),
+}
+
+impl CastKind {
+    pub fn from_type(ty: KitTy) -> Option<Self> {
+        match ty {
+            KitTy::Int(int_kind) => Some(CastKind::Int(int_kind)),
+            KitTy::UInt(uint_kind) => Some(CastKind::UInt(uint_kind)),
+            KitTy::Float(float_kind) => Some(CastKind::Float(float_kind)),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ADTKind {
     Struct(TypeID),
@@ -122,6 +141,7 @@ pub enum RValue {
     BinaryOp(BinaryOpKind, (Operand, Operand)),
     UnaryOp(UnaryOpKind, Operand),
     ADT(ADTKind, Vec<Operand>),
+    Cast(Operand, CastKind),
 }
 
 impl Debug for RValue {
@@ -144,6 +164,9 @@ impl Debug for RValue {
                 }
                 write!(f, ")")
             }
+            Self::Cast(operand, target_type) => {
+                write!(f, "Cast({:?} as {:?})", operand, target_type)
+            }
         }
     }
 }
@@ -163,6 +186,10 @@ impl RValue {
 
     pub fn refer(assign_target: AssignTarget) -> Self {
         Self::Ref(assign_target)
+    }
+
+    pub fn cast(operand: Operand, target_type: CastKind) -> Self {
+        Self::Cast(operand, target_type)
     }
 }
 

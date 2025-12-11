@@ -13,8 +13,8 @@ use crate::intermediate::hir::{
 };
 
 use crate::intermediate::mir::{
-    BasicBlock, BasicBlockId, BlockExitKind, Body, ExitDirective, LocalDefinition, LocalId,
-    LocalInfo, MIR, Operand, RValue,
+    BasicBlock, BasicBlockId, BlockExitKind, Body, CastKind, ExitDirective, LocalDefinition,
+    LocalId, LocalInfo, MIR, Operand, RValue,
 };
 // Aliases.
 use crate::intermediate::mir::{Statement as MIRStatement, StatementKind as MIRStatementKind};
@@ -848,6 +848,35 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     .push_local_assign(LocalId::RETURN_VALUE, return_value);
                 self.builder_mut_expect()
                     .set_exit_kind(BlockExitKind::Return);
+            }
+            ExprKind::Cast(target, target_type) => {
+                let Some(lhs_local) = self.visit_expr_assigned(*target, hlir) else {
+                    self.errors
+                        .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                            "Failed to get cast expression target".to_string(),
+                            hlir.span_by_hir_id(*target),
+                        )));
+                    return;
+                };
+                let Some(resolved_type) = target_type.resolved() else {
+                    self.errors
+                        .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                            "Failed to resolve cast type".to_string(),
+                            hlir.span_by_hir_id(*target),
+                        )));
+                    return;
+                };
+                let Some(cast_kind) = CastKind::from_type(*resolved_type) else {
+                    self.errors
+                        .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                            "Failed to get valid cast target type".to_string(),
+                            hlir.span_by_hir_id(*target),
+                        )));
+                    return;
+                };
+                let local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(local, RValue::Cast(Operand::Copy(lhs_local), cast_kind));
             }
             _ => {}
         }

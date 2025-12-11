@@ -5,11 +5,12 @@ use crate::ast::{BinaryOpKind, Literal, UnaryOpKind};
 
 use crate::intermediate::hir::OwnerDefId;
 use crate::intermediate::mir::{
-    AssignTarget, BasicBlockId, BlockExitKind, Body, LocalId, MIR, Operand, RValue, Statement,
-    StatementKind,
+    AssignTarget, BasicBlockId, BlockExitKind, Body, CastKind, LocalId, MIR, Operand, RValue,
+    Statement, StatementKind,
 };
 
 use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeRegistry};
+use crate::intermediate::types::{KitFloat, KitInt, KitUInt};
 use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
 
 #[cfg(feature = "serde")]
@@ -688,6 +689,10 @@ impl InterpreterState {
                     }
                 }
             },
+            RValue::Cast(operand, cast_kind) => {
+                let value = self.eval_operand(operand)?;
+                self.perform_cast(value, *cast_kind)
+            }
         }
     }
 
@@ -712,6 +717,72 @@ impl InterpreterState {
             );
         }
         *local_mut = new_value;
+    }
+
+    pub fn perform_cast(&self, value: Value, target_type: CastKind) -> Option<Value> {
+        // TODO: Please just implement proper value storage. please
+        match target_type {
+            CastKind::Int(target_int_size) => match value {
+                Value::UnsignedInteger(v) => Some(Value::Integer(match target_int_size {
+                    KitInt::I8 => v as i8 as i64,
+                    KitInt::I16 => v as i16 as i64,
+                    KitInt::I32 => v as i32 as i64,
+                    KitInt::I64 | KitInt::ISize | KitInt::I128 => v as i64,
+                })),
+                Value::Integer(v) => Some(Value::Integer(match target_int_size {
+                    KitInt::I8 => v as i8 as i64,
+                    KitInt::I16 => v as i16 as i64,
+                    KitInt::I32 => v as i32 as i64,
+                    KitInt::I64 | KitInt::ISize | KitInt::I128 => v,
+                })),
+                Value::Float(v) => Some(Value::Integer(match target_int_size {
+                    KitInt::I8 => v as i8 as i64,
+                    KitInt::I16 => v as i16 as i64,
+                    KitInt::I32 => v as i32 as i64,
+                    KitInt::I64 | KitInt::ISize | KitInt::I128 => v as i64,
+                })),
+                _ => None,
+            },
+            CastKind::UInt(target_uint_size) => match value {
+                Value::UnsignedInteger(v) => Some(Value::UnsignedInteger(match target_uint_size {
+                    KitUInt::U8 => v as u8 as u64,
+                    KitUInt::U16 => v as u16 as u64,
+                    KitUInt::U32 => v as u32 as u64,
+                    KitUInt::U64 | KitUInt::USize | KitUInt::U128 => v,
+                })),
+                Value::Integer(v) => Some(Value::UnsignedInteger(match target_uint_size {
+                    KitUInt::U8 => v as u8 as u64,
+                    KitUInt::U16 => v as u16 as u64,
+                    KitUInt::U32 => v as u32 as u64,
+                    KitUInt::U64 | KitUInt::USize | KitUInt::U128 => v as u64,
+                })),
+                Value::Float(v) => Some(Value::UnsignedInteger(match target_uint_size {
+                    KitUInt::U8 => v as u8 as u64,
+                    KitUInt::U16 => v as u16 as u64,
+                    KitUInt::U32 => v as u32 as u64,
+                    KitUInt::U64 | KitUInt::USize | KitUInt::U128 => v as u64,
+                })),
+                _ => None,
+            },
+            CastKind::Float(target_float_size) => match value {
+                Value::UnsignedInteger(v) => Some(Value::Float(match target_float_size {
+                    KitFloat::F16 => v as f16 as f64,
+                    KitFloat::F32 => v as f32 as f64,
+                    KitFloat::F64 | KitFloat::F128 => v as f64,
+                })),
+                Value::Integer(v) => Some(Value::Float(match target_float_size {
+                    KitFloat::F16 => v as f16 as f64,
+                    KitFloat::F32 => v as f32 as f64,
+                    KitFloat::F64 | KitFloat::F128 => v as f64,
+                })),
+                Value::Float(v) => Some(Value::Float(match target_float_size {
+                    KitFloat::F16 => v as f16 as f64,
+                    KitFloat::F32 => v as f32 as f64,
+                    KitFloat::F64 | KitFloat::F128 => v,
+                })),
+                _ => None,
+            },
+        }
     }
 
     pub fn execute_statement(&mut self, statement: &Statement) {
