@@ -105,6 +105,7 @@ pub fn init_logging() {
 fn register_native_functions(interpreter: &mut Interpreter) {
     register_native_fn!(
         interpreter,
+        print,
         println,
         input,
         input_placeholder,
@@ -194,10 +195,18 @@ wrap_native_fn!(string_to_bool(s: String) -> bool {
 wrap_native_fn!(is_empty(s: String) -> bool {
     s.is_empty()
 });
+wrap_native_fn!(print(s: String) {
+    PRINT_CALLBACK.with(|slot| {
+        if let Some(cb) = &*slot.borrow() {
+            cb.call2(&JsValue::NULL, &JsValue::from_str(&s), &JsValue::FALSE)
+                .unwrap();
+        }
+    });
+});
 wrap_native_fn!(println(s: String) {
     PRINT_CALLBACK.with(|slot| {
         if let Some(cb) = &*slot.borrow() {
-            cb.call1(&JsValue::NULL, &JsValue::from_str(&s))
+            cb.call2(&JsValue::NULL, &JsValue::from_str(&s), &JsValue::TRUE)
                 .unwrap();
         }
     });
