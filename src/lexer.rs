@@ -544,6 +544,7 @@ impl Lexer<'_> {
         self.cursor.consume_expect(&['"'])?;
 
         let val_pos = self.cursor.position();
+        // TODO: Parse escape sequences.
         self.cursor.consume_while(|c| c != '"');
         let val_end = self.cursor.position();
 

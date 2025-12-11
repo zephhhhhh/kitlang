@@ -167,8 +167,8 @@ fn from_js_value(value: &JsValue) -> Value {
 
 // "Compiler" defined intrinsics.
 
-wrap_native_fn!(i32_to_string(x: i32) -> String { 
-    x.to_string() 
+wrap_native_fn!(i32_to_string(x: i32) -> String {
+    x.to_string()
 });
 wrap_native_fn!(string_to_i32(s: String) -> i32 {
     s.parse::<i32>().unwrap_or(0)

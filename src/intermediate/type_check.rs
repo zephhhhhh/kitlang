@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{Literal, SourceSpan};
+use crate::ast::{IdentPath, Literal, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::visitor::HLIRVisitorMut;
@@ -9,7 +9,7 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 use crate::intermediate::hir::nodes::{
     Block, Expr, ExprKind, HIRNode, RefPath, ResolvedID, Statement, StatementKind, Type,
 };
-use crate::intermediate::resolver::TypeRegistry;
+use crate::intermediate::resolver::{Namespace, TypeRegistry};
 use crate::intermediate::types::{KitFloat, KitInt, KitTy};
 
 use super::hir::nodes::{Function, LetStatement};
@@ -65,7 +65,7 @@ fn statement_mut_by_id(
 #[derive(Debug)]
 struct TypeChecker<'a> {
     pub type_registry: &'a TypeRegistry,
-
+    pub namespace: &'a Namespace,
     pub type_map: TypeMap,
 
     pub should_infer: bool,
@@ -75,9 +75,14 @@ struct TypeChecker<'a> {
 }
 
 impl<'a> TypeChecker<'a> {
-    pub fn new(type_registry: &'a TypeRegistry, should_infer: bool) -> Self {
+    pub fn new(
+        type_registry: &'a TypeRegistry,
+        namespace: &'a Namespace,
+        should_infer: bool,
+    ) -> Self {
         Self {
             type_registry,
+            namespace,
             type_map: TypeMap::new(),
             should_infer,
             errors: Vec::new(),
@@ -114,6 +119,30 @@ impl TypeChecker<'_> {
     pub fn type_name(&self, ty: impl Into<Type>) -> String {
         self.try_type_name(ty)
             .unwrap_or_else(|| String::from("UnknownType"))
+    }
+
+    // TODO: Make this consistent with ProgramMetaData.
+    #[inline]
+    fn find_ty_method_owner_def(&self, ty: KitTy, method_ident: &str) -> Option<OwnerDefId> {
+        match ty {
+            KitTy::Unit => {
+                error!("Cannot find method '{}' on unit type.", method_ident);
+                None
+            }
+            KitTy::Abstract(adt_id) => {
+                let adt = self.type_registry.get_from_type_id(adt_id)?;
+                self.namespace.find_method_owner_def(
+                    &adt.defined_in,
+                    adt.type_ident.str(),
+                    method_ident,
+                )
+            }
+            t => self.namespace.find_method_owner_def(
+                &IdentPath::new_empty(true),
+                &t.to_type_str()?,
+                method_ident,
+            ),
+        }
     }
 }
 
@@ -474,23 +503,18 @@ impl TypeChecker<'_> {
                     .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
 
                 match expr_ty {
-                    Type::Resolved(KitTy::Abstract(type_id)) => {
-                        let type_info = self
-                            .type_registry
-                            .get_from_type_id(type_id)
-                            .expect("Type exists");
-                        let Some(assoc_def) =
-                            type_info.find_associated_def(hlir.nonmut_ref(), ident.str())
-                        else {
+                    Type::Resolved(t) => {
+                        let Some(method_def) = self.find_ty_method_owner_def(t, ident.str()) else {
                             return Err(type_fail!(
                                 hlir,
-                                *hir_id,
-                                "Can't find associated def '{:?}'",
-                                ident
+                                expr.id,
+                                "Unable to resolve method '{}' for type {}",
+                                ident.str(),
+                                self.type_name(t)
                             ));
                         };
 
-                        let node = hlir.nonmut_ref().owning_node(assoc_def).expect("Exists");
+                        let node = hlir.nonmut_ref().owning_node(method_def).expect("Exists");
                         let Some(func) = node.hir_function_ref() else {
                             return Err(type_fail!(
                                 hlir,
@@ -532,12 +556,6 @@ impl TypeChecker<'_> {
                         hlir,
                         *hir_id,
                         "Method access type unresolved. {:?}",
-                        self.type_name(t)
-                    )),
-                    Type::Resolved(t) => Err(type_fail!(
-                        hlir,
-                        *hir_id,
-                        "Can't access methods of type: {:?}",
                         self.type_name(t)
                     )),
                 }
@@ -901,8 +919,12 @@ impl TypeCheckFail {
 /// This function will run the type checker stage on the resolved HIR output.
 /// This will validate that all type rules are followed, as well as fill in any types that must be
 /// inferred from context.
-pub fn run_type_checker(hlir: &mut HLIR, type_registry: &TypeRegistry) -> LowerResult<TypeMap> {
-    let mut checker = TypeChecker::new(type_registry, true);
+pub fn run_type_checker(
+    hlir: &mut HLIR,
+    type_registry: &TypeRegistry,
+    namespace: &Namespace,
+) -> LowerResult<TypeMap> {
+    let mut checker = TypeChecker::new(type_registry, namespace, true);
 
     checker.walk_mut(hlir);
 

@@ -1,13 +1,16 @@
 use ::std::fmt::Debug;
 
-use crate::ast::{ASTRoot, SourceSpan};
+use crate::ast::{ASTRoot, IdentPath, SourceSpan};
 
 use crate::intermediate::hir::errors::LowerResult;
-use crate::intermediate::hir::nodes::{HIRNode, Item, OwningNode, OwningNodeKind};
-use crate::intermediate::resolver::{Namespace, TypeRegistry, resolve_paths};
+use crate::intermediate::hir::nodes::{HIRNode, Item, OwningNode, OwningNodeKind, Type};
+use crate::intermediate::resolver::{ADTTypeInfo, Namespace, TypeRegistry, resolve_paths};
 use crate::intermediate::type_check::{TypeMap, run_type_checker};
 
 pub use crate::intermediate::hir::errors::{LoweringError, LoweringErrorKind};
+use crate::intermediate::types::KitTy;
+
+use log::*;
 
 mod lowerer;
 
@@ -298,6 +301,62 @@ pub struct ProgramMetaData {
     pub type_map: TypeMap,
 }
 
+impl ProgramMetaData {
+    #[inline]
+    pub fn find_method(
+        &self,
+        defined_in: &IdentPath,
+        data_type_ident: &str,
+        method_ident: &str,
+    ) -> Option<&Namespace> {
+        self.namespace
+            .find_method(defined_in, data_type_ident, method_ident)
+    }
+
+    #[inline]
+    pub fn find_method_owner_def(
+        &self,
+        defined_in: &IdentPath,
+        data_type_ident: &str,
+        method_ident: &str,
+    ) -> Option<OwnerDefId> {
+        self.namespace
+            .find_method_owner_def(defined_in, data_type_ident, method_ident)
+    }
+
+    #[inline]
+    pub fn find_adt_method_owner_def(
+        &self,
+        adt: &ADTTypeInfo,
+        method_ident: &str,
+    ) -> Option<OwnerDefId> {
+        self.find_method_owner_def(&adt.defined_in, adt.type_ident.str(), method_ident)
+    }
+
+    #[inline]
+    pub fn find_ty_method_owner_def(&self, ty: Type, method_ident: &str) -> Option<OwnerDefId> {
+        let Type::Resolved(resolved_ty) = ty else {
+            error!("Cannot find method '{}' on unresolved type.", method_ident);
+            return None;
+        };
+        match resolved_ty {
+            KitTy::Unit => {
+                error!("Cannot find method '{}' on unit type.", method_ident);
+                None
+            }
+            KitTy::Abstract(adt_id) => {
+                let adt = self.type_registry.get_from_type_id(adt_id)?;
+                self.find_method_owner_def(&adt.defined_in, adt.type_ident.str(), method_ident)
+            }
+            t => self.find_method_owner_def(
+                &IdentPath::new_empty(true),
+                &t.to_type_str()?,
+                method_ident,
+            ),
+        }
+    }
+}
+
 /// Lower the output of the parser stage to HIR.
 /// # Note
 /// This function does not do any later processing.
@@ -316,7 +375,7 @@ pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData
     let (namespaces, type_registry) = resolve_paths(&mut hlir)?;
 
     // Type checking..
-    let type_map = run_type_checker(&mut hlir, &type_registry)?;
+    let type_map = run_type_checker(&mut hlir, &type_registry, &namespaces)?;
 
     let meta_data = ProgramMetaData {
         namespace: namespaces,

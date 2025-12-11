@@ -66,7 +66,7 @@ macro_rules! wrap_native_fn {
             fn _inner($($param_name: $param_ty),*) -> $ret_ty {
                 $body
             }
-            
+
             let mut idx = 0;
             $(
                 let $param_name: $param_ty = {
@@ -76,7 +76,7 @@ macro_rules! wrap_native_fn {
                     ExtractValue::extract(val)
                 };
             )*
-            
+
             _inner($($param_name),*)
         }
     };
@@ -87,7 +87,7 @@ macro_rules! wrap_native_fn {
             fn _inner($($param_name: $param_ty),*) {
                 $body
             }
-            
+
             let mut idx = 0;
             $(
                 let $param_name: $param_ty = {
@@ -97,7 +97,7 @@ macro_rules! wrap_native_fn {
                     ExtractValue::extract(val)
                 };
             )*
-            
+
             _inner($($param_name),*)
         }
     };

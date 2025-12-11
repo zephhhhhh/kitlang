@@ -12,7 +12,7 @@ use std::fmt::Debug;
 use crate::ast::{IdentPath, IdentPathSegment, SpannedIdent, Visibility};
 
 use crate::intermediate::hir::errors::LowerResult;
-use crate::intermediate::hir::nodes::{ItemKind, ResolvedID, Type};
+use crate::intermediate::hir::nodes::{ResolvedID, Type};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
 
 // use crate::intermediate::types::KitTy;
@@ -42,7 +42,6 @@ pub struct ADTTypeInfo {
     pub kind: ADTKind,
     pub defined_in: IdentPath,
     pub type_ident: SpannedIdent,
-    pub associated_defs: Vec<OwnerDefId>,
 }
 
 impl Debug for ADTTypeInfo {
@@ -53,7 +52,6 @@ impl Debug for ADTTypeInfo {
             .field("kind", &self.kind)
             .field("defined_in", &self.defined_in.to_string())
             .field("type_ident", &self.type_ident)
-            .field("associated_defs", &self.associated_defs)
             .field("full_path", &self.full_path().to_string())
             .finish()
     }
@@ -72,27 +70,11 @@ impl ADTTypeInfo {
             kind: ADTKind::Struct(fields),
             defined_in,
             type_ident,
-            associated_defs: Vec::new(),
         }
     }
 
     pub fn full_path(&self) -> IdentPath {
         self.defined_in.extend_ident(&self.type_ident.ident())
-    }
-
-    pub fn find_associated_def(&self, hlir: &HLIR, ident: &str) -> Option<OwnerDefId> {
-        Some(
-            self.associated_defs
-                .iter()
-                .filter_map(|id| hlir.owning_node(*id)?.item())
-                .find(|i| match &i.kind {
-                    ItemKind::Module(module) => module.ident.ident().str() == ident,
-                    ItemKind::Function(function) => function.ident.str() == ident,
-                    ItemKind::Constant(constant) => constant.ident.str() == ident,
-                    _ => false,
-                })?
-                .owner_id,
-        )
     }
 
     pub fn get_fields(&self) -> &[ADTStructField] {
@@ -292,6 +274,30 @@ impl Namespace {
     pub fn find_definition_from(&self, base: &IdentPath, path: &IdentPath) -> Option<&Namespace> {
         let final_path = path.rebase_from_path(base);
         self.find_definition_from_segments(final_path.segments())
+    }
+
+    pub fn find_method(
+        &self,
+        defined_in: &IdentPath,
+        data_type_ident: &str,
+        method_ident: &str,
+    ) -> Option<&Namespace> {
+        self.find_definition(defined_in)?
+            .items
+            .get(data_type_ident)?
+            .items
+            .get(method_ident)
+    }
+
+    pub fn find_method_owner_def(
+        &self,
+        defined_in: &IdentPath,
+        data_type_ident: &str,
+        method_ident: &str,
+    ) -> Option<OwnerDefId> {
+        self.find_method(defined_in, data_type_ident, method_ident)?
+            .id
+            .owner_def_id()
     }
 }
 

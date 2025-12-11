@@ -408,12 +408,6 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 },
             );
 
-        if let Some(adt_impl_ty_id) = self.active_adt
-            && let Some(adt_info) = self.type_registry.get_from_type_id_mut(adt_impl_ty_id)
-        {
-            adt_info.associated_defs.push(function.owner_id);
-        }
-
         self.push_to_current_path(&function_ident);
         self.super_function(function, hlir);
         self.pop_from_current_path();

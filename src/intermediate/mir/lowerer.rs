@@ -643,24 +643,24 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     error!("Failed to eval target method!");
                     return;
                 };
-                let Some(Type::Resolved(KitTy::Abstract(type_id))) =
-                    self.program_meta_data.type_map.get(hir_id)
-                else {
-                    error!("Target not abstract.");
+                let Some(obj_ty) = self.program_meta_data.type_map.get(hir_id) else {
+                    error!("Failed to get object type for method call: '{:?}'", hir_id);
                     return;
                 };
 
-                let to_access = self
+                let Some(method_def) = self
                     .program_meta_data
-                    .type_registry
-                    .get_from_type_id(*type_id)
-                    .expect("Type exists.");
-                let Some(assoc_def) = to_access.find_associated_def(hlir, ident.str()) else {
-                    error!("Failed to find associated def!");
+                    .find_ty_method_owner_def(obj_ty.clone(), ident.str())
+                else {
+                    error!(
+                        "Failed to find method '{}' for type {:?}",
+                        ident.str(),
+                        obj_ty
+                    );
                     return;
                 };
 
-                if !is_def_method_func(hlir, assoc_def) {
+                if !is_def_method_func(hlir, method_def) {
                     error!("Associated call is not a method!");
                     return;
                 }
@@ -682,7 +682,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     let call_result_slot = self.new_temp_local();
                     self.builder_mut_expect().set_exit_kind(BlockExitKind::Call(
                         call_result_slot,
-                        assoc_def,
+                        method_def,
                         arg_ids,
                         call_block_id.next(),
                     ));
