@@ -986,6 +986,8 @@ pub enum ExpressionKind {
     Break,
     /// Return from the function, with an optional expression to use as the return value.
     Return(Option<Box<Expression>>),
+    /// Cast an expression to another type.
+    Cast(Box<Expression>, Ty),
 }
 
 impl ExpressionKind {
@@ -1058,6 +1060,7 @@ impl Debug for ExpressionKind {
             Self::Continue => write!(f, "Continue"),
             Self::Break => write!(f, "Break"),
             Self::Return(arg0) => f.debug_tuple("Return").field(arg0).finish(),
+            Self::Cast(arg0, arg1) => f.debug_tuple("Cast").field(arg0).field(arg1).finish(),
         }
     }
 }

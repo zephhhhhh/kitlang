@@ -161,6 +161,9 @@ pub trait HLIRVisitor {
             ExprKind::Return(Some(hir_id)) => {
                 self.visit_expr_by_id(*hir_id, hlir);
             }
+            ExprKind::Cast(hir_id, _) => {
+                self.visit_expr_by_id(*hir_id, hlir);
+            }
             _ => {}
         }
     }
@@ -504,6 +507,9 @@ pub trait HLIRVisitorMut<'a> {
                 }
             }
             ExprKind::Return(Some(hir_id)) => {
+                self.visit_expr_by_id_mut(*hir_id, hlir);
+            }
+            ExprKind::Cast(hir_id, _) => {
                 self.visit_expr_by_id_mut(*hir_id, hlir);
             }
             _ => {}

@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::ast::SourceSpan;
 use crate::intermediate::hir::HirId;
-use crate::intermediate::resolver::UnresolvedReferences;
+use crate::intermediate::resolver::errors::{ResolutionFailure, UnresolvedReferences};
 
 use crate::intermediate::type_check::TypeCheckFail;
 use crate::spanned_error::SpannedErrorBuilder;
@@ -67,13 +67,13 @@ impl LoweringError {
                         final_output += "\n";
                     }
                     let header_line = match unresolved.failure {
-                        crate::intermediate::resolver::ResolutionFailure::NotFound => {
+                        ResolutionFailure::NotFound => {
                             format!(
                                 "Failed to resolve reference '{}'",
                                 unresolved.path.path.to_ident().str()
                             )
                         }
-                        crate::intermediate::resolver::ResolutionFailure::Inaccessible => {
+                        ResolutionFailure::Inaccessible => {
                             format!(
                                 "Cannot access referenced item '{}'",
                                 unresolved.path.path.to_ident().str()

@@ -607,6 +607,8 @@ pub enum ExprKind {
     Break,
     /// Return from function(Option<HIRNode::Expr>)
     Return(Option<HirId>),
+    /// Cast an expression from one type to another.
+    Cast(HirId, Type),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -78,6 +78,7 @@ impl Parser<'_, '_> {
     ) -> PResult<Box<Expression>> {
         while !self.cursor.is_end() {
             atom = match self.peek_at(0)?.kind {
+                TokenKind::Keyword(Keyword::As) => self.parse_cast_expression(atom, span_start),
                 TokenKind::Punctuation(Punctuation::OpenParen) => {
                     self.parse_call_continued(atom, span_start)
                 }
@@ -536,6 +537,21 @@ impl Parser<'_, '_> {
 
         Ok(Expression::new_boxed(
             ExpressionKind::StructInit(StructInitialisation::new_boxed(lhs, fields)),
+            self.finish_span(span_start),
+        ))
+    }
+
+    fn parse_cast_expression(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
+        self.expect_kind(Keyword::As)?;
+
+        let target_type = self.parse_ty()?;
+
+        Ok(Expression::new_boxed(
+            ExpressionKind::Cast(lhs, target_type),
             self.finish_span(span_start),
         ))
     }
