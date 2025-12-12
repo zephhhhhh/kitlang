@@ -741,6 +741,12 @@ impl InterpreterState {
                     KitInt::I32 => v as i32 as i64,
                     KitInt::I64 | KitInt::ISize | KitInt::I128 => v as i64,
                 })),
+                Value::Boolean(b) => Some(Value::Integer(match target_int_size {
+                    KitInt::I8 => b as i8 as i64,
+                    KitInt::I16 => b as i16 as i64,
+                    KitInt::I32 => b as i32 as i64,
+                    KitInt::I64 | KitInt::ISize | KitInt::I128 => b as i64,
+                })),
                 _ => None,
             },
             CastKind::UInt(target_uint_size) => match value {
@@ -761,6 +767,12 @@ impl InterpreterState {
                     KitUInt::U16 => v as u16 as u64,
                     KitUInt::U32 => v as u32 as u64,
                     KitUInt::U64 | KitUInt::USize | KitUInt::U128 => v as u64,
+                })),
+                Value::Boolean(b) => Some(Value::UnsignedInteger(match target_uint_size {
+                    KitUInt::U8 => b as u8 as u64,
+                    KitUInt::U16 => b as u16 as u64,
+                    KitUInt::U32 => b as u32 as u64,
+                    KitUInt::U64 | KitUInt::USize | KitUInt::U128 => b as u64,
                 })),
                 _ => None,
             },

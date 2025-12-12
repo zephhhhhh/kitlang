@@ -410,6 +410,9 @@ impl KitTy {
     }
 
     pub fn cast_result_type(&self, target: &KitTy) -> Option<KitTy> {
+        if self == target {
+            return Some(*target);
+        }
         match (self, target) {
             // Allow casting between same kinds..
             (KitTy::Int(_), KitTy::Int(_))
@@ -422,6 +425,8 @@ impl KitTy {
             | (KitTy::UInt(_), KitTy::Float(_))
             | (KitTy::Float(_), KitTy::Int(_))
             | (KitTy::Float(_), KitTy::UInt(_)) => Some(*target),
+            (KitTy::Boolean, KitTy::UInt(_)) => Some(*target),
+            | (KitTy::Boolean, KitTy::Int(_)) => Some(*target),
             // Disallow other casts for now..
             _ => None,
         }
