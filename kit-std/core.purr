@@ -1,0 +1,27 @@
+// @lang
+impl i32 {
+    pub fn to_string(self) -> string {
+        i32_to_string(self)
+    }
+}
+
+// @lang
+impl u32 {
+    pub fn to_string(self) -> string {
+        u32_to_string(self)
+    }
+}
+
+// @lang
+impl f32 {
+    pub fn to_string(self) -> string {
+        f32_to_string(self)
+    }
+}
+
+// @lang
+impl bool {
+    pub fn to_string(self) -> string {
+        bool_to_string(self)
+    }
+}

@@ -64,7 +64,20 @@ impl KitlangError {
 pub type KitlangResult<T> = Result<T, KitlangError>;
 
 /// Parse a given kitlang source code string into MIR representations.
+/// This function injects the standard library, if you do not want that, use `parse_source_string_to_mir_no_std` instead.
 pub fn parse_source_string_to_mir(
+    source: &str,
+) -> KitlangResult<(intermediate::hir::ProgramMetaData, intermediate::mir::MIR)> {
+    let final_source = inject_standard_library(source);
+
+    let ast = crate::parser::parse_from_source(&final_source)?;
+    let (meta_data, hir) = intermediate::hir::parse_ast_to_hir_processed(&ast)?;
+    let mir = intermediate::mir::lower_hir_to_mir(&hir, &meta_data)?;
+    Ok((meta_data, mir))
+}
+
+/// Parse a given kitlang source code string into MIR representations.
+pub fn parse_source_string_to_mir_no_std(
     source: &str,
 ) -> KitlangResult<(intermediate::hir::ProgramMetaData, intermediate::mir::MIR)> {
     let ast = crate::parser::parse_from_source(source)?;
@@ -73,7 +86,25 @@ pub fn parse_source_string_to_mir(
     Ok((meta_data, mir))
 }
 
+/// Inject the standard library code into a provided source code string.
+pub fn inject_standard_library(source: &str) -> String {
+    const CORE_LIB: &str = include_str!("../kit-std/core.purr");
+    const INTRINSICS_LIB: &str = include_str!("../kit-std/intrinsics.purr");
+
+    let mut source_with_std =
+        String::with_capacity(source.len() + CORE_LIB.len() + INTRINSICS_LIB.len() + 2);
+    source_with_std.push_str(source);
+    source_with_std.push('\n');
+    source_with_std.push_str(CORE_LIB);
+    source_with_std.push('\n');
+    source_with_std.push_str(INTRINSICS_LIB);
+
+    source_with_std
+}
+
 /// Execute a given kitlang source code string with the MIR interpreter, using the provided native functions.
+/// The standard library is injected into the program with this function, if you do not want this for some reason,
+/// use `execute_source_string_no_std` instead.
 /// If `time_execution` is `true`, the different stages of execution will be timed and printed
 pub fn execute_source_string(
     source: &str,
@@ -86,6 +117,26 @@ pub fn execute_source_string(
         crate::profiling::print_execution_named("Parse", || parse_source_string_to_mir(source))
     } else {
         parse_source_string_to_mir(source)
+    }?;
+
+    execute_mir_with_native_functions(mir, &meta_data, native_functions, time_execution)
+}
+
+/// Execute a given kitlang source code string with the MIR interpreter, using the provided native functions.
+/// If `time_execution` is `true`, the different stages of execution will be timed and printed.
+pub fn execute_source_string_no_std(
+    source: &str,
+    native_functions: crate::interpreter::mir_interpreter::RegisterNativeFns,
+    time_execution: bool,
+) -> KitlangResult<crate::interpreter::mir_interpreter::Value> {
+    use crate::interpreter::mir_interpreter::execute_mir_with_native_functions;
+
+    let (meta_data, mir) = if time_execution {
+        crate::profiling::print_execution_named("Parse", || {
+            parse_source_string_to_mir_no_std(source)
+        })
+    } else {
+        parse_source_string_to_mir_no_std(source)
     }?;
 
     execute_mir_with_native_functions(mir, &meta_data, native_functions, time_execution)

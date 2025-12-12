@@ -25,8 +25,6 @@ struct AssociatedReferenceMapper {
     pub path_stack: Vec<IdentPath>,
     pub impl_path_lut: Vec<(OwnerDefId, IdentPath)>,
 
-    pub active_adt: Option<TypeID>,
-
     pub type_registry: TypeRegistry,
 
     pub root_namespace: Namespace,
@@ -43,7 +41,6 @@ impl AssociatedReferenceMapper {
             global_functions: HashMap::new(),
             path_stack: vec![IdentPath::from_segments(Vec::new(), true)],
             impl_path_lut: Vec::new(),
-            active_adt: None,
             type_registry: TypeRegistry::default(),
             root_namespace: Namespace::default_root_definition(),
             stage1_complete: false,
@@ -58,6 +55,31 @@ impl AssociatedReferenceMapper {
 
     pub fn reset_path(&mut self) {
         self.reset_path_to(IdentPath::from_segments(Vec::new(), true));
+    }
+
+    fn inject_builtin_definitions(&mut self) {
+        fn builtin_namespace(name: &str) -> Namespace {
+            Namespace {
+                ident: name.to_string(),
+                kind: NamespaceKind::Builtin,
+                items: HashMap::new(),
+                id: ResolvedID::OwnerDef(OwnerDefId::ROOT_NODE),
+                vis: Visibility::Public,
+                local: false,
+            }
+        }
+
+        let builtin_types = vec![
+            "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize",
+            "f32", "f64", "bool", "string", "char",
+        ];
+
+        builtin_types
+            .into_iter()
+            .map(builtin_namespace)
+            .for_each(|ns| {
+                self.root_namespace.items.insert(ns.ident.clone(), ns);
+            });
     }
 
     fn resolve_uses_in_namespace(
@@ -113,6 +135,8 @@ impl AssociatedReferenceMapper {
     }
 
     pub fn map_references(&mut self, hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
+        self.inject_builtin_definitions();
+
         // Map all except impls..
         self.visit_root(hlir);
         self.stage1_complete = true;
@@ -525,17 +549,8 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             };
             self.impl_path_lut.push((impl_info.owner_id, impl_path));
         } else {
-            // do resolve.. add associated defs to type info..
-            if let Some(impl_adt_id) = self
-                .type_registry
-                .find_type_id_from_path(self.current_path())
-            {
-                self.active_adt = Some(impl_adt_id);
-                self.super_impl(impl_info, hlir);
-                self.active_adt = None;
-            } else {
-                error!("Failed to get impl adt id for '{}'", self.current_path());
-            }
+            // Do the resolve.
+            self.super_impl(impl_info, hlir);
         }
     }
 

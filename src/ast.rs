@@ -1565,18 +1565,27 @@ impl Debug for Module {
 #[derive(Clone, PartialEq)]
 pub struct Impl {
     pub target_path: SpannedIdentPath,
+    pub lang_item: bool,
     pub items: Vec<Item>,
 }
 
 impl Impl {
     #[inline]
-    pub fn new(target_path: SpannedIdentPath, items: Vec<Item>) -> Self {
-        Self { target_path, items }
+    pub fn new(target_path: SpannedIdentPath, lang_item: bool, items: Vec<Item>) -> Self {
+        Self {
+            target_path,
+            lang_item,
+            items,
+        }
     }
 
     #[inline]
-    pub fn new_boxed(target_path: SpannedIdentPath, items: Vec<Item>) -> Box<Self> {
-        Box::new(Self::new(target_path, items))
+    pub fn new_boxed(
+        target_path: SpannedIdentPath,
+        lang_item: bool,
+        items: Vec<Item>,
+    ) -> Box<Self> {
+        Box::new(Self::new(target_path, lang_item, items))
     }
 }
 

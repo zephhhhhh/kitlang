@@ -14,6 +14,7 @@ use crate::ast::{IdentPath, IdentPathSegment, SpannedIdent, Visibility};
 use crate::intermediate::hir::errors::LowerResult;
 use crate::intermediate::hir::nodes::{ResolvedID, Type};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
+use crate::intermediate::types::KitTy;
 
 // use crate::intermediate::types::KitTy;
 
@@ -147,8 +148,15 @@ impl TypeRegistry {
         self.store.get_mut(id)
     }
 
-    pub fn find_type_id_from_path(&self, path: &IdentPath) -> Option<TypeID> {
-        self.lut.get(path).cloned()
+    pub fn find_type_from_path(&self, path: &IdentPath) -> Option<KitTy> {
+        if path.len() == 1
+            && path.is_root_relative()
+            && let Some(t) = KitTy::from_primitive_ty_str(&path.segments()[0])
+        {
+            Some(t)
+        } else {
+            Some(KitTy::Abstract(*self.lut.get(path)?))
+        }
     }
 
     pub fn adt_types(&self) -> &[ADTTypeInfo] {
@@ -162,6 +170,7 @@ pub enum NamespaceKind {
     Function,
     Constant,
     Struct(TypeID),
+    Builtin,
     Enum,
     Use(IdentPath),
 }

@@ -286,7 +286,7 @@ impl Parser<'_, '_> {
             self.parse_block_like_no_delimiter(Punctuation::CloseBrace, |s| s.parse_impl_item())?;
 
         Ok(Item::new(
-            ItemKind::Impl(Impl::new_boxed(target, items)),
+            ItemKind::Impl(Impl::new_boxed(target, false, items)),
             Visibility::Public,
             self.finish_span(span_start),
         ))

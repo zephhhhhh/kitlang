@@ -212,8 +212,10 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             ip
         };
 
-        if let Some(type_id) = self.type_registry.find_type_id_from_path(&impl_path) {
-            self.current_impl = Some(Type::Resolved(KitTy::Abstract(type_id)));
+        // Redo this.
+
+        if let Some(t) = self.type_registry.find_type_from_path(&impl_path) {
+            self.current_impl = Some(Type::Resolved(t));
             self.super_impl_mut(impl_info, hlir);
             self.current_impl = None;
         } else {
