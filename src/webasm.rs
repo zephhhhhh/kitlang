@@ -111,12 +111,12 @@ fn register_native_functions(interpreter: &mut Interpreter) {
         input_placeholder,
         to_lower,
         is_empty,
-        i32_to_string,
-        string_to_i32,
-        u32_to_string,
-        string_to_u32,
-        f32_to_string,
-        string_to_f32,
+        i64_to_string,
+        string_to_i64,
+        u64_to_string,
+        string_to_u64,
+        f64_to_string,
+        string_to_f64,
         bool_to_string,
         string_to_bool
     );
@@ -167,23 +167,23 @@ fn from_js_value(value: &JsValue) -> Value {
 
 // "Compiler" defined intrinsics.
 
-wrap_native_fn!(i32_to_string(x: i32) -> String {
+wrap_native_fn!(i64_to_string(x: i64) -> String {
     x.to_string()
 });
-wrap_native_fn!(string_to_i32(s: String) -> i32 {
-    s.parse::<i32>().unwrap_or(0)
+wrap_native_fn!(string_to_i64(s: String) -> i64 {
+    s.parse::<i64>().unwrap_or(0)
 });
-wrap_native_fn!(f32_to_string(x: f32) -> String {
+wrap_native_fn!(f64_to_string(x: f64) -> String {
     x.to_string()
 });
-wrap_native_fn!(string_to_f32(s: String) -> f32 {
-    s.parse::<f32>().unwrap_or(0.0)
+wrap_native_fn!(string_to_f64(s: String) -> f64 {
+    s.parse::<f64>().unwrap_or(0.0)
 });
-wrap_native_fn!(u32_to_string(x: u32) -> String {
+wrap_native_fn!(u64_to_string(x: u64) -> String {
     x.to_string()
 });
-wrap_native_fn!(string_to_u32(s: String) -> u32 {
-    s.parse::<u32>().unwrap_or(0)
+wrap_native_fn!(string_to_u64(s: String) -> u64 {
+    s.parse::<u64>().unwrap_or(0)
 });
 wrap_native_fn!(bool_to_string(x: bool) -> String {
     x.to_string()

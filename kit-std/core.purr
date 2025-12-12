@@ -1,27 +1,60 @@
 // @lang
-impl i32 {
-    pub fn to_string(self) -> string {
-        i32_to_string(self)
-    }
+impl i8 { 
+    pub fn to_string(self) -> string { i64_to_string(self as i64) }
+}
+// @lang
+impl i16 { 
+    pub fn to_string(self) -> string { i64_to_string(self as i64) }
+}
+// @lang
+impl i32 { 
+    pub fn to_string(self) -> string { i64_to_string(self as i64) }
+}
+// @lang
+impl i64 { 
+    pub fn to_string(self) -> string { i64_to_string(self as i64) }
+}
+// @lang
+impl i128 { 
+    pub fn to_string(self) -> string { i64_to_string(self as i64) }
 }
 
 // @lang
-impl u32 {
-    pub fn to_string(self) -> string {
-        u32_to_string(self)
-    }
+impl u8 { 
+    pub fn to_string(self) -> string { u64_to_string(self as u64) }
+}
+// @lang
+impl u16 { 
+    pub fn to_string(self) -> string { u64_to_string(self as u64) }
+}
+// @lang
+impl u32 { 
+    pub fn to_string(self) -> string { u64_to_string(self as u64) }
+}
+// @lang
+impl u64 { 
+    pub fn to_string(self) -> string { u64_to_string(self) }
+}
+// @lang
+impl u128 { 
+    pub fn to_string(self) -> string { u64_to_string(self as u64) }
 }
 
 // @lang
 impl f32 {
-    pub fn to_string(self) -> string {
-        f32_to_string(self)
-    }
+    pub fn to_string(self) -> string { f64_to_string(self as f64) }
+}
+// @lang
+impl f64 {
+    pub fn to_string(self) -> string { f64_to_string(self) }
 }
 
 // @lang
 impl bool {
-    pub fn to_string(self) -> string {
-        bool_to_string(self)
-    }
+    pub fn to_string(self) -> string { bool_to_string(self) }
+}
+
+// @lang
+impl string {
+    pub fn to_string(self) -> string { self }
 }

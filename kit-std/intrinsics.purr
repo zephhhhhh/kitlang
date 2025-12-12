@@ -4,11 +4,11 @@ native global fn is_empty(s: string) -> bool;
 native global fn print(s: string);
 native global fn println(s: string);
 
-native global fn i32_to_string(i: i32) -> string;
-native global fn string_to_i32(s: string) -> i32;
-native global fn u32_to_string(i: u32) -> string;
-native global fn string_to_u32(s: string) -> u32;
-native global fn f32_to_string(f: f32) -> string;
-native global fn string_to_f32(s: string) -> f32;
+native global fn i64_to_string(i: i64) -> string;
+native global fn string_to_i64(s: string) -> i64;
+native global fn u64_to_string(i: u64) -> string;
+native global fn string_to_u64(s: string) -> u64;
+native global fn f64_to_string(f: f32) -> string;
+native global fn string_to_f64(s: string) -> f64;
 native global fn bool_to_string(f: bool) -> string;
 native global fn string_to_bool(s: string) -> bool;
