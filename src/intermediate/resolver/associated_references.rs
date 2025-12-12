@@ -563,13 +563,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
 
     fn visit_impl(&mut self, impl_info: &Impl, hlir: &HLIR) {
         if !self.stage1_complete {
-            let impl_path = if impl_info.self_ty.is_root_relative() {
-                impl_info.self_ty.clone()
-            } else {
-                let mut ip = self.current_path().clone();
-                ip.push_path(&impl_info.self_ty);
-                ip
-            };
+            let impl_path = impl_info.self_ty.rebase_from_path(self.current_path());
             self.impl_path_lut.push((impl_info.owner_id, impl_path));
         } else {
             // Do the resolve.
@@ -639,14 +633,7 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
     }
 
     fn visit_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'_>) {
-        // TODO: Refactor this duplicated code everywhere to it's own method.
-        let impl_path = if impl_info.self_ty.is_root_relative() {
-            impl_info.self_ty.clone()
-        } else {
-            let mut ip = self.current_path().clone();
-            ip.push_path(&impl_info.self_ty);
-            ip
-        };
+        let impl_path = impl_info.self_ty.rebase_from_path(self.current_path());
 
         self.push_stack(impl_path);
         self.super_impl_mut(impl_info, hlir);

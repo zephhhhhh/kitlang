@@ -204,15 +204,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     }
 
     fn visit_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'_>) {
-        let impl_path = if impl_info.self_ty.is_root_relative() {
-            impl_info.self_ty.clone()
-        } else {
-            let mut ip = self.current_path().clone();
-            ip.push_path(&impl_info.self_ty);
-            ip
-        };
-
-        // Redo this.
+        let impl_path = impl_info.self_ty.rebase_from_path(self.current_path());
 
         if let Some(t) = self.type_registry.find_type_from_path(&impl_path) {
             self.current_impl = Some(Type::Resolved(t));
