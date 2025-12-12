@@ -515,17 +515,40 @@ impl Lexer<'_> {
             self.cursor.consume()?;
         }
 
-        let mut minus_allowed = false;
+        let mut prev = '0';
+        let mut e_allowed = true;
+        let mut decimal_allowed = base == 10;
+
+        let mut should_continue = |cursor: &CodeCursor, prev: char| {
+            let c = cursor.peek();
+            if c.is_digit(base) {
+                return true;
+            }
+            if c == '.' && decimal_allowed {
+                if cursor.peek_second().is_digit(base) {
+                    decimal_allowed = false;
+                    return true;
+                }
+                return false;
+            }
+            if c == '_' || (c == '-' && prev == 'e') || (c == 'e' && e_allowed) {
+                e_allowed &= c != 'e';
+                return true;
+            }
+            false
+        };
 
         let val_pos = self.cursor.position();
-        self.cursor.consume_while(|c| {
-            minus_allowed |= c == 'e';
-            c.is_digit(base) || c == '_' || c == '.' || c == 'e' || (c == '-' && minus_allowed)
-        });
+        while !self.cursor.is_eof() {
+            if should_continue(&self.cursor, prev) {
+                prev = self.cursor.consume().unwrap();
+            } else {
+                break;
+            }
+        }
+
         let val_end = self.cursor.position();
-
         let value_string = self.substr(val_pos, val_end).replace('_', "");
-
         let literal = if value_string.contains(['e', '.']) {
             value_string.parse::<f64>().ok().map(LiteralKind::Float)?
         } else {
