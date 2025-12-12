@@ -14,11 +14,56 @@ use crate::intermediate::resolver::errors::{
     ResolutionFailure, UnresolvedReference, UnresolvedReferences,
 };
 use crate::intermediate::resolver::{
-    ADTStructField, ADTTypeInfo, Namespace, NamespaceKind, TypeID, TypeRegistry,
+    ADTStructField, ADTTypeInfo, Namespace, NamespaceKind, TypeRegistry,
 };
 
 use log::*;
 
+/// Builds and maintains the namespace scope tree by walking the HIR, and
+/// resolves associated references. I.e. paths from types, modules, etc.
+/// This is also where visibility and 'local' access control is enforced.
+/// ```ignore
+/// Struct Foo;
+///
+/// impl Foo {
+///    fn bar() {}
+/// }
+///
+/// fn main() {
+///   Foo::bar();
+/// }
+/// ```
+/// In this example, `Foo::bar()` is an associated reference that this mapper
+/// will resolve to it's [`OwnerDefId`].
+///
+/// This also keeps track of defined global/native functions, as those also function like
+/// associated types in that they can be referenced from anywhere, and are not 'locals'.
+///
+/// Builtin types are also defined in the root namespace for resolution,
+/// and implementation, although the underlying layout and type info is defined
+/// within the compiler, hence there is no `pub struct i32 ...` declaration or similar to
+/// be found anywhere in the code, as it is handled and defined here.
+///
+/// # Technical details
+///
+/// The 'entrypoint' for this resolving pass is the `map_references` function.
+/// This mapper works in multiple stages:
+/// - First the builtin types are injected into the root namespace.
+/// - Then the HIR is walked to build the namespace tree, ignoring `impl` items while storing
+///   their paths for later processing. This is because `impl` items may refer to types that are defined
+///   below them and thus do not yet have a namespace associated with them.
+///   This pass is done immutably as no modifications need to be made.
+/// - In the next stage, we manually visit all the `impl` items that were deferred and add them to the namespace
+///   now that all types and modules should have been defined, this way we know if it is not defined at this point,
+///   then this constitutes an error. This stage is also done immutably.
+/// - After that, we resolve all `use` items by essentially copying the definitions from the target to the current namespace.
+/// - Now that the namespace tree is fully built and all items are defined, we do a final mutable pass to resolve `Path`
+///   expressions in the tree.
+///
+/// Any errors that occured during the process are collected and returned after all stages have been attempted,
+/// this makes it possible to report multiple errors in one go instead of failing fast on the first error encountered.
+/// As a developer this makes it much easier to fix multiple errors at once, instead of having to re-run the compiler
+/// multiple times to fix each error one by one.
 struct AssociatedReferenceMapper {
     pub global_functions: HashMap<String, OwnerDefId>,
 
@@ -96,13 +141,7 @@ impl AssociatedReferenceMapper {
 
                 match &item_namespace.kind {
                     NamespaceKind::Use(use_path) => {
-                        let target_path = if use_path.is_root_relative() {
-                            use_path.clone()
-                        } else {
-                            let mut resolved_path = current_path.clone();
-                            resolved_path.push_path(use_path);
-                            resolved_path
-                        };
+                        let target_path = use_path.rebase_from_path(&current_path);
 
                         if let Some(target_namespace) = root_namespace.find_definition(&target_path)
                         {
@@ -224,16 +263,6 @@ impl AssociatedReferenceMapper {
         true
     }
 
-    pub fn matching_segment_count(path_a: &IdentPath, path_b: &IdentPath) -> usize {
-        let len = path_a.len().min(path_b.len());
-        for i in 0..len {
-            if path_a.segments()[i] != path_b.segments()[i] {
-                return i;
-            }
-        }
-        len
-    }
-
     pub fn search_for_definition(
         &self,
         ident_path: &IdentPath,
@@ -251,14 +280,8 @@ impl AssociatedReferenceMapper {
             }
 
             if let Some(prev_base_path) = self.find_last_enclosing_path(base_path) {
-                let segment_match = Self::matching_segment_count(&p, &prev_base_path);
-                let matched_base_path = IdentPath::from_segments_slice(
-                    prev_base_path
-                        .segments()
-                        .get(0..segment_match)
-                        .unwrap_or(&[]),
-                    true,
-                );
+                let segment_match = p.matching_segment_count(&prev_base_path);
+                let matched_base_path = prev_base_path.subpath(0, segment_match);
 
                 if segment_match >= p.len() {
                     // Fully matched, no need to check further.

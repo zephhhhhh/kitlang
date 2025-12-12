@@ -87,236 +87,265 @@ pub type IdentPathSegments = Vec<IdentPathSegment>;
 /// A path can be defined as relative to the root "module" instead of the current scope by starting the path
 /// with the seperator, such as: `::Struct::Function`.
 #[derive(Clone, Eq, PartialEq, PartialOrd, Hash)]
-pub enum IdentPath {
-    /// The path is relative to the root "module"
-    RootRelative(IdentPathSegments),
-    /// The path is relative to the current scope.
-    Relative(IdentPathSegments),
+pub struct IdentPath {
+    segments: IdentPathSegments,
+    root_relative: bool,
 }
 
 impl IdentPath {
     /// Separator used to separate path segments.
     pub const PATH_SEP: &str = "::";
 
-    /// This seems like it *could* fail, but I don't think it can.
-    /// The string cannot be empty, and it has to be read as a valid path thanks to the parser.
-    /// But it means these invariants must be upheld by the caller, or expect garbage output.
-    pub fn new(str: impl AsRef<str>) -> Self {
-        let mut source_string = str.as_ref();
+    /// Create a new path from a string representation.
+    /// Automatically detects if the path is root-relative by checking for leading `::`.
+    ///
+    /// # Notes
+    /// The parser ensures valid paths are provided, so this method assumes well-formed input.
+    #[inline]
+    pub fn new(src: impl AsRef<str>) -> Self {
+        let src = src.as_ref();
+        let (root_relative, remainder) = if let Some(stripped) = src.strip_prefix(Self::PATH_SEP) {
+            (true, stripped)
+        } else {
+            (false, src)
+        };
 
-        let root_relative = source_string.starts_with(Self::PATH_SEP);
-        if root_relative {
-            source_string = &source_string[Self::PATH_SEP.len()..];
-        }
-
-        let segments = source_string
+        let segments = remainder
             .split(Self::PATH_SEP)
-            .map(str::to_string)
-            .collect::<IdentPathSegments>();
+            .map(|s| s.to_string())
+            .collect();
 
-        Self::from_segments(segments, root_relative)
+        Self {
+            segments,
+            root_relative,
+        }
     }
 
-    /// Constructs an empty identifier path.
+    /// Create an empty path.
+    #[inline]
     pub fn new_empty(root_relative: bool) -> Self {
-        if root_relative {
-            Self::RootRelative(vec![])
-        } else {
-            Self::Relative(vec![])
+        Self {
+            segments: Vec::new(),
+            root_relative,
         }
     }
 
-    /// Constructs a path from already parsed segments, with `root_relative` describing if the path
-    /// should be constructed as relative to the root or relative to the current scope.
+    /// Create a path from segments.
+    #[inline]
     pub fn from_segments(segments: IdentPathSegments, root_relative: bool) -> Self {
-        if root_relative {
-            Self::RootRelative(segments)
-        } else {
-            Self::Relative(segments)
+        Self {
+            segments,
+            root_relative,
         }
     }
 
-    /// Constructs a path from already parsed segments, with `root_relative` describing if the path
-    /// should be constructed as relative to the root or relative to the current scope.
+    /// Create a path from a segment slice.
+    #[inline]
     pub fn from_segments_slice(segments: &[IdentPathSegment], root_relative: bool) -> Self {
         Self::from_segments(segments.to_vec(), root_relative)
     }
 
+    /// Rebase this path onto another, returning `None` if this path is root-relative.
+    #[inline]
     pub fn rebase_from_path_safe(&self, base_path: &Self) -> Option<Self> {
-        if self.is_root_relative() {
+        if self.root_relative {
             return None;
         }
 
-        let mut segments = base_path.segments().to_vec();
-        segments.extend_from_slice(self.segments());
+        let mut segments = base_path.segments.clone();
+        segments.extend_from_slice(&self.segments);
 
-        Some(Self::from_segments(segments, base_path.is_root_relative()))
+        Some(Self {
+            segments,
+            root_relative: base_path.root_relative,
+        })
     }
 
+    /// Rebase this path onto another. Returns self if this path is root-relative.
+    #[inline]
     pub fn rebase_from_path(&self, base_path: &Self) -> Self {
-        if self.is_root_relative() {
-            return self.clone();
+        if self.root_relative {
+            self.clone()
+        } else {
+            let mut segments = base_path.segments.clone();
+            segments.extend_from_slice(&self.segments);
+
+            Self::from_segments(segments, base_path.root_relative)
         }
-
-        let mut segments = base_path.segments().to_vec();
-        segments.extend_from_slice(self.segments());
-
-        Self::from_segments(segments, base_path.is_root_relative())
     }
 
+    /// Rebase this path onto a string-based path.
+    #[inline]
     pub fn rebase_from_string(&self, base_str: impl AsRef<str>) -> Self {
-        let base_path = Self::new(base_str);
-        self.rebase_from_path(&base_path)
+        self.rebase_from_path(&Self::new(base_str))
     }
 
-    /// Convert the path into a string and present it as an `Identifier`.
+    /// Convert to an `Identifier`.
+    #[inline]
     pub fn to_ident(&self) -> Ident {
         Ident::new(self.to_string())
     }
 
-    /// Returns true if the path is relative to the root "module".
+    /// Check if this path is root-relative.
+    #[inline]
     pub fn is_root_relative(&self) -> bool {
-        matches!(self, IdentPath::RootRelative(_))
+        self.root_relative
     }
 
-    /// Returns true if the path only has exactly _one_ segment, and is not relative to the root
-    /// "module". I.e. The path only consists of exactly one `Identifier`.
+    /// Check if this path is exactly one segment and not root-relative.
+    #[inline]
     pub fn is_only_ident(&self) -> bool {
-        self.segments().len() == 1 && !self.is_root_relative()
+        self.segments.len() == 1 && !self.root_relative
     }
 
-    /// Returns `Some(ident)` if the path has exactly _one_ segment, and is not relative to the
-    /// root "module". I.e. The path only consists of exactly one `Identifier`, otherwise returns
-    /// `None`
+    /// Get the single identifier if this path contains exactly one segment and is not root-relative.
+    #[inline]
     pub fn get_only_ident(&self) -> Option<String> {
         if self.is_only_ident() {
-            Some(self.segments()[0].clone())
+            Some(self.segments[0].clone())
         } else {
             None
         }
     }
 
-    /// Returns the "stem" of the path, I.e. The _last_ segment of the path.
+    /// Get the last segment of the path (the "stem").
+    ///
     /// # Panics
-    /// This function will panic if there are _no_ segments in the path.
+    /// Panics if the path has no segments.
+    #[inline]
     pub fn path_stem(&self) -> &str {
-        self.segments()
+        self.segments
             .last()
-            .expect("Path must have atleast one segment!")
+            .expect("Path must have at least one segment!")
     }
 
-    /// How many segments are in the path.
+    /// Number of segments in this path.
+    #[inline]
     pub fn len(&self) -> usize {
-        self.segments().len()
+        self.segments.len()
     }
 
-    /// Returns a slice of all segments in the path.
-    pub fn segments(&self) -> &[IdentPathSegment] {
-        match self {
-            IdentPath::RootRelative(items) | IdentPath::Relative(items) => items,
-        }
-    }
-
-    /// Returns a slice of all segments in the path.
-    pub fn get_segments_vec_mut(&mut self) -> &mut Vec<IdentPathSegment> {
-        match self {
-            IdentPath::RootRelative(items) | IdentPath::Relative(items) => items,
-        }
-    }
-
-    /// Returns true if the path has 0 segments.
+    /// Check if the path has no segments.
+    #[inline]
     pub fn is_empty(&self) -> bool {
-        self.segments().is_empty()
+        self.segments.is_empty()
     }
 
-    /// Pop the last segment off the path.
+    /// Get all segments as a slice.
+    #[inline]
+    pub fn segments(&self) -> &[IdentPathSegment] {
+        &self.segments
+    }
+
+    /// Get mutable access to segments.
+    #[inline]
+    pub fn segments_mut(&mut self) -> &mut Vec<IdentPathSegment> {
+        &mut self.segments
+    }
+
+    /// Remove the last segment.
+    #[inline]
     pub fn pop(&mut self) {
-        let segments_mut = self.get_segments_vec_mut();
-        if !segments_mut.is_empty() {
-            segments_mut.pop();
-        }
+        self.segments.pop();
     }
 
-    /// Push a segment onto the end of the path.
+    /// Add a segment to the end.
+    #[inline]
     pub fn push(&mut self, segment: &str) {
-        self.get_segments_vec_mut().push(segment.to_string());
+        self.segments.push(segment.to_string());
     }
 
-    /// Push a series of path segments from another path onto this one, if the other path is not
-    /// relative to the root.
+    /// Add all segments from a slice of segments to the end of `self`.
+    #[inline]
+    pub fn push_segments(&mut self, path: &[IdentPathSegment]) {
+        self.segments.extend_from_slice(path);
+    }
+
+    /// Add all segments from another path (if not root-relative).
+    #[inline]
     pub fn push_path(&mut self, path: &Self) {
-        if !path.is_root_relative() {
-            for segment in path.segments() {
-                self.push(segment);
-            }
+        if !path.root_relative {
+            self.segments.extend_from_slice(&path.segments);
         }
     }
 
-    /// Create a new [`IdentPath`] with `s` appended on to the end of `self`.
-    pub fn extend(&self, s: &str) -> Self {
-        let mut c = self.clone();
-        c.push(s);
-        c
+    /// Create a new path with an additional segment.
+    #[inline]
+    pub fn extend_from(&self, segment: &str) -> Self {
+        let mut path = self.clone();
+        path.push(segment);
+        path
     }
 
-    /// Create a new [`IdentPath`] with `ident` appended on to the end of `self`.
-    /// # Note
-    /// This is a convenience wrapper for `self.extend` and will convert the ident into a [`str`].
+    /// Create a new path with an additional segment.
+    #[inline]
+    pub fn extend(&self, segment: &str) -> Self {
+        let mut path = self.clone();
+        path.push(segment);
+        path
+    }
+
+    /// Create a new path with an additional segment from an identifier.
+    #[inline]
     pub fn extend_ident(&self, ident: &Ident) -> Self {
         self.extend(ident.str())
     }
 
-    /// Create a new [`IdentPath`] with each path segment of `path` appended on to the end of `self`.
+    /// Create a new path with all segments from another path.
+    #[inline]
     pub fn extend_path(&self, path: &IdentPath) -> Self {
-        let mut c = self.clone();
-        for s in path.segments() {
-            c.push(s);
-        }
-        c
+        let mut new_path = self.clone();
+        new_path.push_segments(&path.segments);
+        new_path
     }
 
-    /// Returns true if `self` is a subpath of `other`.
-    pub fn is_subpath_of(&self, other: &IdentPath) -> bool {
-        let self_segments = self.segments();
-        let other_segments = other.segments();
+    /// Create a new path from a subpath of this path from the given range.
+    #[inline]
+    pub fn subpath(&self, start: usize, end: usize) -> Self {
+        Self::from_segments_slice(&self.segments[start..end], self.root_relative)
+    }
 
-        if self_segments.len() < other_segments.len() {
+    /// Check if this path starts with all segments of another path.
+    #[inline]
+    pub fn is_subpath_of(&self, other: &IdentPath) -> bool {
+        if self.len() < other.len() {
             return false;
         }
 
-        for (i, segment) in other_segments.iter().enumerate() {
-            if self_segments[i] != *segment {
-                return false;
-            }
-        }
+        self.segments()
+            .iter()
+            .zip(other.segments().iter())
+            .all(|(a, b)| a == b)
+    }
 
-        true
+    #[inline]
+    pub fn matching_segment_count(&self, other: &IdentPath) -> usize {
+        self.segments()
+            .iter()
+            .zip(other.segments().iter())
+            .take_while(|(a, b)| a == b)
+            .count()
     }
 }
 
 impl Display for IdentPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if matches!(self, IdentPath::RootRelative(_)) {
+        if self.root_relative {
             write!(f, "{}", Self::PATH_SEP)?;
         }
-        for (i, segment) in self.segments().iter().enumerate() {
-            if i != 0 {
-                write!(f, "{}", Self::PATH_SEP)?;
-            }
-            write!(f, "{}", segment)?;
-        }
-        Ok(())
+        write!(f, "{}", self.segments.join(Self::PATH_SEP))
     }
 }
 
 impl Debug for IdentPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let path_str = self.to_string();
-        if self.is_root_relative() {
-            write!(f, "RootPath('{}')", path_str)
+        let kind = if self.root_relative {
+            "RootPath"
         } else {
-            write!(f, "Path('{}')", path_str)
-        }
+            "Path"
+        };
+        write!(f, "{}('{}')", kind, path_str)
     }
 }
 
