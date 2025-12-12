@@ -492,24 +492,24 @@ impl BinaryOpKind {
     #[inline]
     pub fn symbols(self) -> &'static str {
         match self {
-            BinaryOpKind::Add => "+",
-            BinaryOpKind::Sub => "-",
-            BinaryOpKind::Mul => "*",
-            BinaryOpKind::Div => "/",
-            BinaryOpKind::Mod => "%",
-            BinaryOpKind::And => "&&",
-            BinaryOpKind::Or => "||",
-            BinaryOpKind::BitwiseXOR => "^",
-            BinaryOpKind::BitwiseAND => "&",
-            BinaryOpKind::BitwiseOR => "|",
-            BinaryOpKind::ShiftLeft => "<<",
-            BinaryOpKind::ShiftRight => ">>",
-            BinaryOpKind::Equal => "==",
-            BinaryOpKind::NotEqual => "!=",
-            BinaryOpKind::LessThan => "<",
-            BinaryOpKind::GreaterThan => ">",
-            BinaryOpKind::LessThanOrEqual => "<=",
-            BinaryOpKind::GreaterThanOrEqual => ">=",
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Mod => "%",
+            Self::And => "&&",
+            Self::Or => "||",
+            Self::BitwiseXOR => "^",
+            Self::BitwiseAND => "&",
+            Self::BitwiseOR => "|",
+            Self::ShiftLeft => "<<",
+            Self::ShiftRight => ">>",
+            Self::Equal => "==",
+            Self::NotEqual => "!=",
+            Self::LessThan => "<",
+            Self::GreaterThan => ">",
+            Self::LessThanOrEqual => "<=",
+            Self::GreaterThanOrEqual => ">=",
         }
     }
 }
@@ -544,13 +544,13 @@ impl ItemKind {
     #[inline]
     pub fn get_name(&self) -> &'static str {
         match self {
-            ItemKind::Use(_) => "Use",
-            ItemKind::Const(_) => "Const",
-            ItemKind::Fn(_) => "Function",
-            ItemKind::Mod(_) => "Module",
-            ItemKind::Enum(_) => "Enum",
-            ItemKind::Struct(_) => "Struct",
-            ItemKind::Impl(_) => "Impl",
+            Self::Use(_) => "Use",
+            Self::Const(_) => "Const",
+            Self::Fn(_) => "Function",
+            Self::Mod(_) => "Module",
+            Self::Enum(_) => "Enum",
+            Self::Struct(_) => "Struct",
+            Self::Impl(_) => "Impl",
         }
     }
 
@@ -558,11 +558,11 @@ impl ItemKind {
     #[inline]
     pub fn ident(&self) -> Option<String> {
         match self {
-            ItemKind::Const(constant) => Some(constant.ident.string()),
-            ItemKind::Fn(function) => Some(function.ident.string()),
-            ItemKind::Mod(module) => Some(module.ident.string()),
-            ItemKind::Enum(e) => Some(e.ident.string()),
-            ItemKind::Struct(s) => Some(s.ident.string()),
+            Self::Const(constant) => Some(constant.ident.string()),
+            Self::Fn(function) => Some(function.ident.string()),
+            Self::Mod(module) => Some(module.ident.string()),
+            Self::Enum(e) => Some(e.ident.string()),
+            Self::Struct(s) => Some(s.ident.string()),
             _ => None,
         }
     }
@@ -1172,7 +1172,7 @@ impl Debug for Literal {
     }
 }
 
-/// Describes whether a local variable is just a declaration, or an assignment too.
+/// Describes whether a local variable is just a declaration, or a declaration and an initial assignment.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LocalKind {
     Declaration,
