@@ -78,7 +78,6 @@ impl Parser<'_, '_> {
     ) -> PResult<Box<Expression>> {
         while !self.cursor.is_end() {
             atom = match self.peek_at(0)?.kind {
-                TokenKind::Keyword(Keyword::As) => self.parse_cast_expression(atom, span_start),
                 TokenKind::Punctuation(Punctuation::OpenParen) => {
                     self.parse_call_continued(atom, span_start)
                 }
@@ -150,6 +149,17 @@ impl Parser<'_, '_> {
         self.process_atom(atom, span_start)
     }
 
+    fn parse_expr_atom_with_cast(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+        let mut atom = self.parse_expr_atom()?;
+
+        while self.check_kind(Keyword::As) {
+            atom = self.parse_cast_op_continued(atom, span_start)?;
+        }
+
+        Ok(atom)
+    }
+
     fn parse_parens_expr(&mut self) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::OpenParen)?;
         let expr = self.parse_expression()?;
@@ -159,8 +169,7 @@ impl Parser<'_, '_> {
 
     pub fn parse_expression(&mut self) -> PResult<Box<Expression>> {
         let span_start = self.begin_span();
-
-        let expr = self.parse_expr_atom()?;
+        let expr = self.parse_expr_atom_with_cast()?;
 
         if self.is_binary_op(0)?.is_some() {
             self.parse_binary_op_continued(expr, span_start)
@@ -320,7 +329,7 @@ impl Parser<'_, '_> {
 
         self.cursor.advance_by(binary_op.token_count());
 
-        let mut rhs = self.parse_expr_atom()?;
+        let mut rhs = self.parse_expr_atom_with_cast()?;
 
         if let Some(next_bin_op) = self.is_binary_op(0)? {
             if next_bin_op.get_order() > binary_op_order {
@@ -357,6 +366,20 @@ impl Parser<'_, '_> {
         span_start: u32,
     ) -> PResult<Box<Expression>> {
         self.parse_binary_op_continued_ordered(lhs, ExpressionOrderBound::Unbounded, span_start)
+    }
+
+    fn parse_cast_op_continued(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
+        self.expect_kind(Keyword::As)?;
+        let target_type = self.parse_ty()?;
+
+        Ok(Expression::new_boxed(
+            ExpressionKind::Cast(lhs, target_type),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_call_continued(
@@ -537,21 +560,6 @@ impl Parser<'_, '_> {
 
         Ok(Expression::new_boxed(
             ExpressionKind::StructInit(StructInitialisation::new_boxed(lhs, fields)),
-            self.finish_span(span_start),
-        ))
-    }
-
-    fn parse_cast_expression(
-        &mut self,
-        lhs: Box<Expression>,
-        span_start: u32,
-    ) -> PResult<Box<Expression>> {
-        self.expect_kind(Keyword::As)?;
-
-        let target_type = self.parse_ty()?;
-
-        Ok(Expression::new_boxed(
-            ExpressionKind::Cast(lhs, target_type),
             self.finish_span(span_start),
         ))
     }

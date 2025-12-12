@@ -426,7 +426,7 @@ impl KitTy {
             | (KitTy::Float(_), KitTy::Int(_))
             | (KitTy::Float(_), KitTy::UInt(_)) => Some(*target),
             (KitTy::Boolean, KitTy::UInt(_)) => Some(*target),
-            | (KitTy::Boolean, KitTy::Int(_)) => Some(*target),
+            (KitTy::Boolean, KitTy::Int(_)) => Some(*target),
             // Disallow other casts for now..
             _ => None,
         }
