@@ -1,4 +1,4 @@
-use crate::ast::IdentPath;
+use crate::ast::{IdentPath, Ty};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError};
 use crate::intermediate::hir::nodes::{
@@ -132,14 +132,14 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
 
         for arg in &mut function.sig.parameters {
             match arg {
-                Type::Unresolved(crate::ast::Ty::Type(type_path)) => {
+                Type::Unresolved(Ty::Type(type_path)) => {
                     if let Some(type_id) = self.resolve_type(type_path) {
                         *arg = Type::Resolved(KitTy::Abstract(type_id));
                     } else {
                         error!("Failed to resolve function arg type path: {:?}", arg);
                     }
                 }
-                Type::Unresolved(crate::ast::Ty::This(_s)) => {
+                Type::Unresolved(Ty::This(_s)) => {
                     if let Some(impl_ty) = &self.current_impl {
                         *arg = impl_ty.clone();
                     } else {
@@ -148,7 +148,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                 }
                 _ => {}
             }
-            if let Type::Unresolved(crate::ast::Ty::Type(type_path)) = arg {
+            if let Type::Unresolved(Ty::Type(type_path)) = arg {
                 if let Some(type_id) = self.resolve_type(type_path) {
                     *arg = Type::Resolved(KitTy::Abstract(type_id));
                 } else {
@@ -157,7 +157,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             }
         }
 
-        if let Type::Unresolved(crate::ast::Ty::Type(type_path)) = &function.sig.output {
+        if let Type::Unresolved(Ty::Type(type_path)) = &function.sig.output {
             if let Some(type_id) = self.resolve_type(type_path) {
                 function.sig.output = Type::Resolved(KitTy::Abstract(type_id));
             } else {
@@ -166,6 +166,21 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
         }
 
         self.pop_from_current_path();
+    }
+
+    fn visit_let_statement_mut(
+            &mut self,
+            _id: crate::intermediate::hir::HirId,
+            let_statement: &mut crate::intermediate::hir::nodes::LetStatement,
+            _hlir: &mut HLIRDisjointMut<'_>,
+        ) {
+        if let Type::Unresolved(Ty::Type(type_path)) = &let_statement.ty {
+            if let Some(type_id) = self.resolve_type(&type_path.path) {
+                let_statement.ty = Type::Resolved(KitTy::Abstract(type_id));
+            } else {
+                error!("Failed to resolve let statement type path");
+            }
+        }
     }
 
     fn visit_struct_mut(&mut self, structure: &mut Struct, hlir: &mut HLIRDisjointMut<'_>) {
@@ -178,7 +193,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
         for field_id in &structure.fields {
             if let Some(HIRNode::Field(field)) = hlir.get_hir_node_mut(*field_id) {
                 let resolved_type =
-                    if let Type::Unresolved(crate::ast::Ty::Type(type_path)) = &field.ty {
+                    if let Type::Unresolved(Ty::Type(type_path)) = &field.ty {
                         self.resolve_type(&type_path.path)
                     } else {
                         None
