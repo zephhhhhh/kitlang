@@ -2,7 +2,7 @@ use crate::ast::{IdentPath, Ty};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError};
 use crate::intermediate::hir::nodes::{
-    Expr, ExprKind, Function, HIRNode, Impl, Module, RefPath, ResolvedID, Struct, Type,
+    Expr, ExprKind, Function, Impl, Module, RefPath, ResolvedID, Struct, StructField, Type,
 };
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
@@ -169,11 +169,11 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     }
 
     fn visit_let_statement_mut(
-            &mut self,
-            _id: crate::intermediate::hir::HirId,
-            let_statement: &mut crate::intermediate::hir::nodes::LetStatement,
-            _hlir: &mut HLIRDisjointMut<'_>,
-        ) {
+        &mut self,
+        _id: crate::intermediate::hir::HirId,
+        let_statement: &mut crate::intermediate::hir::nodes::LetStatement,
+        _hlir: &mut HLIRDisjointMut<'_>,
+    ) {
         if let Type::Unresolved(Ty::Type(type_path)) = &let_statement.ty {
             if let Some(type_id) = self.resolve_type(&type_path.path) {
                 let_statement.ty = Type::Resolved(KitTy::Abstract(type_id));
@@ -191,13 +191,12 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             return;
         };
         for field_id in &structure.fields {
-            if let Some(HIRNode::Field(field)) = hlir.get_hir_node_mut(*field_id) {
-                let resolved_type =
-                    if let Type::Unresolved(Ty::Type(type_path)) = &field.ty {
-                        self.resolve_type(&type_path.path)
-                    } else {
-                        None
-                    };
+            if let Some(field) = hlir.get_hir_node_mut_as::<StructField>(*field_id) {
+                let resolved_type = if let Type::Unresolved(Ty::Type(type_path)) = &field.ty {
+                    self.resolve_type(&type_path.path)
+                } else {
+                    None
+                };
 
                 if let Some(type_id) = resolved_type {
                     field.ty = Type::Resolved(KitTy::Abstract(type_id));

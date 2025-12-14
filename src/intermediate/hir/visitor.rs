@@ -260,6 +260,13 @@ impl<'a> HLIRDisjointMut<'a> {
 }
 
 impl HLIRDisjointMut<'_> {
+    pub fn get_hir_node_mut_as<'a, F>(&mut self, id: HirId) -> Option<&'a mut F>
+    where
+        Option<&'a mut F>: From<&'a mut HIRNode>,
+    {
+        self.get_hir_node_mut(id).and_then(|node| node.into())
+    }
+
     pub fn get_hir_node_mut(&mut self, id: HirId) -> Option<&'static mut HIRNode> {
         Some(self.hir_node_mut(id)?.value_mut())
     }

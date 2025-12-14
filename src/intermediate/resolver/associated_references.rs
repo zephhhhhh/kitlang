@@ -102,6 +102,28 @@ impl AssociatedReferenceMapper {
         self.reset_path_to(IdentPath::from_segments(Vec::new(), true));
     }
 
+    /// Executes `f` with `segment` temporarily pushed onto the current path.
+    /// Ensures the segment is popped after `f` completes.
+    fn with_pushed_segment<F>(&mut self, segment: &str, f: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        self.push_to_current_path(segment);
+        f(self);
+        self.pop_from_current_path();
+    }
+
+    /// Executes `f` with `path` temporarily pushed onto the path stack.
+    /// Ensures the path is popped after `f` completes.
+    fn with_pushed_path<F>(&mut self, path: IdentPath, f: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        self.push_stack(path);
+        f(self);
+        self.pop_stack();
+    }
+
     fn inject_builtin_definitions(&mut self) {
         fn builtin_namespace(name: &str) -> Namespace {
             Namespace {
@@ -123,7 +145,7 @@ impl AssociatedReferenceMapper {
             .into_iter()
             .map(builtin_namespace)
             .for_each(|ns| {
-                self.root_namespace.items.insert(ns.ident.clone(), ns);
+                self.root_namespace.insert(ns);
             });
     }
 
@@ -135,40 +157,32 @@ impl AssociatedReferenceMapper {
         let item_idents: Vec<String> = namespace.items.keys().cloned().collect();
 
         for ident in item_idents {
-            if let Some(item_namespace) = namespace.items.get_mut(&ident) {
-                let mut next_path = current_path.clone();
-                next_path.push(&ident);
+            let Some(item_namespace) = namespace.get_mut(&ident) else {
+                continue;
+            };
+            let mut next_path = current_path.clone();
+            next_path.push(&ident);
+            if let NamespaceKind::Use(use_path) = &item_namespace.kind {
+                let target_path = use_path.rebase_from_path(&current_path);
 
-                match &item_namespace.kind {
-                    NamespaceKind::Use(use_path) => {
-                        let target_path = use_path.rebase_from_path(&current_path);
+                if let Some(target_namespace) = root_namespace.find_definition(&target_path) {
+                    let mut cloned = target_namespace.clone();
+                    cloned.ident = item_namespace.ident.clone();
+                    cloned.vis = item_namespace.vis;
+                    cloned.local = item_namespace.local;
+                    cloned.id = target_namespace.id;
+                    *item_namespace = cloned;
 
-                        if let Some(target_namespace) = root_namespace.find_definition(&target_path)
-                        {
-                            let mut cloned = target_namespace.clone();
-                            cloned.ident = item_namespace.ident.clone();
-                            cloned.vis = item_namespace.vis;
-                            cloned.local = item_namespace.local;
-                            cloned.id = target_namespace.id;
-                            *item_namespace = cloned;
-
-                            Self::resolve_uses_in_namespace(
-                                root_namespace,
-                                item_namespace,
-                                next_path,
-                            );
-                        } else {
-                            // TODO: surface diagnostic once resolver errors are implemented.
-                            error!(
-                                "Failed to resolve use path {:?} within namespace {:?}",
-                                target_path, current_path
-                            );
-                        }
-                    }
-                    _ => {
-                        Self::resolve_uses_in_namespace(root_namespace, item_namespace, next_path);
-                    }
+                    Self::resolve_uses_in_namespace(root_namespace, item_namespace, next_path);
+                } else {
+                    // TODO: surface diagnostic once resolver errors are implemented.
+                    error!(
+                        "Failed to resolve use path {:?} within namespace {:?}",
+                        target_path, current_path
+                    );
                 }
+            } else {
+                Self::resolve_uses_in_namespace(root_namespace, item_namespace, next_path);
             }
         }
     }
@@ -333,6 +347,7 @@ impl AssociatedReferenceMapper {
 }
 
 impl AssociatedReferenceMapper {
+    #[inline]
     pub fn current_path(&self) -> &IdentPath {
         self.path_stack
             .last()
@@ -373,7 +388,7 @@ impl AssociatedReferenceMapper {
     fn get_namespace(&self, path: &IdentPath) -> Option<&Namespace> {
         let mut curr_namespace = &self.root_namespace;
         for segment in path.segments() {
-            curr_namespace = curr_namespace.items.get(segment)?;
+            curr_namespace = curr_namespace.get(segment)?;
         }
         Some(curr_namespace)
     }
@@ -381,7 +396,7 @@ impl AssociatedReferenceMapper {
     fn get_namespace_mut(&mut self, path: &IdentPath) -> Option<&mut Namespace> {
         let mut curr_namespace = &mut self.root_namespace;
         for segment in path.segments() {
-            curr_namespace = curr_namespace.items.get_mut(segment)?;
+            curr_namespace = curr_namespace.get_mut(segment)?;
         }
         Some(curr_namespace)
     }
@@ -389,30 +404,30 @@ impl AssociatedReferenceMapper {
 
 impl HLIRVisitor for AssociatedReferenceMapper {
     fn visit_module(&mut self, module: &Module, hlir: &HLIR) {
-        if module.owner_id != OwnerDefId::ROOT_NODE {
-            let current_path = self.current_path().clone();
-            let module_ident = module.ident.ident().string();
-            let local = self.should_be_local(&current_path);
-            self.get_namespace_mut(&current_path)
-                .expect("Namespace path exists.")
-                .items
-                .insert(
-                    module_ident.clone(),
-                    Namespace {
-                        ident: module_ident.clone(),
-                        kind: NamespaceKind::Module,
-                        items: HashMap::new(),
-                        id: ResolvedID::OwnerDef(module.owner_id),
-                        vis: module.vis,
-                        local,
-                    },
-                );
+        if module.owner_id == OwnerDefId::ROOT_NODE {
+            self.super_module(module, hlir);
+            return;
+        }
 
-            self.push_to_current_path(&module_ident);
-            self.super_module(module, hlir);
-            self.pop_from_current_path();
+        let current_path = self.current_path().clone();
+        let module_ident = module.ident.ident().string();
+        let local = self.should_be_local(&current_path);
+        if let Some(ns) = self.get_namespace_mut(&current_path) {
+            ns.insert(Namespace {
+                ident: module_ident.clone(),
+                kind: NamespaceKind::Module,
+                items: HashMap::new(),
+                id: ResolvedID::OwnerDef(module.owner_id),
+                vis: module.vis,
+                local,
+            });
+            self.with_pushed_segment(&module_ident, |this| this.super_module(module, hlir));
         } else {
-            self.super_module(module, hlir);
+            self.errors
+                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                    format!("Missing namespace for path: {}", current_path),
+                    Some(module.ident.span()),
+                )));
         }
     }
 
@@ -439,11 +454,8 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                     current_path.to_string(),
                 )));
         }
-
-        self.get_namespace_mut(&current_path)
-            .expect("Namespace path exists")
-            .items
-            .insert(
+        if let Some(ns) = self.get_namespace_mut(&current_path) {
+            ns.items.insert(
                 function_ident.clone(),
                 Namespace {
                     ident: function_ident.clone(),
@@ -454,10 +466,14 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                     local,
                 },
             );
-
-        self.push_to_current_path(&function_ident);
-        self.super_function(function, hlir);
-        self.pop_from_current_path();
+            self.with_pushed_segment(&function_ident, |this| this.super_function(function, hlir));
+        } else {
+            self.errors
+                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                    format!("Missing namespace for path: {}", current_path),
+                    Some(function.ident.span),
+                )));
+        }
     }
 
     fn visit_struct(&mut self, structure: &Struct, hlir: &HLIR) {
@@ -505,10 +521,8 @@ impl HLIRVisitor for AssociatedReferenceMapper {
 
         let local = self.should_be_local(&current_path);
         let struct_ident = structure.ident.string();
-        self.get_namespace_mut(&current_path)
-            .expect("Namespace path exists.")
-            .items
-            .insert(
+        if let Some(ns) = self.get_namespace_mut(&current_path) {
+            ns.items.insert(
                 struct_ident.clone(),
                 Namespace {
                     ident: struct_ident,
@@ -519,46 +533,57 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                     local,
                 },
             );
+        } else {
+            self.errors
+                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                    format!("Missing namespace for path: {}", current_path),
+                    Some(structure.ident.span),
+                )));
+        }
     }
 
     fn visit_enum(&mut self, enumeration: &Enum, _hlir: &HLIR) {
         let current_path = self.current_path().clone();
         let struct_ident = enumeration.ident.string();
         let local = self.should_be_local(&current_path);
-        self.get_namespace_mut(&current_path)
-            .expect("Namespace path exists.")
-            .items
-            .insert(
-                struct_ident.clone(),
-                Namespace {
-                    ident: struct_ident.clone(),
-                    kind: NamespaceKind::Enum,
-                    items: HashMap::new(),
-                    id: ResolvedID::OwnerDef(enumeration.owner_id),
-                    vis: enumeration.vis,
-                    local,
-                },
-            );
+        if let Some(ns) = self.get_namespace_mut(&current_path) {
+            ns.insert(Namespace {
+                ident: struct_ident.clone(),
+                kind: NamespaceKind::Enum,
+                items: HashMap::new(),
+                id: ResolvedID::OwnerDef(enumeration.owner_id),
+                vis: enumeration.vis,
+                local,
+            });
+        } else {
+            self.errors
+                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                    format!("Missing namespace for path: {}", current_path),
+                    Some(enumeration.ident.span),
+                )));
+        }
     }
 
     fn visit_constant(&mut self, constant: &Constant, _hlir: &HLIR) {
         let current_path = self.current_path().clone();
         let const_ident = constant.ident.string();
         let local = self.should_be_local(&current_path);
-        self.get_namespace_mut(&current_path)
-            .expect("Namespace path exists.")
-            .items
-            .insert(
-                const_ident.clone(),
-                Namespace {
-                    ident: const_ident.clone(),
-                    kind: NamespaceKind::Constant,
-                    items: HashMap::new(),
-                    id: ResolvedID::OwnerDef(constant.owner_id),
-                    vis: constant.vis,
-                    local,
-                },
-            );
+        if let Some(ns) = self.get_namespace_mut(&current_path) {
+            ns.insert(Namespace {
+                ident: const_ident.clone(),
+                kind: NamespaceKind::Constant,
+                items: HashMap::new(),
+                id: ResolvedID::OwnerDef(constant.owner_id),
+                vis: constant.vis,
+                local,
+            });
+        } else {
+            self.errors
+                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                    format!("Missing namespace for path: {}", current_path),
+                    Some(constant.ident.span),
+                )));
+        }
     }
 
     fn visit_impl(&mut self, impl_info: &Impl, hlir: &HLIR) {
@@ -576,20 +601,22 @@ impl HLIRVisitor for AssociatedReferenceMapper {
 
         for import in &use_info.imports {
             let import_ident = import.segments().last().expect("Atleast one segment.");
-            self.get_namespace_mut(&current_path)
-                .expect("Namespace path exists.")
-                .items
-                .insert(
-                    import_ident.clone(),
-                    Namespace {
-                        ident: import_ident.clone(),
-                        kind: NamespaceKind::Use(import.clone()),
-                        items: HashMap::new(),
-                        id: ResolvedID::OwnerDef(OwnerDefId(0)),
-                        vis: use_info.vis,
-                        local: use_info.vis == Visibility::Private,
-                    },
-                );
+            if let Some(ns) = self.get_namespace_mut(&current_path) {
+                ns.insert(Namespace {
+                    ident: import_ident.clone(),
+                    kind: NamespaceKind::Use(import.clone()),
+                    items: HashMap::new(),
+                    id: ResolvedID::OwnerDef(OwnerDefId(0)),
+                    vis: use_info.vis,
+                    local: use_info.vis == Visibility::Private,
+                });
+            } else {
+                self.errors
+                    .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
+                        format!("Missing namespace for path: {}", current_path),
+                        None,
+                    )));
+            }
         }
 
         self.super_use(use_info, hlir);
@@ -634,10 +661,7 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
 
     fn visit_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'_>) {
         let impl_path = impl_info.self_ty.rebase_from_path(self.current_path());
-
-        self.push_stack(impl_path);
-        self.super_impl_mut(impl_info, hlir);
-        self.pop_stack();
+        self.with_pushed_path(impl_path, |this| this.super_impl_mut(impl_info, hlir));
     }
 }
 

@@ -178,6 +178,35 @@ impl Debug for HIRNode {
     }
 }
 
+macro_rules! impl_hir_node_from {
+    ($target:ty, $variant:ident) => {
+        impl<'a> From<&'a HIRNode> for Option<&'a $target> {
+            fn from(value: &'a HIRNode) -> Self {
+                match value {
+                    HIRNode::$variant(a) => Some(a),
+                    _ => None,
+                }
+            }
+        }
+
+        impl<'a> From<&'a mut HIRNode> for Option<&'a mut $target> {
+            fn from(value: &'a mut HIRNode) -> Self {
+                match value {
+                    HIRNode::$variant(a) => Some(a),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+impl_hir_node_from!(Parameter, Param);
+impl_hir_node_from!(Block, Block);
+impl_hir_node_from!(Expr, Expr);
+impl_hir_node_from!(Statement, Statement);
+impl_hir_node_from!(StructField, Field);
+impl_hir_node_from!(RefPath, Path);
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct OwningNode {
     pub kind: OwningNodeKind,

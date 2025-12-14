@@ -206,6 +206,22 @@ impl Namespace {
 }
 
 impl Namespace {
+    #[inline]
+    pub fn get(&self, ident: &str) -> Option<&Namespace> {
+        self.items.get(ident)
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self, ident: &str) -> Option<&mut Namespace> {
+        self.items.get_mut(ident)
+    }
+
+    #[inline]
+    pub fn insert(&mut self, namespace: Namespace) {
+        self.items.insert(namespace.ident.clone(), namespace);
+    }
+
+    #[inline]
     pub fn is_module(&self) -> bool {
         self.kind == NamespaceKind::Module
     }
@@ -271,7 +287,7 @@ impl Namespace {
     pub fn find_definition_from_segments(&self, path: &[IdentPathSegment]) -> Option<&Namespace> {
         let mut curr_namespace = self;
         for segment in path {
-            curr_namespace = curr_namespace.items.get(segment)?;
+            curr_namespace = curr_namespace.get(segment)?;
         }
         Some(curr_namespace)
     }
