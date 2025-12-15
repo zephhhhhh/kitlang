@@ -166,6 +166,9 @@ impl SpannedErrorBuilder {
     /// Generate a highlight comment on all applicable lines that highlight the provided error
     /// span with an underline.
     pub fn generate_highlight(&mut self) -> &mut Self {
+        if self.error_span.is_null_span() {
+            return self;
+        }
         for line in self.lines.iter_mut() {
             line.highlight_from_span(self.error_span, "^", self.hard_error);
         }

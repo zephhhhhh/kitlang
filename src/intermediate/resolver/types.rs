@@ -1,16 +1,14 @@
 use crate::ast::{IdentPath, Ty};
 
-use crate::intermediate::hir::errors::{LowerResult, LoweringError};
 use crate::intermediate::hir::nodes::{
     Expr, ExprKind, Function, Impl, Module, RefPath, ResolvedID, Struct, StructField, Type,
 };
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
 
+use crate::intermediate::resolver::errors::{ResolveResult, ResolverError, ResolverErrorKind};
 use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeID, TypeRegistry};
 use crate::intermediate::types::KitTy;
-
-use log::*;
 
 struct TypeResolver<'a> {
     pub current_impl: Option<Type>,
@@ -21,7 +19,7 @@ struct TypeResolver<'a> {
     pub root_namespace: &'a Namespace,
 
     // TODO: Implement these errors!!
-    pub errors: Vec<LoweringError>,
+    pub errors: Vec<ResolverError>,
 }
 
 impl<'a> TypeResolver<'a> {
@@ -37,30 +35,37 @@ impl<'a> TypeResolver<'a> {
 }
 
 impl TypeResolver<'_> {
-    pub fn resolve_types(&mut self, hlir: &mut HLIR) -> LowerResult<TypeRegistry> {
+    pub fn resolve_types(&mut self, hlir: &mut HLIR) -> ResolveResult<TypeRegistry> {
         self.walk_mut(hlir);
+
+        if !self.errors.is_empty() {
+            return Err(ResolverErrorKind::ResolverErrors(self.errors.clone()).with_no_span());
+        }
 
         Ok(self.type_registry.clone())
     }
 
-    fn resolve_type(&self, path: &IdentPath) -> Option<TypeID> {
+    fn resolve_type(&self, path: &IdentPath) -> ResolveResult<TypeID> {
         let final_path = path.rebase_from_path(
             &self
                 .root_namespace
                 .find_previous_module(self.current_path()),
         );
 
-        let def = self.root_namespace.find_definition(&final_path)?;
-        if let NamespaceKind::Struct(ty_id) = def.kind {
-            Some(ty_id)
-        } else {
-            error!(
-                "Type path is not a struct: {path:?}, but instead: {:?}",
-                def.kind
+        let Some(def) = self.root_namespace.find_definition(&final_path) else {
+            return Err(
+                ResolverErrorKind::CannotFindNamespaceForTypeCheck(path.clone()).with_no_span(),
             );
-            None
+        };
+
+        if let NamespaceKind::Struct(ty_id) = def.kind {
+            Ok(ty_id)
+        } else {
+            Err(
+                ResolverErrorKind::ExpectedADTDefinition(path.clone(), def.kind.clone())
+                    .with_no_span(),
+            )
         }
-        //self.type_registry.find_type_id_from_path(&type_path)
     }
 }
 
@@ -101,11 +106,12 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
         match &mut expr.kind {
             ExprKind::StructInit(struct_init) => {
                 if let RefPath::Unresolved(ty_path) = &struct_init.ty_path {
-                    if let Some(type_id) = self.resolve_type(&ty_path.path) {
-                        struct_init.ty_path =
-                            RefPath::Resolved(ty_path.clone(), ResolvedID::TypeDef(type_id));
-                    } else {
-                        error!("Failed to resolve struct init type!");
+                    match self.resolve_type(&ty_path.path) {
+                        Ok(type_id) => {
+                            struct_init.ty_path =
+                                RefPath::Resolved(ty_path.clone(), ResolvedID::TypeDef(type_id));
+                        }
+                        Err(e) => self.errors.push(e),
                     }
                 }
             }
@@ -132,36 +138,52 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
 
         for arg in &mut function.sig.parameters {
             match arg {
-                Type::Unresolved(Ty::Type(type_path)) => {
-                    if let Some(type_id) = self.resolve_type(type_path) {
+                Type::Unresolved(Ty::Type(type_path)) => match self.resolve_type(type_path) {
+                    Ok(type_id) => {
                         *arg = Type::Resolved(KitTy::Abstract(type_id));
-                    } else {
-                        error!("Failed to resolve function arg type path: {:?}", arg);
                     }
-                }
+                    Err(e) => self.errors.push(e),
+                },
                 Type::Unresolved(Ty::This(_s)) => {
                     if let Some(impl_ty) = &self.current_impl {
                         *arg = impl_ty.clone();
                     } else {
-                        error!("Failed to resolve self function arg.");
+                        self.errors.push(
+                            ResolverErrorKind::CouldNotResolveSelfFunctionArg(
+                                self.current_path().clone(),
+                            )
+                            .with_span(function.ident.span),
+                        );
                     }
                 }
                 _ => {}
             }
             if let Type::Unresolved(Ty::Type(type_path)) = arg {
-                if let Some(type_id) = self.resolve_type(type_path) {
+                if let Ok(type_id) = self.resolve_type(type_path) {
                     *arg = Type::Resolved(KitTy::Abstract(type_id));
                 } else {
-                    error!("Failed to resolve function arg type path: {:?}", arg);
+                    self.errors.push(
+                        ResolverErrorKind::CouldNotResolveFunctionArgType(
+                            type_path.clone(),
+                            self.current_path().clone(),
+                        )
+                        .with_span(function.ident.span),
+                    );
                 }
             }
         }
 
         if let Type::Unresolved(Ty::Type(type_path)) = &function.sig.output {
-            if let Some(type_id) = self.resolve_type(type_path) {
+            if let Ok(type_id) = self.resolve_type(type_path) {
                 function.sig.output = Type::Resolved(KitTy::Abstract(type_id));
             } else {
-                error!("Failed to resolve function type path");
+                self.errors.push(
+                    ResolverErrorKind::CouldNotResolveFunctionReturnType(
+                        type_path.clone(),
+                        self.current_path().clone(),
+                    )
+                    .with_span(function.ident.span),
+                );
             }
         }
 
@@ -175,10 +197,13 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
         _hlir: &mut HLIRDisjointMut<'_>,
     ) {
         if let Type::Unresolved(Ty::Type(type_path)) = &let_statement.ty {
-            if let Some(type_id) = self.resolve_type(&type_path.path) {
-                let_statement.ty = Type::Resolved(KitTy::Abstract(type_id));
-            } else {
-                error!("Failed to resolve let statement type path");
+            match self.resolve_type(&type_path.path) {
+                Ok(type_id) => {
+                    let_statement.ty = Type::Resolved(KitTy::Abstract(type_id));
+                }
+                Err(e) => {
+                    self.errors.push(e);
+                }
             }
         }
     }
@@ -186,14 +211,25 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     fn visit_struct_mut(&mut self, structure: &mut Struct, hlir: &mut HLIRDisjointMut<'_>) {
         self.push_to_current_path(structure.ident.str());
         let current_struct_path = self.current_path().clone();
-        let Some(current_struct_type_id) = self.resolve_type(&current_struct_path) else {
-            error!("Failed to resolve struct: {:?} type id!", structure.ident);
-            return;
+        let current_struct_type = match self.resolve_type(&current_struct_path) {
+            Ok(t) => t,
+            Err(e) => {
+                self.errors.push(e);
+                self.pop_from_current_path();
+                return;
+            }
         };
+
         for field_id in &structure.fields {
             if let Some(field) = hlir.get_hir_node_mut_as::<StructField>(*field_id) {
                 let resolved_type = if let Type::Unresolved(Ty::Type(type_path)) = &field.ty {
-                    self.resolve_type(&type_path.path)
+                    match self.resolve_type(&type_path.path) {
+                        Ok(type_id) => Some(type_id),
+                        Err(e) => {
+                            self.errors.push(e);
+                            None
+                        }
+                    }
                 } else {
                     None
                 };
@@ -203,13 +239,19 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
 
                     let struct_info = self
                         .type_registry
-                        .get_from_type_id_mut(current_struct_type_id)
+                        .get_from_type_id_mut(current_struct_type)
                         .expect("Has to exist.");
                     if let Some(field_info) = struct_info.get_field_by_ident_mut(field.ident.str())
                     {
                         field_info.ty = Type::Resolved(KitTy::Abstract(type_id));
                     } else {
-                        error!("Failed to find field info: {:?}", field.ident.str());
+                        self.errors.push(
+                            ResolverErrorKind::FailedToFindStructField(
+                                field.ident.string(),
+                                current_struct_path.clone(),
+                            )
+                            .with_span(field.ident.span),
+                        );
                     }
                 }
             }
@@ -225,7 +267,10 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             self.super_impl_mut(impl_info, hlir);
             self.current_impl = None;
         } else {
-            error!("Failed to get type id for info: {:?}", impl_info.self_ty);
+            self.errors.push(
+                ResolverErrorKind::FailedToGetTypeForImpl(impl_info.self_ty.clone())
+                    .with_span(impl_info.ty_span),
+            );
         }
     }
 }
@@ -234,6 +279,6 @@ pub fn resolve_types(
     hlir: &mut HLIR,
     root_namespace: &Namespace,
     registry: TypeRegistry,
-) -> LowerResult<TypeRegistry> {
+) -> ResolveResult<TypeRegistry> {
     TypeResolver::new(root_namespace, registry).resolve_types(hlir)
 }

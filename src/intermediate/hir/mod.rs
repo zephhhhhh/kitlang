@@ -372,7 +372,10 @@ pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData
     let mut hlir = lower_ast_to_hir(ast)?;
 
     // Resolution..
-    let (namespaces, type_registry) = resolve_paths(&mut hlir)?;
+    let (namespaces, type_registry) = match resolve_paths(&mut hlir) {
+        Ok((ns, tr)) => (ns, tr),
+        Err(e) => return Err(LoweringError::new(LoweringErrorKind::ResolverError(e))),
+    };
 
     // Type checking..
     let type_map = run_type_checker(&mut hlir, &type_registry, &namespaces)?;

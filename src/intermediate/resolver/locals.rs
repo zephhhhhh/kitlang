@@ -1,12 +1,12 @@
 use ::std::fmt::Debug;
 use std::collections::HashMap;
 
-use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::nodes::{
     Block, Function, LetStatement, Parameter, RefPath, ResolvedID,
 };
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, HirId};
+use crate::intermediate::resolver::errors::{ResolveResult, ResolverError, ResolverErrorKind};
 
 #[derive(Debug, Clone, PartialEq)]
 struct LocalScope {
@@ -51,13 +51,11 @@ impl LocalScope {
     }
 
     #[allow(dead_code)]
-    pub fn add_definition_result(&mut self, name: &str, id: ResolvedID) -> LowerResult<()> {
+    pub fn add_definition_result(&mut self, name: &str, id: ResolvedID) -> ResolveResult<()> {
         if self.add_definition_unique(name, id) {
             Ok(())
         } else {
-            Err(LoweringError::new(
-                LoweringErrorKind::VariableAlreadyDefined(name.to_string()),
-            ))
+            Err(ResolverErrorKind::VariableAlreadyDefined(name.to_string()).with_no_span())
         }
     }
 
@@ -74,7 +72,7 @@ impl LocalScope {
 
 struct ScopeResolver {
     pub scope: Vec<LocalScope>,
-    pub errors: Vec<LoweringError>,
+    pub errors: Vec<ResolverError>,
 }
 
 impl ScopeResolver {
@@ -105,14 +103,13 @@ impl ScopeResolver {
         self.push_scope(self.current_scope().child_scope(scope_ident))
     }
 
-    pub fn resolve(&mut self, hlir: &mut HLIR) -> LowerResult<()> {
+    pub fn resolve(&mut self, hlir: &mut HLIR) -> ResolveResult<()> {
         self.walk_mut(hlir);
 
         if self.errors.is_empty() {
             Ok(())
         } else {
-            // FIXME: This is not good dx.
-            Err(self.errors.first().expect("There is an error.").clone())
+            Err(ResolverErrorKind::ResolverErrors(self.errors.clone()).with_no_span())
         }
     }
 }
@@ -180,6 +177,6 @@ impl HLIRVisitorMut<'_> for ScopeResolver {
     }
 }
 
-pub fn resolve_scope_paths(hlir: &mut HLIR) -> LowerResult<()> {
+pub fn resolve_scope_paths(hlir: &mut HLIR) -> ResolveResult<()> {
     ScopeResolver::new().resolve(hlir)
 }

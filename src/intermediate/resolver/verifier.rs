@@ -1,10 +1,9 @@
-use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::nodes::RefPath;
 use crate::intermediate::hir::visitor::HLIRVisitor;
 use crate::intermediate::hir::{HLIR, HirId};
 
 use crate::intermediate::resolver::errors::{
-    ResolutionFailure, UnresolvedReference, UnresolvedReferences,
+    ResolutionFailure, ResolveResult, ResolverErrorKind, UnresolvedReference, UnresolvedReferences,
 };
 
 struct UnresolvedReferenceChecker {
@@ -32,21 +31,22 @@ impl UnresolvedReferenceChecker {
         }
     }
 
-    pub fn verify_references(mut self, hlir: &HLIR) -> LowerResult<()> {
+    pub fn verify_references(mut self, hlir: &HLIR) -> ResolveResult<()> {
         self.visit_root(hlir);
 
         if self.unresolved_references.is_empty() {
             Ok(())
         } else {
-            Err(LoweringError::new(LoweringErrorKind::UnresolvedReferences(
-                UnresolvedReferences {
+            Err(
+                ResolverErrorKind::UnresolvedReferences(UnresolvedReferences {
                     references: self.unresolved_references,
-                },
-            )))
+                })
+                .with_no_span(),
+            )
         }
     }
 }
 
-pub fn verify_references(hlir: &mut HLIR) -> LowerResult<()> {
+pub fn verify_references(hlir: &mut HLIR) -> ResolveResult<()> {
     UnresolvedReferenceChecker::new().verify_references(hlir)
 }

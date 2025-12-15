@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::ast::{IdentPath, SpannedIdentPath, Visibility};
 
-use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::nodes::{
     Constant, Enum, Function, HIRNode, Impl, Module, RefPath, ResolvedID, Struct, StructField,
     UsePath,
@@ -11,7 +10,8 @@ use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitor, HLIRVisito
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 use crate::intermediate::resolver::errors::{
-    ResolutionFailure, UnresolvedReference, UnresolvedReferences,
+    ResolutionFailure, ResolveResult, ResolverError, ResolverErrorKind, UnresolvedReference,
+    UnresolvedReferences,
 };
 use crate::intermediate::resolver::{
     ADTStructField, ADTTypeInfo, Namespace, NamespaceKind, TypeRegistry,
@@ -75,8 +75,7 @@ struct AssociatedReferenceMapper {
     pub root_namespace: Namespace,
     pub stage1_complete: bool,
 
-    // TODO: Implement these errors!!
-    pub errors: Vec<LoweringError>,
+    pub errors: Vec<ResolverError>,
     pub resolution_failures: Vec<(HirId, SpannedIdentPath, ResolutionFailure)>,
 }
 
@@ -187,7 +186,7 @@ impl AssociatedReferenceMapper {
         }
     }
 
-    pub fn map_references(&mut self, hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
+    pub fn map_references(&mut self, hlir: &mut HLIR) -> ResolveResult<(Namespace, TypeRegistry)> {
         self.inject_builtin_definitions();
 
         // Map all except impls..
@@ -217,8 +216,8 @@ impl AssociatedReferenceMapper {
         self.walk_mut(hlir);
 
         if !self.resolution_failures.is_empty() {
-            return Err(LoweringError::new(LoweringErrorKind::UnresolvedReferences(
-                UnresolvedReferences {
+            return Err(
+                ResolverErrorKind::UnresolvedReferences(UnresolvedReferences {
                     references: self
                         .resolution_failures
                         .iter()
@@ -228,8 +227,13 @@ impl AssociatedReferenceMapper {
                             failure: *c,
                         })
                         .collect(),
-                },
-            )));
+                })
+                .with_no_span(),
+            );
+        }
+
+        if !self.errors.is_empty() {
+            return Err(ResolverErrorKind::ResolverErrors(self.errors.clone()).with_no_span());
         }
 
         Ok((self.root_namespace.clone(), self.type_registry.clone()))
@@ -313,6 +317,12 @@ impl AssociatedReferenceMapper {
                     return Err(ResolutionFailure::Inaccessible);
                 }
 
+                let inside_func = if let Some(ns) = self.get_namespace(&local_check) {
+                    ns.kind == NamespaceKind::Function
+                } else {
+                    false
+                };
+
                 if segment_match.saturating_add(1) >= p.len() {
                     // Fully matched, no need to check further.
                     return Ok(def);
@@ -328,7 +338,10 @@ impl AssociatedReferenceMapper {
 
                     let visible = self
                         .get_namespace(&to_check)
-                        .map(|n| n.vis == Visibility::Public || n.kind == NamespaceKind::Function)
+                        .map(|n| {
+                            n.vis == Visibility::Public
+                                || (n.kind == NamespaceKind::Function && inside_func)
+                        })
                         .unwrap_or_default();
                     if !visible {
                         error!(
@@ -423,11 +436,10 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             });
             self.with_pushed_segment(&module_ident, |this| this.super_module(module, hlir));
         } else {
-            self.errors
-                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                    format!("Missing namespace for path: {}", current_path),
-                    Some(module.ident.span()),
-                )));
+            self.errors.push(
+                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
+                    .with_span(module.ident.span()),
+            );
         }
     }
 
@@ -447,12 +459,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             .items
             .contains_key(&function_ident)
         {
-            self.errors
-                .push(LoweringError::new(LoweringErrorKind::ItemAlreadyDefined(
-                    function.ident.span,
-                    function_ident.clone(),
-                    current_path.to_string(),
-                )));
+            self.errors.push(
+                ResolverErrorKind::ItemAlreadyDefined(
+                    function.ident.as_spanned_path(),
+                    current_path.clone(),
+                )
+                .with_span(function.ident.span),
+            );
         }
         if let Some(ns) = self.get_namespace_mut(&current_path) {
             ns.items.insert(
@@ -468,11 +481,10 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             );
             self.with_pushed_segment(&function_ident, |this| this.super_function(function, hlir));
         } else {
-            self.errors
-                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                    format!("Missing namespace for path: {}", current_path),
-                    Some(function.ident.span),
-                )));
+            self.errors.push(
+                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
+                    .with_span(function.ident.span),
+            );
         }
     }
 
@@ -509,13 +521,10 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 fields,
             ))
         } else {
-            // idk..
-            // TODO: REDO THESE ERRORS.
-            self.errors
-                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                    "Failed to get some resolved struct fields.".to_string(),
-                    Some(structure.ident.span),
-                )));
+            self.errors.push(
+                ResolverErrorKind::CannotResolveStructFields(structure.ident.as_spanned_path())
+                    .with_span(structure.ident.span),
+            );
             0
         };
 
@@ -534,11 +543,10 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 },
             );
         } else {
-            self.errors
-                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                    format!("Missing namespace for path: {}", current_path),
-                    Some(structure.ident.span),
-                )));
+            self.errors.push(
+                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
+                    .with_span(structure.ident.span),
+            );
         }
     }
 
@@ -556,11 +564,10 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 local,
             });
         } else {
-            self.errors
-                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                    format!("Missing namespace for path: {}", current_path),
-                    Some(enumeration.ident.span),
-                )));
+            self.errors.push(
+                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
+                    .with_span(enumeration.ident.span),
+            );
         }
     }
 
@@ -578,11 +585,10 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 local,
             });
         } else {
-            self.errors
-                .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                    format!("Missing namespace for path: {}", current_path),
-                    Some(constant.ident.span),
-                )));
+            self.errors.push(
+                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
+                    .with_span(constant.ident.span),
+            );
         }
     }
 
@@ -611,11 +617,10 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                     local: use_info.vis == Visibility::Private,
                 });
             } else {
-                self.errors
-                    .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                        format!("Missing namespace for path: {}", current_path),
-                        None,
-                    )));
+                self.errors.push(
+                    ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
+                        .with_span(use_info.span),
+                );
             }
         }
 
@@ -648,13 +653,16 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
                     path.resolve_to(resolved);
                 }
                 Err(ResolutionFailure::Inaccessible) => {
+                    error!("Pushing unresolved: {ident_path:?} as inaccessible");
                     self.resolution_failures.push((
                         id,
                         path.spanned_ident_path().clone(),
                         ResolutionFailure::Inaccessible,
                     ));
                 }
-                _ => {}
+                _ => {
+                    error!("Pushing unresolved: {ident_path:?} as not found");
+                }
             }
         }
     }
@@ -665,6 +673,6 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
     }
 }
 
-pub fn resolve_associated_references(hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
+pub fn resolve_associated_references(hlir: &mut HLIR) -> ResolveResult<(Namespace, TypeRegistry)> {
     AssociatedReferenceMapper::new().map_references(hlir)
 }

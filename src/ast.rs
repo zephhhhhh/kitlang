@@ -676,6 +676,15 @@ impl SpannedIdent {
     pub fn ident(&self) -> Ident {
         self.ident.clone()
     }
+
+    /// Converts to a [`SpannedIdentPath`] with a single segment.
+    #[inline]
+    pub fn as_spanned_path(&self) -> SpannedIdentPath {
+        SpannedIdentPath::new(
+            IdentPath::from_segments_slice(&[self.ident.string()], false),
+            self.span,
+        )
+    }
 }
 
 impl From<(String, SourceSpan)> for SpannedIdent {

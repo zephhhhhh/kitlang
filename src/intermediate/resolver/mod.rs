@@ -11,9 +11,9 @@ use std::fmt::Debug;
 
 use crate::ast::{IdentPath, IdentPathSegment, SpannedIdent, Visibility};
 
-use crate::intermediate::hir::errors::LowerResult;
 use crate::intermediate::hir::nodes::{ResolvedID, Type};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
+use crate::intermediate::resolver::errors::ResolveResult;
 use crate::intermediate::types::KitTy;
 
 // use crate::intermediate::types::KitTy;
@@ -326,7 +326,7 @@ impl Namespace {
     }
 }
 
-pub fn resolve_paths(hlir: &mut HLIR) -> LowerResult<(Namespace, TypeRegistry)> {
+pub fn resolve_paths(hlir: &mut HLIR) -> ResolveResult<(Namespace, TypeRegistry)> {
     locals::resolve_scope_paths(hlir)?;
     let (namespace, mut registry) = associated_references::resolve_associated_references(hlir)?;
 
