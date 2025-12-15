@@ -108,17 +108,7 @@ fn register_native_functions(interpreter: &mut Interpreter) {
         print,
         println,
         input,
-        input_placeholder,
-        to_lower,
-        is_empty,
-        i64_to_string,
-        string_to_i64,
-        u64_to_string,
-        string_to_u64,
-        f64_to_string,
-        string_to_f64,
-        bool_to_string,
-        string_to_bool
+        input_placeholder
     );
 }
 
@@ -165,36 +155,8 @@ fn from_js_value(value: &JsValue) -> Value {
     Value::Unit
 }
 
-// "Compiler" defined intrinsics.
+// Native functions for interacting with the browser.
 
-wrap_native_fn!(i64_to_string(x: i64) -> String {
-    x.to_string()
-});
-wrap_native_fn!(string_to_i64(s: String) -> i64 {
-    s.parse::<i64>().unwrap_or(0)
-});
-wrap_native_fn!(f64_to_string(x: f64) -> String {
-    x.to_string()
-});
-wrap_native_fn!(string_to_f64(s: String) -> f64 {
-    s.parse::<f64>().unwrap_or(0.0)
-});
-wrap_native_fn!(u64_to_string(x: u64) -> String {
-    x.to_string()
-});
-wrap_native_fn!(string_to_u64(s: String) -> u64 {
-    s.parse::<u64>().unwrap_or(0)
-});
-wrap_native_fn!(bool_to_string(x: bool) -> String {
-    x.to_string()
-});
-wrap_native_fn!(string_to_bool(s: String) -> bool {
-    s.parse::<bool>().unwrap_or(false)
-});
-
-wrap_native_fn!(is_empty(s: String) -> bool {
-    s.is_empty()
-});
 wrap_native_fn!(print(s: String) {
     PRINT_CALLBACK.with(|slot| {
         if let Some(cb) = &*slot.borrow() {
@@ -210,9 +172,6 @@ wrap_native_fn!(println(s: String) {
                 .unwrap();
         }
     });
-});
-wrap_native_fn!(to_lower(s: String) -> String {
-    s.to_lowercase()
 });
 wrap_native_fn!(input(s: String) -> String {
     let mut result = String::new();
