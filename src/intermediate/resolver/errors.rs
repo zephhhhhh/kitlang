@@ -52,7 +52,7 @@ impl ResolverErrorKind {
     }
 }
 
-/// Represents an error while parsing the [`ASTRoot`] into High-level IR.
+/// Represents an error while resolving references/symbols after in the intermediate representation.
 #[derive(Debug, Error, Clone, PartialEq)]
 pub struct ResolverError {
     #[source]

@@ -5,17 +5,26 @@ use crate::{
 
 use log::*;
 
+/// Represents the integer types in Kitlang.
+/// This is not a value in itself, but rather a type representation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitInt {
+    /// Represents the size of a pointer on the target architecture.
     ISize,
+    /// Byte (8 bits).
     I8,
+    /// Word (16 bits).
     I16,
+    /// DWord (32 bits).
     I32,
+    /// QWord (64 bits).
     I64,
+    /// OWord (128 bits).
     I128,
 }
 
 impl KitInt {
+    /// Returns the symbol string (the type as written in a source file) of the integer type.
     pub fn symbol_str(&self) -> &'static str {
         match *self {
             KitInt::ISize => "isize",
@@ -27,6 +36,7 @@ impl KitInt {
         }
     }
 
+    /// Returns the bit width of the integer type.
     pub fn bit_width(&self) -> u64 {
         match *self {
             // For now we will just use the size of a I64 on all targets.
@@ -39,26 +49,37 @@ impl KitInt {
         }
     }
 
+    /// Returns the byte width of the integer type.
     pub fn byte_count(&self) -> u64 {
         self.bit_width() / 8
     }
 
+    /// Returns the largest width between two integer types.
     pub fn largest_width(&self, other: &KitInt) -> KitInt {
-        if self > other { *self } else { *other }
+        if self.bit_width() > other.bit_width() { *self } else { *other }
     }
 }
 
+/// Represents the unsigned integer types in Kitlang.
+/// This is not a value in itself, but rather a type representation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitUInt {
+    /// Represents the size of a pointer on the target architecture.
     USize,
+    /// Byte (8 bits).
     U8,
+    /// Word (16 bits).
     U16,
+    /// DWord (32 bits).
     U32,
+    /// QWord (64 bits).
     U64,
+    /// OWord (128 bits).
     U128,
 }
 
 impl KitUInt {
+    /// Returns the symbol string (the type as written in a source file) of the unsigned integer type.
     pub fn symbol_str(&self) -> &'static str {
         match *self {
             KitUInt::USize => "usize",
@@ -70,6 +91,7 @@ impl KitUInt {
         }
     }
 
+    /// Returns the bit width of the unsigned integer type.
     pub fn bit_width(&self) -> u64 {
         match *self {
             KitUInt::USize => (std::mem::size_of::<usize>() * 8) as u64,
@@ -81,24 +103,33 @@ impl KitUInt {
         }
     }
 
+    /// Returns the byte width of the unsigned integer type.
     pub fn byte_count(&self) -> u64 {
         self.bit_width() / 8
     }
 
+    /// Returns the largest width between two unsigned integer types.
     pub fn largest_width(&self, other: &KitUInt) -> KitUInt {
-        if self > other { *self } else { *other }
+        if self.bit_width() > other.bit_width() { *self } else { *other }
     }
 }
 
+/// Represents the floating point types in Kitlang.
+/// This is not a value in itself, but rather a type representation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitFloat {
+    /// Half precision floating point.
     F16,
+    /// Single precision floating point.
     F32,
+    /// Double precision floating point.
     F64,
+    /// Quadruple precision floating point.
     F128,
 }
 
 impl KitFloat {
+    /// Returns the symbol string (the type as written in a source file) of the floating point type.
     pub fn symbol_str(&self) -> &'static str {
         match *self {
             KitFloat::F16 => "f16",
@@ -108,6 +139,7 @@ impl KitFloat {
         }
     }
 
+    /// Returns the bit width of the floating point type.
     pub fn bit_width(&self) -> u64 {
         match *self {
             KitFloat::F16 => 16,
@@ -117,30 +149,49 @@ impl KitFloat {
         }
     }
 
+    /// Returns the byte width of the floating point type.
     pub fn byte_count(&self) -> u64 {
         self.bit_width() / 8
     }
 
+    /// Returns the largest width between two floating point types.
     pub fn largest_width(&self, other: &KitFloat) -> KitFloat {
-        if self > other { *self } else { *other }
+        if self.bit_width() > other.bit_width() { *self } else { *other }
     }
 }
 
+/// Lightweight and copyable representation of types in Kitlang.
+///
+/// This is not a value in itself, but rather a type representation.
+///
+/// It can represent primitive types, as well as user-defined types.
+///
+/// Primitive types are represented directly, while user-defined types are represented
+/// by their TypeID.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitTy {
+    /// Unit type
     Unit,
+    /// Signed integer types
     Int(KitInt),
+    /// Unsigned integer types
     UInt(KitUInt),
+    /// Floating point types
     Float(KitFloat),
+    /// Boolean type
     Boolean,
+    /// Character type (Unicode scalar value)
     Char,
+    /// String type
     String,
-    // Structs, etc..
+    /// User-defined / abstract types, denoted by their TypeID.
     Abstract(TypeID),
     // TODO: Array, Tuple..
 }
 
 impl KitTy {
+    /// Tries to convert an AST type to a KitTy.
+    /// Returns None if the type is not a primitive type.
     pub fn try_from_ast_ty(ty: &ASTTy) -> Option<Self> {
         match ty {
             ASTTy::Unit(_) => Some(Self::Unit),
@@ -157,62 +208,80 @@ impl KitTy {
 }
 
 impl KitTy {
+    /// Checks if the type is a primitive type.
     pub fn is_primitive(&self) -> bool {
-        match self {
-            KitTy::Unit
-            | KitTy::Int(_)
-            | KitTy::UInt(_)
-            | KitTy::Float(_)
-            | KitTy::Boolean
-            | KitTy::Char
-            | KitTy::String => true,
-            KitTy::Abstract(_) => false,
-        }
+        !matches!(self, KitTy::Abstract(_))
     }
 
+    /// Returns true if the type is the unit type.
     pub fn is_unit(&self) -> bool {
         matches!(self, KitTy::Unit)
     }
 
+    /// Returns true if the type is an integer type.
     pub fn is_int(&self) -> bool {
         matches!(self, KitTy::Int(_))
     }
 
+    /// Returns true if the type is an unsigned integer type.
+    pub fn is_uint(&self) -> bool {
+        matches!(self, KitTy::UInt(_))
+    }
+
+    /// Returns true if the type is a floating point type.
     pub fn is_float(&self) -> bool {
         matches!(self, KitTy::Float(_))
     }
 
+    /// Returns true if the type is a boolean type.
     pub fn is_bool(&self) -> bool {
         matches!(self, KitTy::Boolean)
     }
 
+    /// Returns true if the type is a char type.
     pub fn is_char(&self) -> bool {
         matches!(self, KitTy::Char)
     }
 
+    /// Returns true if the type is a string type.
     pub fn is_string(&self) -> bool {
         matches!(self, KitTy::String)
     }
 
+    /// Returns true if the type is an abstract (user-defined) type.
     pub fn is_abstract(&self) -> bool {
         matches!(self, KitTy::Abstract(_))
     }
 }
 
 impl KitTy {
-    pub fn is_compatible(&self, other: &KitTy) -> bool {
+    /// Returns the bit width of type.
+    pub fn bit_width(&self) -> u64 {
         match self {
-            KitTy::Unit => matches!(other, KitTy::Unit),
-            KitTy::Int(_) => matches!(other, KitTy::Int(_)),
-            KitTy::UInt(_) => matches!(other, KitTy::UInt(_)),
-            KitTy::Float(_) => matches!(other, KitTy::Float(_)),
-            KitTy::Boolean => matches!(other, KitTy::Boolean),
-            KitTy::Char => matches!(other, KitTy::Char),
-            KitTy::String => matches!(other, KitTy::String),
-            KitTy::Abstract(_) => false,
+            KitTy::Int(kit_int) => kit_int.bit_width(),
+            KitTy::UInt(kit_uint) => kit_uint.bit_width(),
+            KitTy::Float(kit_float) => kit_float.bit_width(),
+            KitTy::Unit => 0,
+            KitTy::Boolean => 8,
+            KitTy::Char => 32,
+            KitTy::String => 192,
+            KitTy::Abstract(_) => 64,
         }
     }
 
+    /// Returns the byte width of the type.
+    pub fn byte_count(&self) -> u64 {
+        self.bit_width() / 8
+    }
+
+    /// Returns the largest width between types.
+    pub fn largest_width(&self, other: &Self) -> Self {
+        if self.bit_width() > other.bit_width() { *self } else { *other }
+    }
+}
+
+impl KitTy {
+    /// Returns the result type of applying a unary operation to this type.
     pub fn unary_op_result_type(&self, op_kind: UnaryOpKind) -> Option<KitTy> {
         match self {
             KitTy::Unit => None,
@@ -251,6 +320,10 @@ impl KitTy {
         }
     }
 
+    /// Returns the result type of applying a binary operation between this type and another type.
+    /// `Self` is the left-hand side type, and `other` is the right-hand side type.
+    /// # Returns
+    /// An [`Option`] containing the resulting KitTy if the operation is valid, or `None` if it is not.
     pub fn binary_op_result_type(&self, other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
         fn unit_result_type(other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
             match (other, op_kind) {
@@ -409,6 +482,9 @@ impl KitTy {
         }
     }
 
+    /// Returns the resulting type after casting to the target type, if the cast is valid.
+    /// # Returns
+    /// An [`Option`] containing the resulting KitTy if the cast is valid, or `None` if it is not.
     pub fn cast_result_type(&self, target: &KitTy) -> Option<KitTy> {
         if self == target {
             return Some(*target);
@@ -497,6 +573,10 @@ define_primitive_tys!(
 );
 
 impl KitTy {
+    /// Returns the string representation of the type, if it is a primitive type.
+    /// # Returns
+    /// - `None` if the type is not a primitive type.
+    /// - `Some(String)` containing the string representation of the type as written in a source file otherwise.
     pub fn to_type_str(&self) -> Option<String> {
         match self {
             KitTy::Unit => Some("()".into()),
