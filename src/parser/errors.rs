@@ -77,7 +77,7 @@ pub enum ParseErrorKind {
     UnknownLiteralKind(TokenKind),
 }
 
-/// Represents an error while parsing the [`Token`]s
+/// Represents an error while parsing the tokens produced by the lexer into an AST.
 #[derive(Debug, Error)]
 pub struct ParseError {
     pub span: SourceSpan,

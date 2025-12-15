@@ -37,7 +37,7 @@ pub enum LoweringErrorKind {
     RemoveMeMessage(String, Option<SourceSpan>),
 }
 
-/// Represents an error while parsing the [`ASTRoot`] into High-level IR.
+/// Represents an error while parsing the AST into High-level IR.
 #[derive(Debug, Error, Clone)]
 pub struct LoweringError {
     #[source]

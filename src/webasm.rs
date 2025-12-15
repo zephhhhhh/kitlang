@@ -103,13 +103,7 @@ pub fn init_logging() {
 }
 
 fn register_native_functions(interpreter: &mut Interpreter) {
-    register_native_fn!(
-        interpreter,
-        print,
-        println,
-        input,
-        input_placeholder
-    );
+    register_native_fn!(interpreter, print, println, input, input_placeholder);
 }
 
 // Value conversions

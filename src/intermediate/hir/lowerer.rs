@@ -1,3 +1,36 @@
+//! # HIR Lowering
+//!
+//! The purpose of this module is to lower the output of the previous stage (Parser)
+//! which is the AST, into a High-Level Intermediate Representation (HIR).
+//!
+//! The reason for having a separate HIR phase is to simplify and normalize the structure of the code,
+//! making it easier to perform subsequent analyses such as name resolution and type checking.
+//!
+//! The main effect of this lowering phase is essentially to "flatten" the AST structure
+//! into something that is more "linear" in a sense, where each node is not nested inside
+//! another node, but instead each node is assigned an ID, which is essentially an index,
+//! which makes it much easier to reference nodes from other nodes, and to have "side" data
+//! such as type information associated with a node, without the node itself storing it.
+//!
+//! ## Overview
+//!
+//! After lowering is performed, no subsequent steps are yet performed, I.e. everything is still unresolved,
+//! but the structure is now more suitable for analysis.
+//!
+//! The main steps following lowering to HIR that are performed are:
+//! - Name Resolution
+//! - Type Checking
+//!
+//! ### Owning Nodes vs HIR Nodes
+//!
+//! - Owning Nodes: Important items like functions, structs, modules, and impl blocks that
+//!   can contain other nodes, and are said to "own" those nodes that are inside of them,
+//!   each owning node receives a unique [`OwnerDefId`]. An [`OwnerDefId`] is essentially an index
+//!   into the HLIR's owning node storage.
+//! - HIR Nodes: Expressions, statements, parameters, etc. that exist within an
+//!   owning node. These receive [`HirId`]s scoped to their owner, where a [`HirId`] is essentially
+//!   both an [`OwnerDefId`] and an index within that owning node's HIR node storage.
+
 use crate::ast::{self, SourceSpan, Visibility};
 
 use crate::intermediate::hir::errors::LowerResult;
@@ -9,12 +42,51 @@ use crate::intermediate::hir::nodes::{
 };
 use crate::intermediate::hir::{HLIR, HirId, LoweringError, LoweringErrorKind, OwnerDefId};
 
+/// This struct is how we store and maintain the HLIR while we lower from AST to HIR.
+/// Contains all the logic for doing the lowering.
 struct HLIRLowerer<'a> {
     hlir: &'a mut HLIR,
 }
 
-// High-level parse logic..
+// Outward facing API for lowering AST to HIR.
 impl HLIRLowerer<'_> {
+    fn walk_items(&mut self, items: &[ast::Item], parent_node: OwnerDefId) -> LowerResult<()> {
+        for item in items {
+            self.lower_ast_item(item, parent_node)?;
+        }
+
+        Ok(())
+    }
+
+    /// Builds the complete HIR representation from an AST root.
+    ///
+    /// This is the main entry point for the HIR lowering process. It creates a root module
+    /// to contain all top-level items and then walks the AST to populate the HIR.
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or a [`LoweringError`] if any part of the lowering fails.
+    pub fn build_hir_representation(&mut self, ast: &ast::ASTRoot) -> LowerResult<()> {
+        let top_level_mod_id = self
+            .hlir
+            .insert_owning_node(OwningNode::new(OwningNodeKind::Item(Item::new(
+                ItemKind::Module(Module {
+                    owner_id: OwnerDefId::ROOT_NODE,
+                    ident: ModuleIdent::RawIdent("RootModule".into()),
+                    span: ModuleSpan::Implementation(ast.full_file_span),
+                    vis: Visibility::Public,
+                    item_ids: vec![],
+                }),
+            ))));
+
+        self.walk_items(&ast.items, top_level_mod_id)?;
+
+        Ok(())
+    }
+}
+
+// This contains a seperate function for each AST item type that we need to lower.
+impl HLIRLowerer<'_> {
+    /// Lowers an AST item that appears within an `impl` block.
     fn lower_ast_impl_item(
         &mut self,
         item: &ast::Item,
@@ -37,6 +109,9 @@ impl HLIRLowerer<'_> {
         }
     }
 
+    /// Lowers a top-level AST item into a HIR owning node.
+    ///
+    /// This is the main dispatch function for lowering items.
     fn lower_ast_item(
         &mut self,
         item: &ast::Item,
@@ -61,35 +136,10 @@ impl HLIRLowerer<'_> {
         }
     }
 
-    fn walk_items(&mut self, items: &[ast::Item], parent_node: OwnerDefId) -> LowerResult<()> {
-        for item in items {
-            self.lower_ast_item(item, parent_node)?;
-        }
-
-        Ok(())
-    }
-
-    pub fn build_hir_representation(&mut self, ast: &ast::ASTRoot) -> LowerResult<()> {
-        let top_level_mod_id = self
-            .hlir
-            .insert_owning_node(OwningNode::new(OwningNodeKind::Item(Item::new(
-                ItemKind::Module(Module {
-                    owner_id: OwnerDefId::ROOT_NODE,
-                    ident: ModuleIdent::RawIdent("RootModule".into()),
-                    span: ModuleSpan::Implementation(ast.full_file_span),
-                    vis: Visibility::Public,
-                    item_ids: vec![],
-                }),
-            ))));
-
-        self.walk_items(&ast.items, top_level_mod_id)?;
-
-        Ok(())
-    }
-}
-
-// Individual lowering implementations..
-impl HLIRLowerer<'_> {
+    /// Lowers a module definition or declaration to HIR.
+    ///
+    /// Modules can be either declarations (forward declarations) or definitions (with a body).
+    /// If the module is a definition, this function recursively lowers all items within it.
     fn lower_module(
         &mut self,
         m: &ast::Module,
@@ -120,6 +170,10 @@ impl HLIRLowerer<'_> {
         Ok(mod_id)
     }
 
+    /// Lowers a function definition to HIR.
+    ///
+    /// Native functions (declared with the `native` keyword) have no body and are implemented
+    /// externally.
     fn lower_function(
         &mut self,
         f: &ast::Function,
@@ -194,6 +248,10 @@ impl HLIRLowerer<'_> {
         Ok(fn_node_id)
     }
 
+    /// Lowers a struct definition to HIR.
+    ///
+    /// This creates the struct node and lowers all field definitions. Each field becomes
+    /// a HIR node owned by the struct.
     fn lower_struct(
         &mut self,
         ast_struct: &ast::Struct,
@@ -264,6 +322,10 @@ impl HLIRLowerer<'_> {
         Ok(enum_node_id)
     }
 
+    /// Lowers a constant definition to HIR.
+    ///
+    /// Constants have a name, explicit type, and initialiser expression. The initialiser is
+    /// lowered and stored as part of the constant definition.
     fn lower_const(
         &mut self,
         ast_const: &ast::Constant,
@@ -297,6 +359,11 @@ impl HLIRLowerer<'_> {
         Ok(const_node_id)
     }
 
+    /// Lowers an impl block to HIR.
+    ///
+    /// Impl blocks define associated functions and methods for a type. This function lowers
+    /// the impl block itself and then recursively lowers all items (functions and constants)
+    /// within it.
     fn lower_impl(
         &mut self,
         im: &ast::Impl,
@@ -331,6 +398,10 @@ impl HLIRLowerer<'_> {
         Ok(impl_node_id)
     }
 
+    /// Lowers a use statement to HIR.
+    ///
+    /// Use statements import names from other modules into the current scope. At this stage,
+    /// the imports are not yet resolved.
     fn lower_use(
         &mut self,
         useimport: &ast::UseImport,
@@ -354,6 +425,11 @@ impl HLIRLowerer<'_> {
         Ok(use_node_id)
     }
 
+    /// Lowers a block expression to HIR.
+    ///
+    /// Blocks contain a sequence of statements and may optionally end with an expression that
+    /// becomes the block's value. This function creates a block HIR node and recursively lowers
+    /// all statements within it.
     fn lower_block(
         &mut self,
         block: &ast::Block,
@@ -395,6 +471,7 @@ impl HLIRLowerer<'_> {
         Ok(block_id)
     }
 
+    /// Lowers an expression to HIR.
     fn lower_expression(
         &mut self,
         expr: &ast::Expression,
@@ -507,6 +584,7 @@ impl HLIRLowerer<'_> {
             .unwrap_or(HirId::PLACEHOLDER_ID))
     }
 
+    /// Lowers a statement to HIR.
     fn lower_statement(
         &mut self,
         statement: &ast::Statement,
@@ -580,6 +658,20 @@ impl HLIRLowerer<'_> {
     }
 }
 
+// ================================================================================================
+// Public API
+// ================================================================================================
+
+/// Lowers an Abstract Syntax Tree to High-Level Intermediate Representation.
+///
+/// This is the main public entry point for HIR lowering. This fully lowers the provided AST
+/// into a complete HIR representation, but does not perform any further analyses such as
+/// name resolution or type checking.
+///
+/// # Returns
+///
+/// - `Ok(HLIR)`: The successfully lowered HIR on success
+/// - `Err(LoweringError)`: An error describing what went wrong during lowering.
 pub fn lower_ast_to_hir(ast: &ast::ASTRoot) -> LowerResult<HLIR> {
     let mut hir = HLIR::default();
 

@@ -793,7 +793,10 @@ impl TypeChecker<'_> {
                 self.eval_and_infer_let_statement(statement.id, let_statement, hlir)?;
                 Ok(Type::unit())
             }
-            StatementKind::Item(owner_def_id) => self.eval_owner_def(*owner_def_id, hlir),
+            StatementKind::Item(owner_def_id) => {
+                self.eval_owner_def(*owner_def_id, hlir)?;
+                Ok(Type::unit())
+            }
             StatementKind::Expr(expr_id) => self.eval_expr_type_by_id(*expr_id, hlir),
             StatementKind::Semi(expr_id) => {
                 self.eval_expr_type_by_id(*expr_id, hlir)?;
@@ -874,7 +877,7 @@ impl TypeChecker<'_> {
         &mut self,
         owner_def_id: OwnerDefId,
         hlir: &mut HLIRDisjointMut<'_>,
-    ) -> TypeResult<Type> {
+    ) -> TypeResult<()> {
         let Some(owning_node) = hlir.get_owning_node_mut(owner_def_id) else {
             let span = hlir
                 .nonmut_ref()
@@ -898,12 +901,12 @@ impl TypeChecker<'_> {
         match &mut owning_node_item.kind {
             super::hir::nodes::ItemKind::Function(function) => {
                 self.visit_function_mut(function, hlir);
-                Ok(Type::unit())
+                Ok(())
             }
-            super::hir::nodes::ItemKind::Use(_use_path) => Ok(Type::unit()),
+            super::hir::nodes::ItemKind::Use(_use_path) => Ok(()),
             _not_eval => {
                 // These items are not evaluated by the type checker.
-                Ok(Type::unit())
+                Ok(())
             }
         }
     }

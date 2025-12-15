@@ -56,7 +56,11 @@ impl KitInt {
 
     /// Returns the largest width between two integer types.
     pub fn largest_width(&self, other: &KitInt) -> KitInt {
-        if self.bit_width() > other.bit_width() { *self } else { *other }
+        if self.bit_width() > other.bit_width() {
+            *self
+        } else {
+            *other
+        }
     }
 }
 
@@ -110,7 +114,11 @@ impl KitUInt {
 
     /// Returns the largest width between two unsigned integer types.
     pub fn largest_width(&self, other: &KitUInt) -> KitUInt {
-        if self.bit_width() > other.bit_width() { *self } else { *other }
+        if self.bit_width() > other.bit_width() {
+            *self
+        } else {
+            *other
+        }
     }
 }
 
@@ -156,7 +164,11 @@ impl KitFloat {
 
     /// Returns the largest width between two floating point types.
     pub fn largest_width(&self, other: &KitFloat) -> KitFloat {
-        if self.bit_width() > other.bit_width() { *self } else { *other }
+        if self.bit_width() > other.bit_width() {
+            *self
+        } else {
+            *other
+        }
     }
 }
 
@@ -276,7 +288,11 @@ impl KitTy {
 
     /// Returns the largest width between types.
     pub fn largest_width(&self, other: &Self) -> Self {
-        if self.bit_width() > other.bit_width() { *self } else { *other }
+        if self.bit_width() > other.bit_width() {
+            *self
+        } else {
+            *other
+        }
     }
 }
 

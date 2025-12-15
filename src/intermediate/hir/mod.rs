@@ -12,7 +12,7 @@ use crate::intermediate::types::KitTy;
 
 use log::*;
 
-mod lowerer;
+pub mod lowerer;
 
 pub mod errors;
 pub mod nodes;

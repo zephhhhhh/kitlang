@@ -436,7 +436,7 @@ impl Debug for Function {
     }
 }
 
-/// A field of a struct, containing the name of the field and it's associated [`Ty`].
+/// A field of a struct, containing the name of the field and it's associated [`Type`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructField {
     pub id: HirId,
