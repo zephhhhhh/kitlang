@@ -48,9 +48,7 @@ impl Parser<'_, '_> {
 
                 if let Some(op) = result {
                     return Ok(Some(op));
-                } else if !matches!(puncts[1], Punctuation::Eq)
-                    && !self.check_kind_at(2, Punctuation::Eq)
-                {
+                } else if !matches!(puncts[1], Punctuation::Eq) {
                     // If the second punctuation is '=', we check for the single-char binary ops next, to support assign ops.
                     // So this checks that we only return None here if it's not an assign op.
                     return Ok(None);
