@@ -674,6 +674,7 @@ impl TypeChecker<'_> {
                 }
             }
             ExprKind::Return(hir_id) => {
+                info!("Validating return expr: {:?}", hir_id);
                 if let Some(return_expr_id) = hir_id {
                     self.validate_return_value_by_id(*return_expr_id, hlir)
                 } else {
@@ -817,6 +818,32 @@ impl TypeChecker<'_> {
         }
     }
 
+    fn is_id_return_statement(
+        &mut self,
+        id: HirId,
+        hlir: &mut HLIRDisjointMut<'_>,
+    ) -> TypeResult<bool> {
+        let node = hlir
+            .get_hir_node_mut(id)
+            .ok_or_else(|| type_fail!("Failed to get statement node."))?;
+
+        match node {
+            HIRNode::Statement(statement) => Ok(
+                matches!(statement.kind, StatementKind::Expr(expr_id) | StatementKind::Semi(expr_id) if {
+                    let expr_node = hlir
+                        .get_hir_node_mut(expr_id)
+                        .ok_or_else(|| type_fail!("Failed to get expr node."))?;
+                    if let HIRNode::Expr(expr) = expr_node {
+                        matches!(expr.kind, ExprKind::Return(..))
+                    } else {
+                        false
+                    }
+                }),
+            ),
+            _ => Ok(false),
+        }
+    }
+
     fn eval_block_type(
         &mut self,
         block: &mut Block,
@@ -829,7 +856,8 @@ impl TypeChecker<'_> {
                 Ok(final_ty) => {
                     if i.saturating_add(1) == statement_count {
                         // Validate..
-                        if block.root_block {
+                        let is_return_stmt = self.is_id_return_statement(*statement_id, hlir)?;
+                        if block.root_block && !is_return_stmt {
                             return self.validate_return_value(*statement_id, final_ty, hlir);
                         } else {
                             return Ok(final_ty);
