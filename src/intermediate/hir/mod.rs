@@ -340,10 +340,6 @@ impl ProgramMetaData {
             return None;
         };
         match resolved_ty {
-            KitTy::Unit => {
-                error!("Cannot find method '{}' on unit type.", method_ident);
-                None
-            }
             KitTy::Abstract(adt_id) => {
                 let adt = self.type_registry.get_from_type_id(adt_id)?;
                 self.find_method_owner_def(&adt.defined_in, adt.type_ident.str(), method_ident)

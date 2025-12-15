@@ -125,10 +125,6 @@ impl TypeChecker<'_> {
     #[inline]
     fn find_ty_method_owner_def(&self, ty: KitTy, method_ident: &str) -> Option<OwnerDefId> {
         match ty {
-            KitTy::Unit => {
-                error!("Cannot find method '{}' on unit type.", method_ident);
-                None
-            }
             KitTy::Abstract(adt_id) => {
                 let adt = self.type_registry.get_from_type_id(adt_id)?;
                 self.namespace.find_method_owner_def(

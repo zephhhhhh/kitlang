@@ -277,7 +277,7 @@ impl Parser<'_, '_> {
 
         self.expect_kind(Keyword::Impl)?;
 
-        let target = self.parse_spanned_path()?;
+        let target = self.parse_impl_ty_ident()?;
 
         // Parse module body..
         self.expect_kind(Punctuation::OpenBrace)?;

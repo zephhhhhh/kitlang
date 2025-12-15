@@ -407,6 +407,24 @@ impl Parser<'_, '_> {
         }
     }
 
+    /// Parse the type identifier for an `impl` block.
+    pub fn parse_impl_ty_ident(&mut self) -> PResult<SpannedIdentPath> {
+        // Case for unit type "()".
+        if self.check_kind(Punctuation::OpenParen) && self.check_kind_at(1, Punctuation::CloseParen)
+        {
+            let unit_span_start = self.begin_span();
+            self.cursor.advance_by(2);
+            let unit_path = IdentPath::from_segments_slice(&["()".to_string()], false);
+
+            return Ok(SpannedIdentPath::new(
+                unit_path,
+                self.finish_span(unit_span_start),
+            ));
+        };
+
+        self.parse_spanned_path()
+    }
+
     /// Checks if the current keyword is `pub`, if it is, consume it and return `Ok(Visibility::Public)`,
     /// otherwise `Ok(Visibility::Private)`, If there are no tokens, return `Err`.
     pub fn parse_visibility(&mut self) -> PResult<Visibility> {

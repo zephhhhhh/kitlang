@@ -58,3 +58,8 @@ impl bool {
 impl string {
     pub fn to_string(self) -> string { self }
 }
+
+// @lang
+impl () {
+    pub fn to_string(self) -> string { "()" }
+}

@@ -470,6 +470,8 @@ macro_rules! define_primitive_tys {
 }
 
 define_primitive_tys!(
+    // Unit type..
+    ("()", KitTy::Unit),
     // Integers..
     ("i8", KitInt::I8.into()),
     ("i16", KitInt::I16.into()),
