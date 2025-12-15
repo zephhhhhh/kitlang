@@ -30,7 +30,7 @@ impl Parser<'_, '_> {
                     | Punctuation::OpenParen
                     | Punctuation::Colon
             ) {
-                return Ok(match puncts {
+                let result = match puncts {
                     [Punctuation::Eq, Punctuation::Eq] => Some(BinaryOpKind::Equal),
                     [Punctuation::GreaterThan, Punctuation::Eq] => {
                         Some(BinaryOpKind::GreaterThanOrEqual)
@@ -44,7 +44,17 @@ impl Parser<'_, '_> {
                     [Punctuation::Ampersand, Punctuation::Ampersand] => Some(BinaryOpKind::And),
                     [Punctuation::Or, Punctuation::Or] => Some(BinaryOpKind::Or),
                     _ => None,
-                });
+                };
+
+                if let Some(op) = result {
+                    return Ok(Some(op));
+                } else if !matches!(puncts[1], Punctuation::Eq)
+                    && !self.check_kind_at(2, Punctuation::Eq)
+                {
+                    // If the second punctuation is '=', we check for the single-char binary ops next, to support assign ops.
+                    // So this checks that we only return None here if it's not an assign op.
+                    return Ok(None);
+                }
             }
         }
 
@@ -65,6 +75,14 @@ impl Parser<'_, '_> {
         } else {
             Ok(None)
         }
+    }
+
+    fn is_an_assign_op(&self, offset: u32) -> PResult<bool> {
+        let next_token = self.peek_at(offset)?;
+        Ok(matches!(
+            next_token.kind,
+            TokenKind::Punctuation(Punctuation::Eq)
+        ))
     }
 
     fn is_double_eq(&self) -> bool {
@@ -171,8 +189,20 @@ impl Parser<'_, '_> {
         let span_start = self.begin_span();
         let expr = self.parse_expr_atom_with_cast()?;
 
-        if self.is_binary_op(0)?.is_some() {
-            self.parse_binary_op_continued(expr, span_start)
+        if let Some(op_kind) = self.is_binary_op(0)? {
+            let is_assign = self.is_an_assign_op(op_kind.token_count())?;
+            if is_assign && !op_kind.is_valid_assign_op() {
+                return Err(ParseError::new(
+                    ParseErrorKind::InvalidAssignmentOperator(op_kind),
+                    self.cursor.current_span(),
+                ));
+            }
+
+            if is_assign {
+                self.parse_assign_op_continued(expr, op_kind, span_start)
+            } else {
+                self.parse_binary_op_continued(expr, span_start)
+            }
         } else {
             Ok(expr)
         }
@@ -301,6 +331,27 @@ impl Parser<'_, '_> {
 
         Ok(Expression::new_boxed(
             ExpressionKind::UnaryOp(unary, target_expr),
+            self.finish_span(span_start),
+        ))
+    }
+
+    fn parse_assign_op_continued(
+        &mut self,
+        lhs: Box<Expression>,
+        op_kind: BinaryOpKind,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
+        self.cursor.advance_by(op_kind.token_count());
+        self.expect_kind(Punctuation::Eq)?;
+
+        let value_expr = self.parse_expression()?;
+        let final_value_expr = Expression::new_boxed(
+            ExpressionKind::BinaryOp(op_kind, lhs.clone(), value_expr),
+            self.finish_span(span_start),
+        );
+
+        Ok(Expression::new_boxed(
+            ExpressionKind::Assign(lhs, final_value_expr),
             self.finish_span(span_start),
         ))
     }

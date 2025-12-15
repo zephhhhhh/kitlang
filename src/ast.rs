@@ -541,6 +541,23 @@ impl BinaryOpKind {
             Self::GreaterThanOrEqual => ">=",
         }
     }
+
+    #[inline]
+    pub fn is_valid_assign_op(self) -> bool {
+        matches!(
+            self,
+            Self::Add
+                | Self::Sub
+                | Self::Mul
+                | Self::Div
+                | Self::Mod
+                | Self::BitwiseXOR
+                | Self::BitwiseAND
+                | Self::BitwiseOR
+                | Self::ShiftLeft
+                | Self::ShiftRight
+        )
+    }
 }
 
 /// Describes each possible kind of an [`Item`] in the AST.

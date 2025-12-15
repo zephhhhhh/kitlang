@@ -2,7 +2,7 @@ use ::std::fmt::Display;
 
 use thiserror::Error;
 
-use crate::ast::SourceSpan;
+use crate::ast::{BinaryOpKind, SourceSpan};
 use crate::spanned_error::SpannedErrorBuilder;
 use crate::token::TokenKind;
 
@@ -44,6 +44,9 @@ pub enum ParseErrorKind {
         "Parameter 'self' cannot be used in free functions, it must be used within an associated 'impl' block"
     )]
     SelfMustBeUsedInAMethod,
+
+    #[error("Invalid assignment operator: {0:?}")]
+    InvalidAssignmentOperator(BinaryOpKind),
 
     #[error("Expected Semi-colon, expressions can only be at the end of a block")]
     ExpectedSemiColon,
