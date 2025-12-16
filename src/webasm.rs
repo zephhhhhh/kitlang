@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use crate::intermediate::types::KitTy;
 use crate::interpreter::mir_interpreter::{Interpreter, Value};
 use crate::register_native_fn;
 use kitlang_macros::kitlang_native_fn;
@@ -12,13 +13,14 @@ thread_local! {
     static PRINT_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
     static INPUT: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
 
-    static NATIVE_FNS: RefCell<Vec<(String, js_sys::Function)>> = const { RefCell::new(Vec::new()) };
+    static NATIVE_FNS: RefCell<Vec<(String, js_sys::Function, String)>> = const { RefCell::new(Vec::new()) };
 }
 
 #[wasm_bindgen]
-pub fn add_native_function(name: &str, func: js_sys::Function) {
+pub fn add_native_function(name: &str, func: js_sys::Function, ret_val: &str) {
     NATIVE_FNS.with(|slot| {
-        slot.borrow_mut().push((name.to_string(), func));
+        slot.borrow_mut()
+            .push((name.to_string(), func, ret_val.to_string()));
     });
 }
 
@@ -43,18 +45,26 @@ pub fn set_input_callback(cb: js_sys::Function) {
     });
 }
 
+pub fn return_value_type(ret_val: &str) -> Option<KitTy> {
+    KitTy::from_primitive_ty_str(ret_val)
+}
+
 fn add_native_functions(interpreter: &mut Interpreter) {
     register_native_functions(interpreter);
 
     NATIVE_FNS.with(|slot| {
-        for (name, func) in slot.borrow().iter() {
+        for (name, func, ret_val) in slot.borrow().iter() {
             let js_func = func.clone();
+            let ret_val_c = ret_val.clone();
             interpreter.register_native_function(name, move |args: &[Value]| {
                 let js_args = args.iter().map(to_js_value).collect::<js_sys::Array>();
                 match js_func.call1(&JsValue::NULL, &JsValue::from(js_args)) {
                     Ok(result) => {
-                        info!("Native JS function returned: {:?}", result);
-                        Some(from_js_value(&result))
+                        if let Some(return_value_type) = KitTy::from_primitive_ty_str(&ret_val_c) {
+                            Some(from_js_value_expected(&result, return_value_type))
+                        } else {
+                            Some(from_js_value(&result))
+                        }
                     }
                     Err(e) => {
                         error!("Error calling native JS function: {:?}", e);
@@ -120,6 +130,40 @@ fn to_js_value(value: &Value) -> JsValue {
         Value::Unit => JsValue::NULL,
         _ => JsValue::UNDEFINED,
     }
+}
+
+/// Converts a [`JsValue`] into a [`Value`], with expected types.
+fn from_js_value_expected(value: &JsValue, expected: KitTy) -> Value {
+    match expected {
+        KitTy::Int(..) => {
+            if let Some(f) = value.as_f64() {
+                return Value::Integer(f as i64);
+            }
+        }
+        KitTy::UInt(..) => {
+            if let Some(f) = value.as_f64() {
+                return Value::UnsignedInteger(f as u64);
+            }
+        }
+        KitTy::Float(..) => {
+            if let Some(f) = value.as_f64() {
+                return Value::Float(f);
+            }
+        }
+        KitTy::Boolean => {
+            if let Some(b) = value.as_bool() {
+                return Value::Boolean(b);
+            }
+        }
+        KitTy::String => {
+            if let Some(s) = value.as_string() {
+                return Value::String(s);
+            }
+        }
+        _ => {}
+    }
+
+    Value::Unit
 }
 
 /// Converts a [`JsValue`] into a [`Value`].
