@@ -15,8 +15,6 @@ use crate::intermediate::types::{KitFloat, KitInt, KitTy};
 use super::hir::nodes::{Function, LetStatement};
 use super::hir::visitor::HLIRDisjointMut;
 
-use log::*;
-
 macro_rules! type_fail {
     (no_span, $($arg:tt)*) => {
         TypeCheckFail::new($crate::ast::SourceSpan::null_span(), format!($($arg)*))

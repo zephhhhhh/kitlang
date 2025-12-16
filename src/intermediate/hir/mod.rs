@@ -10,8 +10,6 @@ use crate::intermediate::type_check::{TypeMap, run_type_checker};
 pub use crate::intermediate::hir::errors::{LoweringError, LoweringErrorKind};
 use crate::intermediate::types::KitTy;
 
-use log::*;
-
 pub mod lowerer;
 
 pub mod errors;

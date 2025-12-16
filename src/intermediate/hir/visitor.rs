@@ -4,8 +4,6 @@ use crate::intermediate::hir::nodes::{
 };
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
-use log::*;
-
 /// Provides an interface from traversing the HLIR tree.
 ///
 /// Functions named `super_` are default implementations that traverse the tree further, and
