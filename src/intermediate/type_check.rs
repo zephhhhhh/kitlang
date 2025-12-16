@@ -709,6 +709,10 @@ impl TypeChecker<'_> {
                     ))
                 }
             }
+            ExprKind::Loop(body_id) => {
+                self.eval_block_type_by_id(*body_id, hlir)?;
+                Ok(Type::unit())
+            }
             unk => Err(type_fail!(
                 hlir,
                 expr.id,

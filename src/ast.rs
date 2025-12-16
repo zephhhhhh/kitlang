@@ -976,6 +976,8 @@ pub enum ExpressionKind {
     /// }
     /// ```
     If(Box<Expression>, Box<Block>, Option<Box<Expression>>),
+    /// An infinite loop, with a block or "body".
+    Loop(Box<Block>),
     /// While loop, with a block or "body", and an optional "else" case block.
     /// # Notes
     /// The tuple values are: (condition_expression, loop_block).
@@ -1043,6 +1045,8 @@ pub enum ExpressionKind {
     Return(Option<Box<Expression>>),
     /// Cast an expression to another type.
     Cast(Box<Expression>, Ty),
+    /// A range expression.
+    Range(Box<Expression>, Box<Expression>, bool),
 }
 
 impl ExpressionKind {
@@ -1052,7 +1056,10 @@ impl ExpressionKind {
     pub fn can_be_non_semi(&self) -> bool {
         matches!(
             self,
-            ExpressionKind::Block(_) | ExpressionKind::If(_, _, _) | ExpressionKind::While(_, _)
+            ExpressionKind::Block(..)
+                | ExpressionKind::If(..)
+                | ExpressionKind::While(..)
+                | ExpressionKind::Loop(..)
         )
     }
 
@@ -1100,6 +1107,7 @@ impl Debug for ExpressionKind {
                 .field(arg1)
                 .field(arg2)
                 .finish(),
+            Self::Loop(arg0) => f.debug_tuple("Loop").field(arg0).finish(),
             Self::While(arg0, arg1) => f.debug_tuple("While").field(arg0).field(arg1).finish(),
             Self::Assign(arg0, arg1) => f.debug_tuple("Assign").field(arg0).field(arg1).finish(),
             Self::Call(arg0, arg1) => f.debug_tuple("Call").field(arg0).field(arg1).finish(),
@@ -1116,6 +1124,12 @@ impl Debug for ExpressionKind {
             Self::Break => write!(f, "Break"),
             Self::Return(arg0) => f.debug_tuple("Return").field(arg0).finish(),
             Self::Cast(arg0, arg1) => f.debug_tuple("Cast").field(arg0).field(arg1).finish(),
+            Self::Range(arg0, arg1, arg2) => f
+                .debug_tuple("Range")
+                .field(arg0)
+                .field(arg1)
+                .field(arg2)
+                .finish(),
         }
     }
 }

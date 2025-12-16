@@ -517,6 +517,10 @@ impl HLIRLowerer<'_> {
                 };
                 Ok(ExprKind::If(condition, if_block, else_expr))
             }
+            ast::ExpressionKind::Loop(block) => {
+                let loop_block = self.lower_block(block, false, owner_node)?;
+                Ok(ExprKind::Loop(loop_block))
+            }
             ast::ExpressionKind::While(expression, block) => {
                 let condition = self.lower_expression(expression, owner_node)?;
                 let while_block = self.lower_block(block, false, owner_node)?;
@@ -571,6 +575,11 @@ impl HLIRLowerer<'_> {
                 let expr_id = self.lower_expression(expr_to_cast, owner_node)?;
                 let ty = Type::from_ast_ty(target_type);
                 Ok(ExprKind::Cast(expr_id, ty))
+            }
+            ast::ExpressionKind::Range(start_expr, end_expr, inclusive) => {
+                let start_id = self.lower_expression(start_expr, owner_node)?;
+                let end_id = self.lower_expression(end_expr, owner_node)?;
+                Ok(ExprKind::Range(start_id, end_id, *inclusive))
             }
         }?;
 

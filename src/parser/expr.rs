@@ -87,6 +87,10 @@ impl Parser<'_, '_> {
         self.check_kind_at(0, Punctuation::Eq) && self.check_kind_at(1, Punctuation::Eq)
     }
 
+    fn is_double_dot(&self) -> bool {
+        self.check_kind_at(0, Punctuation::Dot) && self.check_kind_at(1, Punctuation::Dot)
+    }
+
     fn process_atom(
         &mut self,
         mut atom: Box<Expression>,
@@ -100,12 +104,16 @@ impl Parser<'_, '_> {
                 TokenKind::Punctuation(Punctuation::OpenBracket) => {
                     self.parse_array_index(atom, span_start)
                 }
-                TokenKind::Punctuation(Punctuation::Dot) => match self.peek_at(2)?.kind {
-                    TokenKind::Punctuation(Punctuation::OpenParen) => {
-                        self.parse_member_call(atom, span_start)
+                TokenKind::Punctuation(Punctuation::Dot)
+                    if !self.check_kind_at(1, Punctuation::Dot) =>
+                {
+                    match self.peek_at(2)?.kind {
+                        TokenKind::Punctuation(Punctuation::OpenParen) => {
+                            self.parse_member_call(atom, span_start)
+                        }
+                        _ => self.parse_member_access(atom, span_start),
                     }
-                    _ => self.parse_member_access(atom, span_start),
-                },
+                }
                 ref c if !self.is_double_eq() && c == &TokenKind::Punctuation(Punctuation::Eq) => {
                     self.parse_assign_continued(atom, span_start)
                 }
@@ -125,6 +133,7 @@ impl Parser<'_, '_> {
                 Keyword::True | Keyword::False => self.parse_literal(),
                 Keyword::If => self.parse_if(),
                 Keyword::While => self.parse_while(),
+                Keyword::Loop => self.parse_loop(),
                 Keyword::Continue => self.parse_continue(),
                 Keyword::Return => self.parse_return(),
                 Keyword::This => self.parse_self(),
@@ -183,6 +192,22 @@ impl Parser<'_, '_> {
         Ok(expr)
     }
 
+    fn parse_range_expr_continued(
+        &mut self,
+        lhs: Box<Expression>,
+        span_start: u32,
+    ) -> PResult<Box<Expression>> {
+        self.expect_kind(Punctuation::Dot)?;
+        self.expect_kind(Punctuation::Dot)?;
+        let inclusive = self.check_kind_advance(Punctuation::Eq);
+        let end_expr = self.parse_expression()?;
+
+        Ok(Expression::new_boxed(
+            ExpressionKind::Range(lhs, end_expr, inclusive),
+            self.finish_span(span_start),
+        ))
+    }
+
     pub fn parse_expression(&mut self) -> PResult<Box<Expression>> {
         let span_start = self.begin_span();
         let expr = self.parse_expr_atom_with_cast()?;
@@ -201,6 +226,8 @@ impl Parser<'_, '_> {
             } else {
                 self.parse_binary_op_continued(expr, span_start)
             }
+        } else if self.is_double_dot() {
+            self.parse_range_expr_continued(expr, span_start)
         } else {
             Ok(expr)
         }
@@ -466,6 +493,18 @@ impl Parser<'_, '_> {
 
         Ok(Expression::new_boxed(
             ExpressionKind::If(condition, body, else_body),
+            self.finish_span(span_start),
+        ))
+    }
+
+    fn parse_loop(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
+        self.expect_kind(Keyword::Loop)?;
+        let body = self.parse_block_expression()?;
+
+        Ok(Expression::new_boxed(
+            ExpressionKind::Loop(body),
             self.finish_span(span_start),
         ))
     }

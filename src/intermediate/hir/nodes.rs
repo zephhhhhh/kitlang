@@ -615,6 +615,8 @@ pub enum ExprKind {
     UnaryOp(UnaryOpKind, HirId),
     /// If(condition: HIRNode::Expr, true_block: HIRNode::Block, else: HIRNode::Expr)
     If(HirId, HirId, Option<HirId>),
+    /// Infinite loop, with block: HIRNode::Block
+    Loop(HirId),
     /// While(condition: HIRNode::Expr, block: HIRNode::Block)
     While(HirId, HirId),
     /// Assign(target: HIRNode::Expr, value: HIRNode::Expr)
@@ -639,6 +641,8 @@ pub enum ExprKind {
     Return(Option<HirId>),
     /// Cast an expression from one type to another.
     Cast(HirId, Type),
+    /// Range expression, start, end, (inclusive: bool)
+    Range(HirId, HirId, bool),
 }
 
 #[derive(Debug, Clone, PartialEq)]

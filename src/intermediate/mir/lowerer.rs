@@ -508,6 +508,51 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     }
                 }
             }
+            ExprKind::Loop(block) => {
+                if !self.builder_expect().is_empty() {
+                    self.emit_and_replace_block();
+                }
+
+                let loop_result_local = self.new_temp_local();
+
+                let loop_body_start_id = self.body.next_block_id();
+                self.state
+                    .loop_stack
+                    .push(HIRToMIRLoopState::new(loop_body_start_id));
+
+                self.visit_block_by_id(*block, hlir);
+
+                self.builder_mut_expect()
+                    .set_exit_kind(BlockExitKind::Goto(loop_body_start_id));
+                let final_loop_body_id = self.emit_and_replace_block().unwrap();
+
+                for break_to_update in &self
+                    .state
+                    .current_loop()
+                    .expect("Not in loop?")
+                    .breaks_to_update
+                {
+                    if let Some(BlockExitKind::Goto(break_goto)) =
+                        self.body.block_exit_kind_mut(*break_to_update)
+                    {
+                        if Self::DEBUG_LOOP_STATE {
+                            debug!("Updated Goto.");
+                        }
+                        *break_goto = final_loop_body_id.next();
+                    } else {
+                        push_lower_err!(self, hlir, expr.id, "Failed to update break goto target.");
+                    }
+                }
+
+                if Self::DEBUG_LOOP_STATE {
+                    debug!("Popped loop stack.");
+                }
+                self.state.loop_stack.pop();
+
+                self.builder_mut_expect()
+                    .push_local_assign(loop_result_local, RValue::unit());
+                self.state.last_block_target = Some(loop_result_local.into());
+            }
             ExprKind::While(loop_condition_id, block_id) => {
                 if !self.builder_expect().is_empty() {
                     self.emit_and_replace_block();

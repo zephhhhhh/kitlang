@@ -129,6 +129,7 @@ define_keywords!(
     (If, "if"),
     (Else, "else"),
     (For, "for"),
+    (Loop, "loop"),
     (In, "in"),
     (While, "while"),
     (Break, "break"),

@@ -122,6 +122,11 @@ pub trait HLIRVisitor {
                     }
                 }
             }
+            ExprKind::Loop(hir_id) => {
+                if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id) {
+                    self.visit_block(block, hlir);
+                }
+            }
             ExprKind::While(hir_id, hir_id1) => {
                 self.visit_expr_by_id(*hir_id, hlir);
                 if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id1) {
@@ -475,6 +480,11 @@ pub trait HLIRVisitorMut<'a> {
                     if let Some(else_id) = hir_id2 {
                         self.visit_expr_by_id_mut(*else_id, hlir);
                     }
+                }
+            }
+            ExprKind::Loop(hir_id) => {
+                if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(*hir_id) {
+                    self.visit_block_mut(block, hlir);
                 }
             }
             ExprKind::While(hir_id, hir_id1) => {
