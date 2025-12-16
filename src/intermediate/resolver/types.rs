@@ -20,7 +20,6 @@ struct TypeResolver<'a> {
 
     pub root_namespace: &'a Namespace,
 
-    // TODO: Implement these errors!!
     pub errors: Vec<ResolverError>,
 }
 

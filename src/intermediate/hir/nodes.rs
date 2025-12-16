@@ -585,7 +585,7 @@ pub struct Statement {
 pub struct LetStatement {
     pub ident: Ident,
     pub mutable: Mutability,
-    pub ty: Type, // TODO: Change this.
+    pub ty: Type,
     pub initial_value: Option<HirId>,
 }
 

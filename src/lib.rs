@@ -32,7 +32,6 @@ pub mod webasm;
 // Outward facing API..
 
 /// Represents errors from different stages in the compilation process.
-/// TODO: Expand this to include type checking and MIR errors.
 #[derive(Debug, Error)]
 pub enum KitlangError {
     #[error("Parser Error: {0}")]

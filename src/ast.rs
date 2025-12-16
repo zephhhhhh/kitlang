@@ -817,8 +817,6 @@ impl Debug for Ty {
     }
 }
 
-// TODO: Add a `SourceSpan` to everything.
-
 /// A "top-level" item in the AST.
 /// Functions, Constants, Structs, etc..
 #[derive(Clone, PartialEq)]
@@ -1764,8 +1762,6 @@ impl Debug for StructInitialisation {
             .finish()
     }
 }
-
-// TODO: Re-do this after redoing the path system.
 
 /// Describes a `use` [`Item`] in the AST.
 #[derive(Clone, PartialEq)]

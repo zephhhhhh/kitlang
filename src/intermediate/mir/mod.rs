@@ -79,7 +79,6 @@ impl Debug for LocalInfo {
 pub struct LocalDefinition {
     pub mutable: Mutability,
     pub info: LocalInfo,
-    // pub ty: TODO..
 }
 
 impl Debug for LocalDefinition {
