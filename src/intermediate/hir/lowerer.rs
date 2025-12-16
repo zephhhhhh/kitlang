@@ -33,7 +33,7 @@
 
 use crate::ast::{self, SourceSpan, Visibility};
 
-use crate::intermediate::hir::errors::LowerResult;
+use crate::intermediate::hir::errors::{LowerResult, lowering_err};
 use crate::intermediate::hir::nodes::{
     Block, Constant, Enum, Expr, ExprKind, Function, FunctionBody, FunctionSig, HIRNode, Impl,
     Item, ItemKind, LetStatement, Module, ModuleIdent, ModuleSpan, OwningNode, OwningNodeKind,
@@ -101,10 +101,11 @@ impl HLIRLowerer<'_> {
             }
             _ => {
                 // This shouldn't be possible..
-                Err(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                    "Non-allowed item type in impl block?".into(),
-                    Some(item.span),
-                )))
+                Err(lowering_err!(
+                    on_span,
+                    item.span,
+                    "Only functions and constants are allowed in impl blocks."
+                ))
             }
         }
     }
@@ -463,10 +464,11 @@ impl HLIRLowerer<'_> {
         if let HIRNode::Block(block) = self.hlir.get_hir_node_mut_unchecked(block_id) {
             block.statements = statement_node_ids;
         } else {
-            Err(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                "Failed to get block node after insertion?? WHAT".into(),
-                None,
-            )))?;
+            Err(lowering_err!(
+                on_span,
+                block.span,
+                "Failed to get block node after insertion?? WHAT"
+            ))?;
         }
 
         Ok(block_id)

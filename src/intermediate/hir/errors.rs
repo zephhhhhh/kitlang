@@ -3,7 +3,6 @@ use ::std::fmt::Display;
 use thiserror::Error;
 
 use crate::ast::SourceSpan;
-use crate::intermediate::hir::HirId;
 use crate::intermediate::resolver::errors::ResolverError;
 
 use crate::intermediate::type_check::TypeCheckFail;
@@ -11,51 +10,65 @@ use crate::spanned_error::SpannedErrorBuilder;
 
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum LoweringErrorKind {
+    #[error("Lowering errors: {0:?}")]
+    LoweringErrors(Vec<LoweringError>),
     #[error("Resolver error: {0:?}")]
     ResolverError(#[from] ResolverError),
-
-    #[error("Expected a 'Parameter' node, found: {0:?}")]
-    ExpectedParameterNode(HirId),
-    #[error("Expected to find '{0}' at '{1:?}'")]
-    WrongNodeType(String, HirId),
-    #[error("Expected to find a HIR Node at '{0:?}' but found none!")]
-    ExpectedNodeFoundNone(HirId),
-
-    #[error("Variable '{0}' is already defined!")]
-    VariableAlreadyDefined(String),
-    #[error("Failed to find value '{0}'")]
-    CannotFindValue(String),
-
     #[error("Failed to validate types: {0:?}")]
     TypeCheckFail(Vec<TypeCheckFail>),
+    #[error("Diagnostic: {0:?}")]
+    Diagnostic(String),
+}
 
-    #[error("Cannot assign to an immutable variable.")]
-    CannotAssignToImmutableVariable(SourceSpan),
+impl LoweringErrorKind {
+    pub fn with_span(&self, span: impl Into<SourceSpan>) -> LoweringError {
+        LoweringError::new(self.clone(), span)
+    }
 
-    // TODO: REMOVE THIS LATER.
-    #[error("{0}")]
-    RemoveMeMessage(String, Option<SourceSpan>),
+    pub fn with_no_span(&self) -> LoweringError {
+        LoweringError::new(self.clone(), SourceSpan::null_span())
+    }
 }
 
 /// Represents an error while parsing the AST into High-level IR.
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub struct LoweringError {
     #[source]
     pub error_kind: LoweringErrorKind,
+    pub span: SourceSpan,
 }
 
 impl LoweringError {
     #[inline]
     #[must_use]
-    pub fn new(kind: impl Into<LoweringErrorKind> /*span: impl Into<SourceSpan>*/) -> Self {
+    pub fn new_no_span(kind: impl Into<LoweringErrorKind>) -> Self {
         Self {
             error_kind: kind.into(),
-            //span: span.into(),
+            span: SourceSpan::null_span(),
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn new(kind: impl Into<LoweringErrorKind>, span: impl Into<SourceSpan>) -> Self {
+        Self {
+            error_kind: kind.into(),
+            span: span.into(),
         }
     }
 
     pub fn format_as_error_message(&self, source_string: &str) -> String {
         match &self.error_kind {
+            LoweringErrorKind::LoweringErrors(errs) => {
+                let mut final_output = String::new();
+                for error in errs {
+                    if !final_output.is_empty() {
+                        final_output += "\n";
+                    }
+                    final_output += &error.format_as_error_message(source_string);
+                }
+                final_output
+            }
             LoweringErrorKind::TypeCheckFail(fails) => {
                 let mut final_output = String::new();
                 for fail in fails {
@@ -69,26 +82,11 @@ impl LoweringError {
                 }
                 final_output
             }
-            LoweringErrorKind::CannotAssignToImmutableVariable(span) => {
-                SpannedErrorBuilder::new(source_string, *span)
-                    .print_header_line("Cannot assign to an immutable variable.")
-                    .generate_highlight()
-                    .generate_output()
-            }
-            LoweringErrorKind::RemoveMeMessage(msg, span) => {
-                if let Some(span) = span {
-                    SpannedErrorBuilder::new(source_string, *span)
-                        .print_header_line(msg)
-                        .generate_highlight()
-                        .generate_output()
-                } else {
-                    msg.clone()
-                }
-            }
-            LoweringErrorKind::ResolverError(resolve_error) => {
-                resolve_error.format_as_error_message(source_string)
-            }
-            e => format!("Failed to lower to HIR: {:?}", e),
+            LoweringErrorKind::ResolverError(e) => e.format_as_error_message(source_string),
+            LoweringErrorKind::Diagnostic(d) => SpannedErrorBuilder::new(source_string, self.span)
+                .print_header_line(d)
+                .generate_highlight()
+                .generate_output(),
         }
     }
 }
@@ -102,5 +100,31 @@ impl Display for LoweringError {
         )
     }
 }
+
+macro_rules! push_lower_err {
+    ($self: expr, no_span, $($arg:tt)*) => {
+        $self.errors.push(lowering_err!(no_span, $($arg)*));
+    };
+    ($self: expr, on_span, $span: expr, $($arg:tt)*) => {
+        $self.errors.push(lowering_err!(on_span, $span, $($arg)*));
+    };
+    ($self: expr, $hlir: expr, $id: expr, $($arg:tt)*) => {
+        $self.errors.push(lowering_err!($hlir, $id, $($arg)*));
+    };
+}
+
+macro_rules! lowering_err {
+    (no_span, $($arg:tt)*) => {
+        LoweringError::new(LoweringErrorKind::Diagnostic(format!($($arg)*)), $crate::ast::SourceSpan::null_span())
+    };
+    (on_span, $span: expr, $($arg:tt)*) => {
+        LoweringError::new(LoweringErrorKind::Diagnostic(format!($($arg)*)), $span)
+    };
+    ($hlir: expr, $id: expr, $($arg:tt)*) => {
+        LoweringError::new(LoweringErrorKind::Diagnostic(format!($($arg)*)), $crate::intermediate::hir::get_span_by_id($hlir.as_ref(), $id))
+    };
+}
+pub(crate) use lowering_err;
+pub(crate) use push_lower_err;
 
 pub type LowerResult<T> = Result<T, LoweringError>;

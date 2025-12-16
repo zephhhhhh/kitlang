@@ -18,14 +18,14 @@ use super::hir::visitor::HLIRDisjointMut;
 use log::*;
 
 macro_rules! type_fail {
-    ($msg: expr) => {
-        TypeCheckFail::new(SourceSpan::null_span(), $msg)
+    (no_span, $($arg:tt)*) => {
+        TypeCheckFail::new($crate::ast::SourceSpan::null_span(), format!($($arg)*))
     };
     (on_span, $span: expr, $($arg:tt)*) => {
         TypeCheckFail::new($span, format!($($arg)*))
     };
     ($hlir: expr, $id: expr, $($arg:tt)*) => {
-        TypeCheckFail::new(crate::intermediate::hir::get_span_by_id($hlir.as_ref(), $id), format!($($arg)*))
+        TypeCheckFail::new($crate::intermediate::hir::get_span_by_id($hlir.as_ref(), $id), format!($($arg)*))
     };
 }
 
@@ -328,7 +328,7 @@ impl TypeChecker<'_> {
     ) -> TypeResult<Type> {
         let node = hlir
             .get_hir_node_mut(id)
-            .ok_or_else(|| type_fail!("Failed to get expr node."))?;
+            .ok_or_else(|| type_fail!(no_span, "Failed to get expr node."))?;
 
         if let HIRNode::Expr(expr) = node {
             let expr_ty = self.eval_expr_type(expr, hlir)?;
@@ -806,7 +806,7 @@ impl TypeChecker<'_> {
     ) -> TypeResult<Type> {
         let node = hlir
             .get_hir_node_mut(id)
-            .ok_or_else(|| type_fail!("Failed to get block node."))?;
+            .ok_or_else(|| type_fail!(hlir, id, "Failed to get block node."))?;
 
         if let HIRNode::Block(block) = node {
             self.eval_block_type(block, hlir)
@@ -822,14 +822,14 @@ impl TypeChecker<'_> {
     ) -> TypeResult<bool> {
         let node = hlir
             .get_hir_node_mut(id)
-            .ok_or_else(|| type_fail!("Failed to get statement node."))?;
+            .ok_or_else(|| type_fail!(hlir, id, "Failed to get statement node."))?;
 
         match node {
             HIRNode::Statement(statement) => Ok(
                 matches!(statement.kind, StatementKind::Expr(expr_id) | StatementKind::Semi(expr_id) if {
                     let expr_node = hlir
                         .get_hir_node_mut(expr_id)
-                        .ok_or_else(|| type_fail!("Failed to get expr node."))?;
+                        .ok_or_else(|| type_fail!(hlir, id, "Failed to get expr node."))?;
                     if let HIRNode::Expr(expr) = expr_node {
                         matches!(expr.kind, ExprKind::Return(..))
                     } else {
@@ -950,9 +950,10 @@ pub fn run_type_checker(
     checker.walk_mut(hlir);
 
     if !checker.errors.is_empty() {
-        Err(LoweringError::new(LoweringErrorKind::TypeCheckFail(
-            checker.errors,
-        )))
+        Err(LoweringError::new(
+            LoweringErrorKind::TypeCheckFail(checker.errors),
+            SourceSpan::null_span(),
+        ))
     } else {
         Ok(checker.type_map)
     }

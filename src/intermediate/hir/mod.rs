@@ -141,12 +141,6 @@ pub struct HLIR {
 }
 
 impl HLIR {
-    pub fn make_error(&self, kind: LoweringErrorKind) -> LoweringError {
-        LoweringError::new(kind)
-    }
-}
-
-impl HLIR {
     pub fn owner_node_count(&self) -> u32 {
         self.owner_nodes.len() as u32
     }
@@ -351,6 +345,27 @@ impl ProgramMetaData {
             ),
         }
     }
+
+    /// Try to get the type name of a given type.
+    #[inline]
+    pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
+        match ty.into() {
+            Type::Unresolved(ty) => ty.get_type_ident(),
+            Type::Resolved(KitTy::Abstract(ty_id)) => {
+                let abs_ty = self.type_registry.get_from_type_id(ty_id)?;
+                let type_path = abs_ty.defined_in.extend_ident(&abs_ty.type_ident.ident);
+                Some(type_path.to_string())
+            }
+            Type::Resolved(kit_ty) => kit_ty.to_type_str(),
+        }
+    }
+
+    /// Get the type name of a given type, or "UnknownType" if it cannot be determined.
+    #[inline]
+    pub fn type_name(&self, ty: impl Into<Type>) -> String {
+        self.try_type_name(ty)
+            .unwrap_or_else(|| String::from("UnknownType"))
+    }
 }
 
 /// Get the source span for a given HIR ID.
@@ -381,7 +396,7 @@ pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData
     // Resolution..
     let (namespaces, type_registry) = match resolve_paths(&mut hlir) {
         Ok((ns, tr)) => (ns, tr),
-        Err(e) => return Err(LoweringError::new(LoweringErrorKind::ResolverError(e))),
+        Err(e) => return Err(LoweringErrorKind::ResolverError(e).with_no_span()),
     };
 
     // Type checking..

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::ast::Mutability;
 
-use crate::intermediate::hir::errors::LowerResult;
+use crate::intermediate::hir::errors::{LowerResult, lowering_err, push_lower_err};
 use crate::intermediate::hir::nodes::{
     Block, Expr, ExprKind, Function, LetStatement, Parameter, RefPath, ResolvedID, Statement,
     StatementKind, Type,
@@ -323,7 +323,7 @@ impl HIRToMIRFuncLowerer<'_> {
         self.last_local().into()
     }
 
-    fn handle_resolved_id(&mut self, resolved: ResolvedID) {
+    fn handle_resolved_id(&mut self, resolved: ResolvedID, hlir: &HLIR) {
         match resolved {
             ResolvedID::Hir(hir_id) => {
                 if let Some(resolved_local) = self.lut.get(&hir_id).cloned() {
@@ -336,7 +336,7 @@ impl HIRToMIRFuncLowerer<'_> {
                         debug!("Resolved local: {:?} -> {:?}", resolved_local, hir_id);
                     }
                 } else {
-                    error!("No resolved local.");
+                    push_lower_err!(self, hlir, hir_id, "Failed to resolve local variable.");
                 }
             }
             ResolvedID::Def(_def_id) => {}
@@ -391,10 +391,15 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                             ),
                         );
                     } else {
-                        error!("Failed to resolve RHS of binary op.");
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *hir_id1,
+                            "Failed to resolve RHS of binary op."
+                        );
                     }
                 } else {
-                    error!("Failed to resolve LHS of binary op.");
+                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve LHS of binary op.");
                 }
             }
             ExprKind::UnaryOp(unary_op_kind, hir_id) => {
@@ -458,7 +463,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     {
                         *else_block = final_true_block_id.next();
                     } else {
-                        error!("Failed to get branch block?");
+                        push_lower_err!(self, hlir, expr.id, "Failed to get if branch block.");
                     }
 
                     if has_else {
@@ -499,7 +504,6 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     }
 
                     if is_local_set {
-                        // println!("If local: {:?}", if_result_local);
                         self.state.last_block_target = Some(if_result_local.into());
                     }
                 }
@@ -542,7 +546,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     {
                         *else_block = final_loop_body_id.next();
                     } else {
-                        error!("Failed to get while branch block?");
+                        push_lower_err!(self, hlir, expr.id, "Failed to get while branch block.");
                     }
 
                     for break_to_update in &self
@@ -559,7 +563,12 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                             }
                             *break_goto = final_loop_body_id.next();
                         } else {
-                            error!("Failed to get break goto block?");
+                            push_lower_err!(
+                                self,
+                                hlir,
+                                expr.id,
+                                "Failed to update break goto target."
+                            );
                         }
                     }
 
@@ -580,17 +589,19 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     if let Some(local) = self.body.local(target.local_id())
                         && !local.mutable.is_mutable()
                     {
-                        let err_span = hlir.span_by_hir_id(*hir_id).expect("Source span.");
-                        self.errors.push(LoweringError::new(
-                            LoweringErrorKind::CannotAssignToImmutableVariable(err_span),
-                        ));
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *hir_id,
+                            "Cannot assign to immutable variable!"
+                        );
                     }
                     if let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) {
                         self.builder_mut_expect()
                             .push_assign(target, RValue::Unchanged(Operand::Copy(rhs_local)));
                     }
                 } else {
-                    error!("Failed to determine target for assignment!");
+                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve assignment target.");
                 }
             }
             ExprKind::Call(call_expr, args) => {
@@ -622,10 +633,10 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         );
                         self.state.last_block_target = Some(call_result_slot.into());
                     } else {
-                        error!("Failed to get all arg local ids.");
+                        push_lower_err!(self, hlir, expr.id, "Failed to eval all args!");
                     }
                 } else {
-                    error!("Failed to get call target id.");
+                    push_lower_err!(self, hlir, *call_expr, "Failed to get call target id.");
                 }
             }
             ExprKind::MethodCall(hir_id, ident, args) => {
@@ -640,11 +651,17 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 }
 
                 let Some(self_id) = self.visit_expr_assigned(*hir_id, hlir) else {
-                    error!("Failed to eval target method!");
+                    push_lower_err!(self, hlir, *hir_id, "Failed to eval target method!");
                     return;
                 };
                 let Some(obj_ty) = self.program_meta_data.type_map.get(hir_id) else {
-                    error!("Failed to get object type for method call: '{:?}'", hir_id);
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        *hir_id,
+                        "Failed to get object type for method call: '{:?}'",
+                        hir_id
+                    );
                     return;
                 };
 
@@ -652,16 +669,19 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     .program_meta_data
                     .find_ty_method_owner_def(obj_ty.clone(), ident.str())
                 else {
-                    error!(
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        *hir_id,
                         "Failed to find method '{}' for type {:?}",
                         ident.str(),
-                        obj_ty
+                        self.program_meta_data.type_name(obj_ty.clone())
                     );
                     return;
                 };
 
                 if !is_def_method_func(hlir, method_def) {
-                    error!("Associated call is not a method!");
+                    push_lower_err!(self, hlir, *hir_id, "Associated call is not a method!");
                     return;
                 }
 
@@ -692,7 +712,12 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     );
                     self.state.last_block_target = Some(call_result_slot.into());
                 } else {
-                    error!("Failed to eval all args!");
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        expr.id,
+                        "Failed to eval all args of method call!"
+                    );
                 }
             }
             // ExprKind::Index(hir_id, hir_id1) => {},
@@ -707,7 +732,13 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                             .get_from_type_id(*type_id)
                             .expect("Type exists.");
                         let Some(field_index) = to_access.find_field_index(ident.str()) else {
-                            error!("Failed to find field index");
+                            push_lower_err!(
+                                self,
+                                hlir,
+                                *hir_id,
+                                "Failed to find field index for {}",
+                                ident.str()
+                            );
                             return;
                         };
 
@@ -720,22 +751,31 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                             RValue::refer(AssignTarget::Field(target_local_id, field_index)),
                         );
                     } else {
-                        error!("Target not abstract.");
+                        push_lower_err!(self, hlir, *hir_id, "Target is not abstract.");
                     }
                 } else {
-                    error!("Failed to eval target field local!");
+                    push_lower_err!(self, hlir, *hir_id, "Failed to eval target field local!");
                 }
             }
             ExprKind::StructInit(struct_initialisation) => {
                 let RefPath::Resolved(_, resolved_id) = &struct_initialisation.ty_path else {
-                    error!(
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        expr.id,
                         "Failed to get struct init type id. {:?}",
                         struct_initialisation.ty_path
                     );
                     return;
                 };
                 let ResolvedID::TypeDef(type_id) = *resolved_id else {
-                    error!("Resolved id is not type id.");
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        expr.id,
+                        "Resolved id is not a type id, but rather: {:?}",
+                        resolved_id
+                    );
                     return;
                 };
                 if let Some(type_info) = self
@@ -744,7 +784,14 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     .get_from_type_id(type_id)
                 {
                     if type_info.get_field_count() != struct_initialisation.fields.len() {
-                        error!("Field count mismatch in initialisation!");
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            expr.id,
+                            "Field count mismatch in initialisation! Expected {}, got {}.",
+                            type_info.get_field_count(),
+                            struct_initialisation.fields.len()
+                        );
                         return;
                     }
 
@@ -757,7 +804,13 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     for field_init in &struct_initialisation.fields {
                         let Some(field_index) = type_info.find_field_index(field_init.ident.str())
                         else {
-                            error!("Failed to find field index for {}", field_init.ident.str());
+                            push_lower_err!(
+                                self,
+                                hlir,
+                                expr.id,
+                                "Failed to find field index for {}",
+                                field_init.ident.str()
+                            );
                             return;
                         };
 
@@ -767,7 +820,12 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                             *field_values.get_mut(field_index).expect("Field index") =
                                 Operand::Copy(field_init_local);
                         } else {
-                            error!("Failed to eval init local");
+                            push_lower_err!(
+                                self,
+                                hlir,
+                                field_init.expr,
+                                "Failed to eval field initialisation expression."
+                            );
                         }
                     }
 
@@ -777,14 +835,25 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         RValue::ADT(super::ADTKind::Struct(type_id), field_values),
                     );
                 } else {
-                    error!("Failed to get type info!");
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        expr.id,
+                        "Failed to get type info for struct initialisation."
+                    );
                 }
             }
             ExprKind::Path(ref_path) => {
                 if let Some(resolved) = ref_path.resolved_id() {
-                    self.handle_resolved_id(resolved);
+                    self.handle_resolved_id(resolved, hlir);
                 } else {
-                    error!("Warning: Path not resolved: {:?}", ref_path);
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        expr.id,
+                        "Path not resolved: {:?} (This should be impossible, if you see this, please report a bug!)",
+                        ref_path
+                    );
                 }
             }
             ExprKind::Continue => {
@@ -799,7 +868,12 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     self.emit_and_replace_block()
                         .expect("Continue block failed to emit.");
                 } else {
-                    error!("Cannot continue from outside of a loop!")
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        expr.id,
+                        "Cannot continue from outside of a loop!"
+                    );
                 }
             }
             ExprKind::Break => {
@@ -816,7 +890,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         "Break block id mismatch"
                     );
                 } else {
-                    error!("Cannot break from outside of a loop!");
+                    push_lower_err!(self, hlir, expr.id, "Cannot break from outside of a loop!");
                 }
             }
             ExprKind::Return(hir_id) => {
@@ -833,11 +907,12 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     if let Some(target) = self.visit_expr_assigned(*return_expr_id, hlir) {
                         RValue::Unchanged(Operand::Copy(target))
                     } else {
-                        self.errors
-                            .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                                "Failed to get return value expression".to_string(),
-                                hlir.span_by_hir_id(*return_expr_id),
-                            )));
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *return_expr_id,
+                            "Failed to get return value expression"
+                        );
                         RValue::unit()
                     }
                 } else {
@@ -851,27 +926,20 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
             }
             ExprKind::Cast(target, target_type) => {
                 let Some(lhs_local) = self.visit_expr_assigned(*target, hlir) else {
-                    self.errors
-                        .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                            "Failed to get cast expression target".to_string(),
-                            hlir.span_by_hir_id(*target),
-                        )));
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        *target,
+                        "Failed to get type of cast expression lhs"
+                    );
                     return;
                 };
                 let Some(resolved_type) = target_type.resolved() else {
-                    self.errors
-                        .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                            "Failed to resolve cast type".to_string(),
-                            hlir.span_by_hir_id(*target),
-                        )));
+                    push_lower_err!(self, hlir, *target, "Failed to resolve target cast type");
                     return;
                 };
                 let Some(cast_kind) = CastKind::from_type(*resolved_type) else {
-                    self.errors
-                        .push(LoweringError::new(LoweringErrorKind::RemoveMeMessage(
-                            "Failed to get valid cast target type".to_string(),
-                            hlir.span_by_hir_id(*target),
-                        )));
+                    push_lower_err!(self, hlir, *target, "Failed to get valid target cast type");
                     return;
                 };
                 let local = self.new_temp_local();
@@ -893,7 +961,12 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 self.builder_mut_expect()
                     .push_local_assign(local_id, RValue::Unchanged(Operand::Copy(target)));
             } else {
-                error!("Failed to get let statement initial expression target");
+                push_lower_err!(
+                    self,
+                    hlir,
+                    *init_id,
+                    "Failed to get let statement initial expression target"
+                );
             }
         }
     }
