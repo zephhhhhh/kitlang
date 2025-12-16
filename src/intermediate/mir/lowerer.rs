@@ -4,8 +4,8 @@ use crate::ast::Mutability;
 
 use crate::intermediate::hir::errors::{LowerResult, lowering_err, push_lower_err};
 use crate::intermediate::hir::nodes::{
-    Block, Expr, ExprKind, Function, LetStatement, Parameter, RefPath, ResolvedID, Statement,
-    StatementKind, Type,
+    Block, Expr, ExprKind, Function, HIRNode, LetStatement, Parameter, RefPath, ResolvedID,
+    Statement, StatementKind, Type,
 };
 use crate::intermediate::hir::visitor::HLIRVisitor;
 use crate::intermediate::hir::{
@@ -1020,9 +1020,14 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
         match &statement.kind {
             StatementKind::Expr(hir_id) => {
                 self.process_statement_expr(statement, hlir, *hir_id);
+                
+                if is_non_expr_expr(hlir, *hir_id) {
+                    self.state.read_last_block_target();
+                    return;
+                }
+
                 // Do as a return.
                 if parent_block.id == self.func_body_id {
-                    // ..
                     let last_local = self.last_target();
                     let builder = self.builder_mut_expect();
                     builder.set_exit_kind(BlockExitKind::Return);
@@ -1062,6 +1067,13 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
             self.emit_final_block();
         }
     }
+}
+
+pub fn is_non_expr_expr(hlir: &HLIR, expr_id: HirId) -> bool {
+    let Some(HIRNode::Expr(e)) = hlir.get_hir_node(expr_id) else {
+        return false;
+    };
+    matches!(e.kind, ExprKind::Loop(..) | ExprKind::While(..))
 }
 
 pub fn lower_hir_to_mir(hlir: &HLIR, type_info: &ProgramMetaData) -> LowerResult<MIR> {
