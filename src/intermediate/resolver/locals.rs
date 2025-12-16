@@ -59,7 +59,7 @@ impl LocalScope {
         } else {
             Err(resolve_error!(
                 no_span,
-                "Variable '{}' is already defined!",
+                "Variable `{}` is already defined!",
                 name
             ))
         }

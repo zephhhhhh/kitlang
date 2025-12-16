@@ -57,7 +57,7 @@ impl TypeResolver<'_> {
         let Some(def) = self.root_namespace.find_definition(&final_path) else {
             return Err(resolve_error!(
                 no_span,
-                "Cannot find parent namespace while type checking for path: {}",
+                "Cannot find parent namespace while type checking for path `{}`",
                 path
             ));
         };
@@ -67,7 +67,7 @@ impl TypeResolver<'_> {
         } else {
             Err(resolve_error!(
                 no_span,
-                "Expected ADT definition at '{}', but instead found: '{:?}'!",
+                "Expected ADT definition at `{}`, but instead found: `{:?}`!",
                 path,
                 def.kind
             ))
@@ -142,7 +142,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
         self.push_to_current_path(function.ident.str());
         self.super_function_mut(function, hlir);
 
-        for arg in &mut function.sig.parameters {
+        for (i, arg) in function.sig.parameters.iter_mut().enumerate() {
             match arg {
                 Type::Unresolved(Ty::Type(type_path)) => match self.resolve_type(type_path) {
                     Ok(type_id) => {
@@ -150,14 +150,14 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                     }
                     Err(e) => self.errors.push(e),
                 },
-                Type::Unresolved(Ty::This(_s)) => {
+                Type::Unresolved(Ty::This(sp)) => {
                     if let Some(impl_ty) = &self.current_impl {
                         *arg = impl_ty.clone();
                     } else {
                         self.errors.push(resolve_error!(
                             on_span,
-                            function.ident.span,
-                            "Could not resolve type of 'self' function argument in path: {}",
+                            *sp,
+                            "Could not resolve type of `self` function argument in `{}`",
                             self.current_path()
                         ));
                     }
@@ -170,8 +170,14 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                 } else {
                     self.errors.push(resolve_error!(
                         on_span,
-                        function.ident.span,
-                        "Could not resolve type of function argument in path: {}",
+                        type_path.span,
+                        "Could not resolve type `{}` of function argument `{}` in `{}`",
+                        type_path.path,
+                        function
+                            .sig
+                            .parameter_idents
+                            .get(i)
+                            .unwrap_or(&"??".to_string()),
                         self.current_path()
                     ));
                 }
@@ -184,8 +190,9 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             } else {
                 self.errors.push(resolve_error!(
                     on_span,
-                    function.ident.span,
-                    "Could not resolve type of function return type in path: {}",
+                    type_path.span,
+                    "Could not resolve type `{}` in function return type of `{}`",
+                    type_path.path,
                     self.current_path()
                 ));
             }
@@ -251,7 +258,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                     } else {
                         self.errors.push(resolve_error!(
                             no_span,
-                            "Failed to find struct field '{}' in struct '{}'",
+                            "Failed to find struct field `{}` in struct `{}`",
                             field.ident.string(),
                             current_struct_path
                         ));

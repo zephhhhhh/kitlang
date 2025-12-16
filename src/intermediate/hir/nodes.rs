@@ -399,6 +399,7 @@ impl Debug for Parameter {
 /// The "signature" of a function, holds the return type and the parameter types.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct FunctionSig {
+    pub parameter_idents: Vec<String>,
     pub parameters: Vec<Type>,
     pub output: Type,
     pub span: SourceSpan,

@@ -439,7 +439,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             self.errors.push(resolve_error!(
                 on_span,
                 module.ident.span(),
-                "Cannot find parent namespace: {}",
+                "Cannot find parent namespace `{}`",
                 current_path
             ));
         }
@@ -464,7 +464,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             self.errors.push(resolve_error!(
                 on_span,
                 function.ident.span,
-                "Item already defined: {}",
+                "Item already defined: `{}`",
                 current_path
             ));
         }
@@ -485,7 +485,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             self.errors.push(resolve_error!(
                 on_span,
                 function.ident.span,
-                "Cannot find parent namespace: {}",
+                "Cannot find parent namespace: `{}`",
                 current_path
             ));
         }
@@ -527,7 +527,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             self.errors.push(resolve_error!(
                 on_span,
                 structure.ident.span,
-                "Cannot resolve struct fields for {}",
+                "Cannot resolve struct fields for `{}`",
                 current_path
             ));
             0
@@ -551,7 +551,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             self.errors.push(resolve_error!(
                 on_span,
                 structure.ident.span,
-                "Cannot find parent namespace: {}",
+                "Cannot find parent namespace: `{}`",
                 current_path
             ));
         }
@@ -574,7 +574,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             self.errors.push(resolve_error!(
                 on_span,
                 enumeration.ident.span,
-                "Cannot find parent namespace: {}",
+                "Cannot find parent namespace: `{}`",
                 current_path
             ));
         }
@@ -597,7 +597,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             self.errors.push(resolve_error!(
                 on_span,
                 constant.ident.span,
-                "Cannot find parent namespace: {}",
+                "Cannot find parent namespace: `{}`",
                 current_path
             ));
         }
@@ -631,7 +631,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 self.errors.push(resolve_error!(
                     on_span,
                     use_info.span,
-                    "Cannot find parent namespace: {}",
+                    "Cannot find parent namespace: `{}`",
                     current_path
                 ));
             }
@@ -666,16 +666,13 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
                     path.resolve_to(resolved);
                 }
                 Err(ResolutionFailure::Inaccessible) => {
-                    error!("Pushing unresolved: {ident_path:?} as inaccessible");
                     self.resolution_failures.push((
                         id,
                         path.spanned_ident_path().clone(),
                         ResolutionFailure::Inaccessible,
                     ));
                 }
-                _ => {
-                    error!("Pushing unresolved: {ident_path:?} as not found");
-                }
+                _ => {}
             }
         }
     }

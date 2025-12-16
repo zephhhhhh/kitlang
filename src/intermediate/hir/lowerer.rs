@@ -195,6 +195,7 @@ impl HLIRLowerer<'_> {
             is_method: f.is_method,
             is_global: f.is_global,
             sig: FunctionSig {
+                parameter_idents: f.sig.parameters.iter().map(|p| p.ident.string()).collect(),
                 parameters: f
                     .sig
                     .parameters
