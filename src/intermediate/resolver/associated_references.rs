@@ -11,7 +11,7 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 use crate::intermediate::resolver::errors::{
     ResolutionFailure, ResolveResult, ResolverError, ResolverErrorKind, UnresolvedReference,
-    UnresolvedReferences, resolve_error,
+    UnresolvedReferences, push_resolve_err, resolve_err,
 };
 use crate::intermediate::resolver::{
     ADTStructField, ADTTypeInfo, Namespace, NamespaceKind, TypeRegistry,
@@ -152,6 +152,8 @@ impl AssociatedReferenceMapper {
         root_namespace: &Namespace,
         namespace: &mut Namespace,
         current_path: IdentPath,
+        // so bad...
+        errors: &mut Vec<ResolverError>,
     ) {
         let item_idents: Vec<String> = namespace.items.keys().cloned().collect();
 
@@ -172,16 +174,22 @@ impl AssociatedReferenceMapper {
                     cloned.id = target_namespace.id;
                     *item_namespace = cloned;
 
-                    Self::resolve_uses_in_namespace(root_namespace, item_namespace, next_path);
-                } else {
-                    // TODO: surface diagnostic once resolver errors are implemented.
-                    error!(
-                        "Failed to resolve use path {:?} within namespace {:?}",
-                        target_path, current_path
+                    Self::resolve_uses_in_namespace(
+                        root_namespace,
+                        item_namespace,
+                        next_path,
+                        errors,
                     );
+                } else {
+                    errors.push(resolve_err!(
+                        no_span,
+                        "Failed to resolve use path `{:?}` within namespace `{:?}`",
+                        target_path,
+                        current_path
+                    ));
                 }
             } else {
-                Self::resolve_uses_in_namespace(root_namespace, item_namespace, next_path);
+                Self::resolve_uses_in_namespace(root_namespace, item_namespace, next_path, errors);
             }
         }
     }
@@ -205,11 +213,17 @@ impl AssociatedReferenceMapper {
         }
 
         let root_namespace_clone = self.root_namespace.clone();
+        let mut resolve_use_errors = Vec::new();
         Self::resolve_uses_in_namespace(
             &root_namespace_clone,
             &mut self.root_namespace,
             IdentPath::new_empty(true),
+            &mut resolve_use_errors,
         );
+
+        if !resolve_use_errors.is_empty() {
+            self.errors.extend(resolve_use_errors);
+        }
 
         // Resolve references..
         self.reset_path();
@@ -308,12 +322,12 @@ impl AssociatedReferenceMapper {
 
                 let local_check = matched_base_path.extend(&p.segments()[segment_match]);
                 if !self.validate_local_access(&local_check, &matched_base_path) {
-                    error!("{p} Failed local access check");
-                    error!(
+                    debug!("{p} Failed local access check");
+                    debug!(
                         "Checked path: `{}` from `{}`  ->  `{}`",
                         local_check, matched_base_path, ident_path
                     );
-                    error!("Base path: `{}`", base_path);
+                    debug!("Base path: `{}`", base_path);
                     return Err(ResolutionFailure::Inaccessible);
                 }
 
@@ -344,7 +358,7 @@ impl AssociatedReferenceMapper {
                         })
                         .unwrap_or_default();
                     if !visible {
-                        error!(
+                        debug!(
                             "{p} Failed check at: `{to_check}` from `{base_path}`  ->  `{ident_path}`"
                         );
                         return Err(ResolutionFailure::Inaccessible);
@@ -436,12 +450,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             });
             self.with_pushed_segment(&module_ident, |this| this.super_module(module, hlir));
         } else {
-            self.errors.push(resolve_error!(
+            push_resolve_err!(
+                self,
                 on_span,
                 module.ident.span(),
                 "Cannot find parent namespace `{}`",
                 current_path
-            ));
+            );
         }
     }
 
@@ -461,12 +476,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             .items
             .contains_key(&function_ident)
         {
-            self.errors.push(resolve_error!(
+            push_resolve_err!(
+                self,
                 on_span,
                 function.ident.span,
                 "Item already defined: `{}`",
                 current_path
-            ));
+            );
         }
         if let Some(ns) = self.get_namespace_mut(&current_path) {
             ns.items.insert(
@@ -482,12 +498,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             );
             self.with_pushed_segment(&function_ident, |this| this.super_function(function, hlir));
         } else {
-            self.errors.push(resolve_error!(
+            push_resolve_err!(
+                self,
                 on_span,
                 function.ident.span,
                 "Cannot find parent namespace: `{}`",
                 current_path
-            ));
+            );
         }
     }
 
@@ -524,12 +541,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 fields,
             ))
         } else {
-            self.errors.push(resolve_error!(
+            push_resolve_err!(
+                self,
                 on_span,
                 structure.ident.span,
                 "Cannot resolve struct fields for `{}`",
                 current_path
-            ));
+            );
             0
         };
 
@@ -548,12 +566,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 },
             );
         } else {
-            self.errors.push(resolve_error!(
+            push_resolve_err!(
+                self,
                 on_span,
                 structure.ident.span,
                 "Cannot find parent namespace: `{}`",
                 current_path
-            ));
+            );
         }
     }
 
@@ -571,12 +590,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 local,
             });
         } else {
-            self.errors.push(resolve_error!(
+            push_resolve_err!(
+                self,
                 on_span,
                 enumeration.ident.span,
                 "Cannot find parent namespace: `{}`",
                 current_path
-            ));
+            );
         }
     }
 
@@ -594,12 +614,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 local,
             });
         } else {
-            self.errors.push(resolve_error!(
+            push_resolve_err!(
+                self,
                 on_span,
                 constant.ident.span,
                 "Cannot find parent namespace: `{}`",
                 current_path
-            ));
+            );
         }
     }
 
@@ -628,12 +649,13 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                     local: use_info.vis == Visibility::Private,
                 });
             } else {
-                self.errors.push(resolve_error!(
+                push_resolve_err!(
+                    self,
                     on_span,
                     use_info.span,
                     "Cannot find parent namespace: `{}`",
                     current_path
-                ));
+                );
             }
         }
 

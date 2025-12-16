@@ -95,7 +95,19 @@ impl Display for ResolverError {
     }
 }
 
-macro_rules! resolve_error {
+macro_rules! push_resolve_err {
+    ($self: expr, no_span, $($arg:tt)*) => {
+        $self.errors.push(resolve_err!(no_span, $($arg)*));
+    };
+    ($self: expr, on_span, $span: expr, $($arg:tt)*) => {
+        $self.errors.push(resolve_err!(on_span, $span, $($arg)*));
+    };
+    ($self: expr, $hlir: expr, $id: expr, $($arg:tt)*) => {
+        $self.errors.push(resolve_err!($hlir, $id, $($arg)*));
+    };
+}
+
+macro_rules! resolve_err {
     (no_span, $($arg:tt)*) => {
         ResolverError::new(ResolverErrorKind::Diagnostic(format!($($arg)*)), $crate::ast::SourceSpan::null_span())
     };
@@ -106,7 +118,8 @@ macro_rules! resolve_error {
         ResolverError::new(ResolverErrorKind::Diagnostic(format!($($arg)*)), $crate::intermediate::hir::get_span_by_id($hlir.as_ref(), $id))
     };
 }
-pub(crate) use resolve_error;
+pub(crate) use push_resolve_err;
+pub(crate) use resolve_err;
 
 pub type ResolveResult<T> = Result<T, ResolverError>;
 

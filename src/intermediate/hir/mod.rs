@@ -330,7 +330,6 @@ impl ProgramMetaData {
     #[inline]
     pub fn find_ty_method_owner_def(&self, ty: Type, method_ident: &str) -> Option<OwnerDefId> {
         let Type::Resolved(resolved_ty) = ty else {
-            error!("Cannot find method '{}' on unresolved type.", method_ident);
             return None;
         };
         match resolved_ty {

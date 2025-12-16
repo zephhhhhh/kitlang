@@ -711,10 +711,12 @@ impl TypeChecker<'_> {
                     ))
                 }
             }
-            unk => {
-                error!("Error unknown expression type: {:?}", unk);
-                Ok(Type::unit())
-            }
+            unk => Err(type_fail!(
+                hlir,
+                expr.id,
+                "Error unknown expression type: {:?}",
+                unk
+            )),
         }
     }
 

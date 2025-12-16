@@ -668,8 +668,6 @@ impl InterpreterState {
                 let lhs_value = self.eval_operand(lhs)?;
                 let rhs_value = self.eval_operand(rhs)?;
 
-                //println!("Bin op: {:?}, {:?} + {:?}", binary_op_kind, lhs_value, rhs_value);
-
                 lhs_value.perform_binary_op(&rhs_value, *binary_op_kind)
             }
             RValue::UnaryOp(unary_op_kind, operand) => {

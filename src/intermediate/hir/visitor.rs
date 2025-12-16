@@ -108,8 +108,6 @@ pub trait HLIRVisitor {
             ExprKind::Block(hir_id) => {
                 if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id) {
                     self.visit_block(block, hlir);
-                } else {
-                    error!("Not a block");
                 }
             }
             ExprKind::BinaryOp(_, hir_id, hir_id1) => {

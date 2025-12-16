@@ -7,7 +7,7 @@ use crate::intermediate::hir::nodes::{
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, HirId};
 use crate::intermediate::resolver::errors::{
-    ResolveResult, ResolverError, ResolverErrorKind, resolve_error,
+    ResolveResult, ResolverError, ResolverErrorKind, resolve_err,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,7 +57,7 @@ impl LocalScope {
         if self.add_definition_unique(name, id) {
             Ok(())
         } else {
-            Err(resolve_error!(
+            Err(resolve_err!(
                 no_span,
                 "Variable `{}` is already defined!",
                 name
