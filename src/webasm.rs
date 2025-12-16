@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 
 use crate::interpreter::mir_interpreter::{Interpreter, Value};
-use crate::{register_native_fn, wrap_native_fn};
+use crate::register_native_fn;
+use kitlang_macros::kitlang_native_fn;
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "logging")]
@@ -151,38 +152,39 @@ fn from_js_value(value: &JsValue) -> Value {
 
 // Native functions for interacting with the browser.
 
-wrap_native_fn!(print(s: String) {
+#[kitlang_native_fn]
+fn print(s: String) {
     PRINT_CALLBACK.with(|slot| {
         if let Some(cb) = &*slot.borrow() {
             cb.call2(&JsValue::NULL, &JsValue::from_str(&s), &JsValue::FALSE)
                 .unwrap();
         }
     });
-});
-wrap_native_fn!(println(s: String) {
+}
+#[kitlang_native_fn]
+fn println(s: String) {
     PRINT_CALLBACK.with(|slot| {
         if let Some(cb) = &*slot.borrow() {
             cb.call2(&JsValue::NULL, &JsValue::from_str(&s), &JsValue::TRUE)
                 .unwrap();
         }
     });
-});
-wrap_native_fn!(input(s: String) -> String {
+}
+#[kitlang_native_fn]
+fn input(s: String) -> String {
     let mut result = String::new();
     INPUT.with(|slot| {
         if let Some(cb) = &*slot.borrow()
-            && let Ok(js_value) = cb.call2(
-                &JsValue::NULL,
-                &JsValue::from_str(&s),
-                &JsValue::NULL,
-            ) && let Some(s) = js_value.as_string()
-            {
-                result = s;
-            }
+            && let Ok(js_value) = cb.call2(&JsValue::NULL, &JsValue::from_str(&s), &JsValue::NULL)
+            && let Some(s) = js_value.as_string()
+        {
+            result = s;
+        }
     });
     result
-});
-wrap_native_fn!(input_placeholder(s: String, s2: String) -> String {
+}
+#[kitlang_native_fn]
+fn input_placeholder(s: String, s2: String) -> String {
     let mut result = String::new();
     INPUT.with(|slot| {
         if let Some(cb) = &*slot.borrow()
@@ -190,10 +192,11 @@ wrap_native_fn!(input_placeholder(s: String, s2: String) -> String {
                 &JsValue::NULL,
                 &JsValue::from_str(&s),
                 &JsValue::from_str(&s2),
-            ) && let Some(s) = js_value.as_string()
-            {
-                result = s;
-            }
+            )
+            && let Some(s) = js_value.as_string()
+        {
+            result = s;
+        }
     });
     result
-});
+}

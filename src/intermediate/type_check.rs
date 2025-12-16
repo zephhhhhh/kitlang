@@ -674,7 +674,6 @@ impl TypeChecker<'_> {
                 }
             }
             ExprKind::Return(hir_id) => {
-                info!("Validating return expr: {:?}", hir_id);
                 if let Some(return_expr_id) = hir_id {
                     self.validate_return_value_by_id(*return_expr_id, hlir)
                 } else {

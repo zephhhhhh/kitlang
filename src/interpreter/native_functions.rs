@@ -54,55 +54,6 @@ macro_rules! register_native_fn {
     }
 }
 
-/// Macro to define a native function with automatic `&[Value]` parameter extraction
-///
-/// The macro creates a function that accepts `&[Value]` and internally calls the
-/// user-defined function with extracted parameters.
-#[macro_export]
-macro_rules! wrap_native_fn {
-    // Function with return type and body
-    ($fn_name:ident($($param_name:ident : $param_ty:ty),* $(,)?) -> $ret_ty:ty $body:block) => {
-        fn $fn_name(args: &[$crate::interpreter::mir_interpreter::Value]) -> $ret_ty {
-            fn _inner($($param_name: $param_ty),*) -> $ret_ty {
-                $body
-            }
-
-            let mut idx = 0;
-            $(
-                let $param_name: $param_ty = {
-                    use $crate::interpreter::native_functions::ExtractValue;
-                    let val = args.get(idx).unwrap_or(&$crate::interpreter::mir_interpreter::Value::Unit);
-                    #[allow(unused_assignments)] { idx += 1; }
-                    ExtractValue::extract(val)
-                };
-            )*
-
-            _inner($($param_name),*)
-        }
-    };
-
-    // Function without return type (returns Unit) with body
-    ($fn_name:ident($($param_name:ident : $param_ty:ty),* $(,)?) $body:block) => {
-        fn $fn_name(args: &[$crate::interpreter::mir_interpreter::Value]) {
-            fn _inner($($param_name: $param_ty),*) {
-                $body
-            }
-
-            let mut idx = 0;
-            $(
-                let $param_name: $param_ty = {
-                    use $crate::interpreter::native_functions::ExtractValue;
-                    let val = args.get(idx).unwrap_or(&$crate::interpreter::mir_interpreter::Value::Unit);
-                    #[allow(unused_assignments)] { idx += 1; }
-                    ExtractValue::extract(val)
-                };
-            )*
-
-            _inner($($param_name),*)
-        }
-    };
-}
-
 /// Helper trait for extracting values from `Value` enum
 pub trait ExtractValue {
     fn extract(value: &MIRValue) -> Self;

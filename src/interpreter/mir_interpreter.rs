@@ -12,7 +12,9 @@ use crate::intermediate::mir::{
 use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeRegistry};
 use crate::intermediate::types::{KitFloat, KitInt, KitUInt};
 use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
-use crate::{register_native_fn, wrap_native_fn};
+use crate::register_native_fn;
+
+use kitlang_macros::kitlang_native_fn;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -940,42 +942,56 @@ pub fn execute_mir(
     }
 }
 
-wrap_native_fn!(i64_to_string(x: i64) -> String {
+// Compiler intrinsics implementations..
+
+#[kitlang_native_fn]
+fn i64_to_string(x: i64) -> String {
     x.to_string()
-});
-wrap_native_fn!(string_to_i64(s: String) -> i64 {
+}
+#[kitlang_native_fn]
+fn string_to_i64(s: String) -> i64 {
     s.parse::<i64>().unwrap_or(0)
-});
-wrap_native_fn!(f64_to_string(x: f64) -> String {
+}
+#[kitlang_native_fn]
+fn f64_to_string(x: f64) -> String {
     x.to_string()
-});
-wrap_native_fn!(string_to_f64(s: String) -> f64 {
+}
+#[kitlang_native_fn]
+fn string_to_f64(s: String) -> f64 {
     s.parse::<f64>().unwrap_or(0.0)
-});
-wrap_native_fn!(u64_to_string(x: u64) -> String {
+}
+#[kitlang_native_fn]
+fn u64_to_string(x: u64) -> String {
     x.to_string()
-});
-wrap_native_fn!(string_to_u64(s: String) -> u64 {
+}
+#[kitlang_native_fn]
+fn string_to_u64(s: String) -> u64 {
     s.parse::<u64>().unwrap_or(0)
-});
-wrap_native_fn!(bool_to_string(x: bool) -> String {
+}
+#[kitlang_native_fn]
+fn bool_to_string(x: bool) -> String {
     x.to_string()
-});
-wrap_native_fn!(string_to_bool(s: String) -> bool {
+}
+#[kitlang_native_fn]
+fn string_to_bool(s: String) -> bool {
     s.parse::<bool>().unwrap_or(false)
-});
-wrap_native_fn!(is_empty(s: String) -> bool {
+}
+#[kitlang_native_fn]
+fn is_empty(s: String) -> bool {
     s.is_empty()
-});
-wrap_native_fn!(to_lower(s: String) -> String {
+}
+#[kitlang_native_fn]
+fn to_lower(s: String) -> String {
     s.to_lowercase()
-});
+}
 
 #[cfg(not(feature = "webasm"))]
-wrap_native_fn!(print(s: String) {
+#[kitlang_native_fn]
+fn print(s: String) {
     print!("{}", s);
-});
+}
 #[cfg(not(feature = "webasm"))]
-wrap_native_fn!(println(s: String) {
+#[kitlang_native_fn]
+fn println(s: String) {
     println!("{}", s);
-});
+}

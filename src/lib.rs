@@ -20,11 +20,14 @@ pub mod profiling;
 pub mod spanned_error;
 pub mod token;
 
+// Re-export macros for use in downstream crates.
+pub use kitlang_macros as macros;
+
 #[cfg(feature = "webasm")]
 pub mod webasm;
 
-#[cfg(feature = "logging")]
-use log::*;
+// #[cfg(feature = "logging")]
+// use log::*;
 
 // Outward facing API..
 
@@ -147,7 +150,7 @@ pub fn init_logging() {
     #[cfg(all(feature = "logging", not(feature = "webasm")))]
     fn setup_logging() {
         simplelog::CombinedLogger::init(vec![simplelog::TermLogger::new(
-            LevelFilter::Debug,
+            log::LevelFilter::Debug,
             simplelog::Config::default(),
             simplelog::TerminalMode::Mixed,
             simplelog::ColorChoice::Auto,
