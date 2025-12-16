@@ -709,6 +709,23 @@ impl TypeChecker<'_> {
                     ))
                 }
             }
+            ExprKind::Range(min_id, max_id, _) => {
+                let min_type = self.eval_expr_type_by_id(*min_id, hlir)?;
+                let max_type = self.eval_expr_type_by_id(*max_id, hlir)?;
+
+                if min_type != max_type {
+                    return Err(type_fail!(
+                        hlir,
+                        expr.id,
+                        "Range bounds type mismatch. Min: `{}`, Max: `{}`",
+                        self.type_name(min_type),
+                        self.type_name(max_type)
+                    ));
+                }
+
+                // TODO: This should have it's own type..
+                Ok(min_type)
+            }
             ExprKind::Loop(body_id) => {
                 self.eval_block_type_by_id(*body_id, hlir)?;
                 Ok(Type::unit())

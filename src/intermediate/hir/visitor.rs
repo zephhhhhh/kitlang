@@ -165,6 +165,10 @@ pub trait HLIRVisitor {
             ExprKind::Cast(hir_id, _) => {
                 self.visit_expr_by_id(*hir_id, hlir);
             }
+            ExprKind::Range(min_id, max_id, _) => {
+                self.visit_expr_by_id(*min_id, hlir);
+                self.visit_expr_by_id(*max_id, hlir);
+            }
             _ => {}
         }
     }
@@ -524,6 +528,10 @@ pub trait HLIRVisitorMut<'a> {
             }
             ExprKind::Cast(hir_id, _) => {
                 self.visit_expr_by_id_mut(*hir_id, hlir);
+            }
+            ExprKind::Range(min_id, max_id, _) => {
+                self.visit_expr_by_id_mut(*min_id, hlir);
+                self.visit_expr_by_id_mut(*max_id, hlir);
             }
             _ => {}
         }
