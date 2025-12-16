@@ -284,7 +284,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             push_resolve_err!(
                 self,
                 no_span,
-                "Could not find type for impl at path: {}",
+                "Could not find type for impl at path: `{}`",
                 impl_path
             );
         }

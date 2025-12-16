@@ -659,7 +659,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         self,
                         hlir,
                         *hir_id,
-                        "Failed to get object type for method call: '{:?}'",
+                        "Failed to get object type for method call `{:?}`",
                         hir_id
                     );
                     return;
@@ -673,7 +673,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         self,
                         hlir,
                         *hir_id,
-                        "Failed to find method '{}' for type {:?}",
+                        "Failed to find method `{}` for type `{:?}`",
                         ident.str(),
                         self.program_meta_data.type_name(obj_ty.clone())
                     );
@@ -736,7 +736,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                                 self,
                                 hlir,
                                 *hir_id,
-                                "Failed to find field index for {}",
+                                "Failed to find field index for `{}`",
                                 ident.str()
                             );
                             return;
@@ -763,7 +763,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         self,
                         hlir,
                         expr.id,
-                        "Failed to get struct init type id. {:?}",
+                        "Failed to resolve struct init type `{:?}`",
                         struct_initialisation.ty_path
                     );
                     return;
@@ -773,7 +773,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         self,
                         hlir,
                         expr.id,
-                        "Resolved id is not a type id, but rather: {:?}",
+                        "Resolved id is not a type id, but rather: `{:?}`",
                         resolved_id
                     );
                     return;
@@ -788,7 +788,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                             self,
                             hlir,
                             expr.id,
-                            "Field count mismatch in initialisation! Expected {}, got {}.",
+                            "Field count mismatch in initialisation! Expected `{}`, got `{}`",
                             type_info.get_field_count(),
                             struct_initialisation.fields.len()
                         );
@@ -808,7 +808,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                                 self,
                                 hlir,
                                 expr.id,
-                                "Failed to find field index for {}",
+                                "Failed to find field index for `{}`",
                                 field_init.ident.str()
                             );
                             return;
@@ -851,7 +851,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         self,
                         hlir,
                         expr.id,
-                        "Path not resolved: {:?} (This should be impossible, if you see this, please report a bug!)",
+                        "Path not resolved `{:?}` (This should be impossible, if you see this, please report a bug!)",
                         ref_path
                     );
                 }
