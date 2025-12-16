@@ -11,7 +11,7 @@ fn kitlang_path() -> proc_macro2::TokenStream {
             quote!(::#ident)
         }
         // Fallback.
-        Err(_) => quote!(::kitlang)
+        Err(_) => quote!(::kitlang),
     }
 }
 

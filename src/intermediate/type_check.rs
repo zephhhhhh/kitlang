@@ -335,7 +335,11 @@ impl TypeChecker<'_> {
             self.type_map.insert(id, expr_ty.clone());
             Ok(expr_ty)
         } else {
-            Err(type_fail!(on_span, node.span(), "Node is not an expression."))
+            Err(type_fail!(
+                on_span,
+                node.span(),
+                "Node is not an expression."
+            ))
         }
     }
 
@@ -807,7 +811,7 @@ impl TypeChecker<'_> {
         if let HIRNode::Block(block) = node {
             self.eval_block_type(block, hlir)
         } else {
-            Err(type_fail!(on_span,node.span(), "Node is not a block."))
+            Err(type_fail!(on_span, node.span(), "Node is not a block."))
         }
     }
 

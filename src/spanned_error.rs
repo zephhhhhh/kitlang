@@ -278,18 +278,23 @@ impl SpannedErrorBuilder {
             }
         }
 
-        if self.pad_around_source_view {
+        if self.error_span.is_null_span() {
             final_output += &blank_prefix;
             final_output += "\n";
-        }
+        } else {
+            if self.pad_around_source_view {
+                final_output += &blank_prefix;
+                final_output += "\n";
+            }
 
-        for line in &self.lines {
-            final_output += &line.generate_output(max_line_no_len, &blank_prefix);
-        }
+            for line in &self.lines {
+                final_output += &line.generate_output(max_line_no_len, &blank_prefix);
+            }
 
-        if self.pad_around_source_view && !self.footer_lines.is_empty() {
-            final_output += &blank_prefix;
-            final_output += "\n";
+            if self.pad_around_source_view && !self.footer_lines.is_empty() {
+                final_output += &blank_prefix;
+                final_output += "\n";
+            }
         }
 
         for footer_line in &self.footer_lines {

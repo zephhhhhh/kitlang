@@ -6,7 +6,9 @@ use crate::intermediate::hir::nodes::{
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
 
-use crate::intermediate::resolver::errors::{ResolveResult, ResolverError, ResolverErrorKind};
+use crate::intermediate::resolver::errors::{
+    ResolveResult, ResolverError, ResolverErrorKind, resolve_error,
+};
 use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeID, TypeRegistry};
 use crate::intermediate::types::KitTy;
 
@@ -53,18 +55,22 @@ impl TypeResolver<'_> {
         );
 
         let Some(def) = self.root_namespace.find_definition(&final_path) else {
-            return Err(
-                ResolverErrorKind::CannotFindNamespaceForTypeCheck(path.clone()).with_no_span(),
-            );
+            return Err(resolve_error!(
+                no_span,
+                "Cannot find parent namespace while type checking for path: {}",
+                path
+            ));
         };
 
         if let NamespaceKind::Struct(ty_id) = def.kind {
             Ok(ty_id)
         } else {
-            Err(
-                ResolverErrorKind::ExpectedADTDefinition(path.clone(), def.kind.clone())
-                    .with_no_span(),
-            )
+            Err(resolve_error!(
+                no_span,
+                "Expected ADT definition at '{}', but instead found: '{:?}'!",
+                path,
+                def.kind
+            ))
         }
     }
 }
@@ -148,12 +154,12 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                     if let Some(impl_ty) = &self.current_impl {
                         *arg = impl_ty.clone();
                     } else {
-                        self.errors.push(
-                            ResolverErrorKind::CouldNotResolveSelfFunctionArg(
-                                self.current_path().clone(),
-                            )
-                            .with_span(function.ident.span),
-                        );
+                        self.errors.push(resolve_error!(
+                            on_span,
+                            function.ident.span,
+                            "Could not resolve type of 'self' function argument in path: {}",
+                            self.current_path()
+                        ));
                     }
                 }
                 _ => {}
@@ -162,13 +168,12 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                 if let Ok(type_id) = self.resolve_type(type_path) {
                     *arg = Type::Resolved(KitTy::Abstract(type_id));
                 } else {
-                    self.errors.push(
-                        ResolverErrorKind::CouldNotResolveFunctionArgType(
-                            type_path.clone(),
-                            self.current_path().clone(),
-                        )
-                        .with_span(function.ident.span),
-                    );
+                    self.errors.push(resolve_error!(
+                        on_span,
+                        function.ident.span,
+                        "Could not resolve type of function argument in path: {}",
+                        self.current_path()
+                    ));
                 }
             }
         }
@@ -177,13 +182,12 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             if let Ok(type_id) = self.resolve_type(type_path) {
                 function.sig.output = Type::Resolved(KitTy::Abstract(type_id));
             } else {
-                self.errors.push(
-                    ResolverErrorKind::CouldNotResolveFunctionReturnType(
-                        type_path.clone(),
-                        self.current_path().clone(),
-                    )
-                    .with_span(function.ident.span),
-                );
+                self.errors.push(resolve_error!(
+                    on_span,
+                    function.ident.span,
+                    "Could not resolve type of function return type in path: {}",
+                    self.current_path()
+                ));
             }
         }
 
@@ -245,13 +249,12 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                     {
                         field_info.ty = Type::Resolved(KitTy::Abstract(type_id));
                     } else {
-                        self.errors.push(
-                            ResolverErrorKind::FailedToFindStructField(
-                                field.ident.string(),
-                                current_struct_path.clone(),
-                            )
-                            .with_span(field.ident.span),
-                        );
+                        self.errors.push(resolve_error!(
+                            no_span,
+                            "Failed to find struct field '{}' in struct '{}'",
+                            field.ident.string(),
+                            current_struct_path
+                        ));
                     }
                 }
             }
@@ -267,10 +270,11 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
             self.super_impl_mut(impl_info, hlir);
             self.current_impl = None;
         } else {
-            self.errors.push(
-                ResolverErrorKind::FailedToGetTypeForImpl(impl_info.self_ty.clone())
-                    .with_span(impl_info.ty_span),
-            );
+            self.errors.push(resolve_error!(
+                no_span,
+                "Could not find type for impl at path: {}",
+                impl_path
+            ));
         }
     }
 }

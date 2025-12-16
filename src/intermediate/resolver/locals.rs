@@ -6,7 +6,9 @@ use crate::intermediate::hir::nodes::{
 };
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, HirId};
-use crate::intermediate::resolver::errors::{ResolveResult, ResolverError, ResolverErrorKind};
+use crate::intermediate::resolver::errors::{
+    ResolveResult, ResolverError, ResolverErrorKind, resolve_error,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 struct LocalScope {
@@ -55,7 +57,11 @@ impl LocalScope {
         if self.add_definition_unique(name, id) {
             Ok(())
         } else {
-            Err(ResolverErrorKind::VariableAlreadyDefined(name.to_string()).with_no_span())
+            Err(resolve_error!(
+                no_span,
+                "Variable '{}' is already defined!",
+                name
+            ))
         }
     }
 

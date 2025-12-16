@@ -11,7 +11,7 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 use crate::intermediate::resolver::errors::{
     ResolutionFailure, ResolveResult, ResolverError, ResolverErrorKind, UnresolvedReference,
-    UnresolvedReferences,
+    UnresolvedReferences, resolve_error,
 };
 use crate::intermediate::resolver::{
     ADTStructField, ADTTypeInfo, Namespace, NamespaceKind, TypeRegistry,
@@ -436,10 +436,12 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             });
             self.with_pushed_segment(&module_ident, |this| this.super_module(module, hlir));
         } else {
-            self.errors.push(
-                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
-                    .with_span(module.ident.span()),
-            );
+            self.errors.push(resolve_error!(
+                on_span,
+                module.ident.span(),
+                "Cannot find parent namespace: {}",
+                current_path
+            ));
         }
     }
 
@@ -459,13 +461,12 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             .items
             .contains_key(&function_ident)
         {
-            self.errors.push(
-                ResolverErrorKind::ItemAlreadyDefined(
-                    function.ident.as_spanned_path(),
-                    current_path.clone(),
-                )
-                .with_span(function.ident.span),
-            );
+            self.errors.push(resolve_error!(
+                on_span,
+                function.ident.span,
+                "Item already defined: {}",
+                current_path
+            ));
         }
         if let Some(ns) = self.get_namespace_mut(&current_path) {
             ns.items.insert(
@@ -481,10 +482,12 @@ impl HLIRVisitor for AssociatedReferenceMapper {
             );
             self.with_pushed_segment(&function_ident, |this| this.super_function(function, hlir));
         } else {
-            self.errors.push(
-                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
-                    .with_span(function.ident.span),
-            );
+            self.errors.push(resolve_error!(
+                on_span,
+                function.ident.span,
+                "Cannot find parent namespace: {}",
+                current_path
+            ));
         }
     }
 
@@ -521,10 +524,12 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 fields,
             ))
         } else {
-            self.errors.push(
-                ResolverErrorKind::CannotResolveStructFields(structure.ident.as_spanned_path())
-                    .with_span(structure.ident.span),
-            );
+            self.errors.push(resolve_error!(
+                on_span,
+                structure.ident.span,
+                "Cannot resolve struct fields for {}",
+                current_path
+            ));
             0
         };
 
@@ -543,10 +548,12 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 },
             );
         } else {
-            self.errors.push(
-                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
-                    .with_span(structure.ident.span),
-            );
+            self.errors.push(resolve_error!(
+                on_span,
+                structure.ident.span,
+                "Cannot find parent namespace: {}",
+                current_path
+            ));
         }
     }
 
@@ -564,10 +571,12 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 local,
             });
         } else {
-            self.errors.push(
-                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
-                    .with_span(enumeration.ident.span),
-            );
+            self.errors.push(resolve_error!(
+                on_span,
+                enumeration.ident.span,
+                "Cannot find parent namespace: {}",
+                current_path
+            ));
         }
     }
 
@@ -585,10 +594,12 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 local,
             });
         } else {
-            self.errors.push(
-                ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
-                    .with_span(constant.ident.span),
-            );
+            self.errors.push(resolve_error!(
+                on_span,
+                constant.ident.span,
+                "Cannot find parent namespace: {}",
+                current_path
+            ));
         }
     }
 
@@ -617,10 +628,12 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                     local: use_info.vis == Visibility::Private,
                 });
             } else {
-                self.errors.push(
-                    ResolverErrorKind::CannotFindParentNamespace(current_path.clone())
-                        .with_span(use_info.span),
-                );
+                self.errors.push(resolve_error!(
+                    on_span,
+                    use_info.span,
+                    "Cannot find parent namespace: {}",
+                    current_path
+                ));
             }
         }
 

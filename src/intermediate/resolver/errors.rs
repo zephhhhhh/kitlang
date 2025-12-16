@@ -1,6 +1,5 @@
-use crate::ast::{IdentPath, SourceSpan, SpannedIdentPath};
+use crate::ast::{SourceSpan, SpannedIdentPath};
 use crate::intermediate::hir::HirId;
-use crate::intermediate::resolver::NamespaceKind;
 use crate::spanned_error::SpannedErrorBuilder;
 use std::fmt::{Debug, Display};
 use thiserror::Error;
@@ -9,37 +8,10 @@ use thiserror::Error;
 pub enum ResolverErrorKind {
     #[error("Error while resolving: {0:?}")]
     ResolverErrors(Vec<ResolverError>),
-
-    #[error("Failed to resolve references: {0:?}")]
+    #[error("Unresolved References: {0:?}")]
     UnresolvedReferences(UnresolvedReferences),
-
-    #[error("Cannot find parent namespace while type checking for path: {0:?}")]
-    CannotFindNamespaceForTypeCheck(IdentPath),
-    #[error("Cannot find parent namespace for path: {0:?}")]
-    CannotFindParentNamespace(IdentPath),
-    #[error("Item '{0}' is already defined within the scope '{1}'!")]
-    ItemAlreadyDefined(SpannedIdentPath, IdentPath),
-    #[error("Cannot resolve struct fields on type: {0:?}")]
-    CannotResolveStructFields(SpannedIdentPath),
-
-    #[error("Variable '{0}' is already defined!")]
-    VariableAlreadyDefined(String),
-
-    #[error("Expected ADT definition at '{0}', but instead found: '{1:?}'!")]
-    ExpectedADTDefinition(IdentPath, NamespaceKind),
-
-    #[error("Could not resolve 'self' function argument for path: {0:?}")]
-    CouldNotResolveSelfFunctionArg(IdentPath),
-    #[error("Could not resolve function argument type '{0}' for path: {1:?}")]
-    CouldNotResolveFunctionArgType(SpannedIdentPath, IdentPath),
-    #[error("Could not resolve function return type '{0}' for path: {1:?}")]
-    CouldNotResolveFunctionReturnType(SpannedIdentPath, IdentPath),
-
-    #[error("Failed to find struct field '{0}' in type at path: {1:?}")]
-    FailedToFindStructField(String, IdentPath),
-
-    #[error("Failed to get type for impl at path: {0:?}")]
-    FailedToGetTypeForImpl(IdentPath),
+    #[error("Diagnostic: {0}")]
+    Diagnostic(String),
 }
 
 impl ResolverErrorKind {
@@ -55,7 +27,6 @@ impl ResolverErrorKind {
 /// Represents an error while resolving references/symbols after in the intermediate representation.
 #[derive(Debug, Error, Clone, PartialEq)]
 pub struct ResolverError {
-    #[source]
     pub error_kind: ResolverErrorKind,
     pub span: SourceSpan,
 }
@@ -63,9 +34,9 @@ pub struct ResolverError {
 impl ResolverError {
     #[inline]
     #[must_use]
-    pub fn new(kind: impl Into<ResolverErrorKind>, span: impl Into<SourceSpan>) -> Self {
+    pub fn new(error_kind: ResolverErrorKind, span: impl Into<SourceSpan>) -> Self {
         Self {
-            error_kind: kind.into(),
+            error_kind,
             span: span.into(),
         }
     }
@@ -98,23 +69,44 @@ impl ResolverError {
                 }
                 final_output
             }
-            other => SpannedErrorBuilder::new(source_string, self.span)
-                .print_header_line(format!("Resolver error: {:#?}", other))
-                .generate_highlight()
-                .generate_output(),
+            ResolverErrorKind::Diagnostic(msg) => {
+                SpannedErrorBuilder::new(source_string, self.span)
+                    .print_header_line(msg)
+                    .generate_highlight()
+                    .generate_output()
+            }
         }
     }
 }
 
 impl Display for ResolverError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Error: {:#?}",
-            self.error_kind, //self.span.start, self.span.end
-        )
+        match self.error_kind {
+            ResolverErrorKind::ResolverErrors(ref errors) => {
+                write!(f, "Resolver Errors: {:#?}", errors)
+            }
+            ResolverErrorKind::Diagnostic(ref msg) => {
+                write!(f, "Diagnostic: {}", msg)
+            }
+            ResolverErrorKind::UnresolvedReferences(ref refs) => {
+                write!(f, "Unresolved References: {:#?}", refs)
+            }
+        }
     }
 }
+
+macro_rules! resolve_error {
+    (no_span, $($arg:tt)*) => {
+        ResolverError::new(ResolverErrorKind::Diagnostic(format!($($arg)*)), $crate::ast::SourceSpan::null_span())
+    };
+    (on_span, $span: expr, $($arg:tt)*) => {
+        ResolverError::new(ResolverErrorKind::Diagnostic(format!($($arg)*)), $span)
+    };
+    ($hlir: expr, $id: expr, $($arg:tt)*) => {
+        ResolverError::new(ResolverErrorKind::Diagnostic(format!($($arg)*)), $crate::intermediate::hir::get_span_by_id($hlir.as_ref(), $id))
+    };
+}
+pub(crate) use resolve_error;
 
 pub type ResolveResult<T> = Result<T, ResolverError>;
 

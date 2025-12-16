@@ -356,11 +356,10 @@ impl ProgramMetaData {
 /// Get the source span for a given HIR ID.
 /// # Returns
 /// The source span if found, otherwise a null span.
-pub(crate) fn get_span_by_id(
-    hlir: &HLIR,
-    hir_id: HirId,
-) -> SourceSpan {
-    hlir.get_hir_node(hir_id).map(|node| node.span()).unwrap_or_else(SourceSpan::null_span)
+pub(crate) fn get_span_by_id(hlir: &HLIR, hir_id: HirId) -> SourceSpan {
+    hlir.get_hir_node(hir_id)
+        .map(|node| node.span())
+        .unwrap_or_else(SourceSpan::null_span)
 }
 
 // Outward facing API..
