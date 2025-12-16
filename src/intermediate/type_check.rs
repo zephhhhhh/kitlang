@@ -21,17 +21,11 @@ macro_rules! type_fail {
     ($msg: expr) => {
         TypeCheckFail::new(SourceSpan::null_span(), $msg)
     };
-    ($span: expr, $msg: expr) => {
-        TypeCheckFail::new($span, $msg)
-    };
-    (span, $span: expr, $($arg:tt)*) => {
+    (on_span, $span: expr, $($arg:tt)*) => {
         TypeCheckFail::new($span, format!($($arg)*))
     };
-    ($hlir: expr, $id: expr, $msg: literal) => {
-        TypeCheckFail::new(get_span_by_id($id, $hlir.as_ref()), $msg)
-    };
     ($hlir: expr, $id: expr, $($arg:tt)*) => {
-        TypeCheckFail::new(get_span_by_id($id, $hlir.as_ref()), format!($($arg)*))
+        TypeCheckFail::new(crate::intermediate::hir::get_span_by_id($hlir.as_ref(), $id), format!($($arg)*))
     };
 }
 
@@ -39,12 +33,6 @@ pub type TypeMap = HashMap<HirId, Type>;
 
 // Type funcs
 pub type TypeResult<T> = Result<T, TypeCheckFail>;
-
-#[inline]
-fn get_span_by_id(id: HirId, hlir: &HLIR) -> SourceSpan {
-    hlir.span_by_hir_id(id)
-        .unwrap_or_else(SourceSpan::null_span)
-}
 
 #[inline]
 fn statement_mut_by_id(
@@ -347,7 +335,7 @@ impl TypeChecker<'_> {
             self.type_map.insert(id, expr_ty.clone());
             Ok(expr_ty)
         } else {
-            Err(type_fail!(node.span(), "Node is not an expression."))
+            Err(type_fail!(on_span, node.span(), "Node is not an expression."))
         }
     }
 
@@ -588,12 +576,14 @@ impl TypeChecker<'_> {
             ExprKind::StructInit(struct_initialisation) => {
                 let RefPath::Resolved(_, r) = &struct_initialisation.ty_path else {
                     return Err(type_fail!(
+                        on_span,
                         struct_initialisation.ty_path.span(),
                         "Struct initialisation type not resolved?"
                     ));
                 };
                 let ResolvedID::TypeDef(type_id) = r else {
                     return Err(type_fail!(
+                        on_span,
                         struct_initialisation.ty_path.span(),
                         "Incorrect struct initialisation resolved type?"
                     ));
@@ -604,6 +594,7 @@ impl TypeChecker<'_> {
                         .get_from_type_id(*type_id)
                         .ok_or_else(|| {
                             type_fail!(
+                                on_span,
                                 struct_initialisation.ty_path.span(),
                                 "Struct initialisation type not found?"
                             )
@@ -816,7 +807,7 @@ impl TypeChecker<'_> {
         if let HIRNode::Block(block) = node {
             self.eval_block_type(block, hlir)
         } else {
-            Err(type_fail!(node.span(), "Node is not a block."))
+            Err(type_fail!(on_span,node.span(), "Node is not a block."))
         }
     }
 
@@ -883,7 +874,7 @@ impl TypeChecker<'_> {
                 .span_by_owner_id(owner_def_id)
                 .expect("Owning span exist.");
             return Err(type_fail!(
-                span,
+                on_span,
                 span,
                 "Eval owner def, failed to get owning node? {:?}",
                 owner_def_id
@@ -892,7 +883,7 @@ impl TypeChecker<'_> {
         let Some(owning_node_item) = owning_node.item_mut() else {
             let span = owning_node.span().expect("Owning node span exists.");
             return Err(type_fail!(
-                span,
+                on_span,
                 span,
                 "Failed to get owning node item? Should be impossible."
             ));
