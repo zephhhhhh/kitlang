@@ -521,7 +521,7 @@ impl InterpreterState {
     }
 
     pub fn execute_from_entry(&mut self, program: &ProgramType) -> Option<Value> {
-        log::info!("Running program: {:#?}", program);
+        // log::info!("Running program: {:#?}", program);
         self.execute_function(program, self.entry, &[])
     }
 }
