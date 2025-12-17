@@ -431,10 +431,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                             true_start_id,
                             BasicBlockId::PLACEHOLDER_ID,
                         ));
-                    assert!(
-                        self.emit_and_replace_block().unwrap() == branch_bb_id,
-                        "Blocks not equal"
-                    );
+                    self.emit_and_replace_block().unwrap();
                     assert!(
                         self.body.next_block_id() == true_start_id,
                         "True start id wrong!"
@@ -597,10 +594,10 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     (*inclusive, *max_expr)
                 };
 
-                let condition_check_bb_id = self.body.next_block_id();
+                let loop_start_bb_id = self.body.next_block_id();
                 self.state
                     .loop_stack
-                    .push(HIRToMIRLoopState::new(condition_check_bb_id));
+                    .push(HIRToMIRLoopState::new(loop_start_bb_id));
 
                 let condition_expr = self.new_temp_local();
                 let binary_op_kind = if inclusive {
@@ -620,17 +617,13 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     ),
                 );
 
-                let loop_body_start_id = condition_check_bb_id.next();
                 self.builder_mut_expect()
-                    .set_exit_kind(BlockExitKind::Branch(
-                        Operand::Copy(condition_expr.into()),
-                        loop_body_start_id,
-                        BasicBlockId::PLACEHOLDER_ID,
-                    ));
-                assert!(
-                    self.emit_and_replace_block().unwrap() == condition_check_bb_id,
-                    "Blocks not equal"
-                );
+                .set_exit_kind(BlockExitKind::Branch(
+                    Operand::Copy(condition_expr.into()),
+                    BasicBlockId::PLACEHOLDER_ID,
+                    BasicBlockId::PLACEHOLDER_ID,
+                ));
+                let branch_block_id = self.emit_and_replace_block().unwrap();
 
                 self.visit_block_by_id(*loop_block_expr_id, hlir);
                 self.builder_mut_expect().push_local_assign(
@@ -638,15 +631,16 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     RValue::Increment(Operand::Copy(binding_local.into())),
                 );
                 self.builder_mut_expect()
-                    .set_exit_kind(BlockExitKind::Goto(condition_check_bb_id));
+                    .set_exit_kind(BlockExitKind::Goto(loop_start_bb_id));
                 let final_loop_body_id = self.emit_and_replace_block().unwrap();
 
-                if let Some(BlockExitKind::Branch(_, _, else_block)) =
-                    self.body.block_exit_kind_mut(condition_check_bb_id)
+                if let Some(BlockExitKind::Branch(_, true_block, else_block)) =
+                    self.body.block_exit_kind_mut(branch_block_id)
                 {
                     *else_block = final_loop_body_id.next();
+                    *true_block = branch_block_id.next();
                 } else {
-                    push_lower_err!(self, hlir, expr.id, "Failed to get while branch block.");
+                    push_lower_err!(self, hlir, expr.id, "Failed to get for loop branch block.");
                 }
 
                 for break_to_update in &self
@@ -697,27 +691,24 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         .loop_stack
                         .push(HIRToMIRLoopState::new(condition_check_bb_id));
 
-                    let loop_body_start_id = condition_check_bb_id.next();
                     self.builder_mut_expect()
                         .set_exit_kind(BlockExitKind::Branch(
                             Operand::Copy(target),
-                            loop_body_start_id,
+                            BasicBlockId::PLACEHOLDER_ID,
                             BasicBlockId::PLACEHOLDER_ID,
                         ));
-                    assert!(
-                        self.emit_and_replace_block().unwrap() == condition_check_bb_id,
-                        "Blocks not equal"
-                    );
+                    let branch_block_id = self.emit_and_replace_block().unwrap();
 
                     self.visit_block_by_id(*block_id, hlir);
                     self.builder_mut_expect()
                         .set_exit_kind(BlockExitKind::Goto(condition_check_bb_id));
                     let final_loop_body_id = self.emit_and_replace_block().unwrap();
 
-                    if let Some(BlockExitKind::Branch(_, _, else_block)) =
-                        self.body.block_exit_kind_mut(condition_check_bb_id)
+                    if let Some(BlockExitKind::Branch(_, true_block, else_block)) =
+                        self.body.block_exit_kind_mut(branch_block_id)
                     {
                         *else_block = final_loop_body_id.next();
+                        *true_block = branch_block_id.next();
                     } else {
                         push_lower_err!(self, hlir, expr.id, "Failed to get while branch block.");
                     }

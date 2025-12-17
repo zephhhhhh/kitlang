@@ -393,6 +393,10 @@ impl Body {
         Some(&mut self.block_mut(id)?.exit_directive.kind)
     }
 
+    pub fn current_block_id(&mut self) -> BasicBlockId {
+        BasicBlockId(self.blocks.len().saturating_sub(1) as u32)
+    }
+
     pub fn next_block_id(&mut self) -> BasicBlockId {
         BasicBlockId(self.blocks.len() as u32)
     }
