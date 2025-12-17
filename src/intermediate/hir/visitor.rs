@@ -169,8 +169,9 @@ pub trait HLIRVisitor {
                 self.visit_expr_by_id(*min_id, hlir);
                 self.visit_expr_by_id(*max_id, hlir);
             }
-            ExprKind::For(enclosing_id, _, _, _) => {
+            ExprKind::For(enclosing_id, _, iterable_id, _) => {
                 self.visit_block_by_id(*enclosing_id, hlir);
+                self.visit_expr_by_id(*iterable_id, hlir);
             }
             _ => {}
         }
@@ -536,8 +537,9 @@ pub trait HLIRVisitorMut<'a> {
                 self.visit_expr_by_id_mut(*min_id, hlir);
                 self.visit_expr_by_id_mut(*max_id, hlir);
             }
-            ExprKind::For(enclosing_id, _, _, _) => {
+            ExprKind::For(enclosing_id, _, iterable_id, _) => {
                 self.visit_block_by_id_mut(*enclosing_id, hlir);
+                self.visit_expr_by_id_mut(*iterable_id, hlir);
             }
             _ => {}
         }
