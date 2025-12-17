@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{IdentPath, Literal, SourceSpan};
+use crate::ast::{Literal, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::visitor::HLIRVisitorMut;
@@ -9,8 +9,8 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 use crate::intermediate::hir::nodes::{
     Block, Expr, ExprKind, HIRNode, RefPath, ResolvedID, Statement, StatementKind, Type,
 };
-use crate::intermediate::resolver::{Namespace, TypeRegistry};
 use crate::intermediate::types::{KitFloat, KitInt, KitTy};
+use crate::intermediate::hir::ProgramMetaData;
 
 use super::hir::nodes::{Function, LetStatement};
 use super::hir::visitor::HLIRDisjointMut;
@@ -55,9 +55,7 @@ fn statement_mut_by_id(
 
 #[derive(Debug)]
 struct TypeChecker<'a> {
-    pub type_registry: &'a TypeRegistry,
-    pub namespace: &'a Namespace,
-    pub type_map: TypeMap,
+    pub meta: &'a mut ProgramMetaData,
 
     pub should_infer: bool,
 
@@ -66,15 +64,9 @@ struct TypeChecker<'a> {
 }
 
 impl<'a> TypeChecker<'a> {
-    pub fn new(
-        type_registry: &'a TypeRegistry,
-        namespace: &'a Namespace,
-        should_infer: bool,
-    ) -> Self {
+    pub fn new(meta_data: &'a mut ProgramMetaData, should_infer: bool) -> Self {
         Self {
-            type_registry,
-            namespace,
-            type_map: TypeMap::new(),
+            meta: meta_data,
             should_infer,
             errors: Vec::new(),
             return_type_stack: Vec::new(),
@@ -99,7 +91,7 @@ impl TypeChecker<'_> {
         match ty.into() {
             Type::Unresolved(ty) => ty.get_type_ident(),
             Type::Resolved(KitTy::Abstract(ty_id)) => {
-                let abs_ty = self.type_registry.get_from_type_id(ty_id)?;
+                let abs_ty = self.meta.type_registry.get_from_type_id(ty_id)?;
                 let type_path = abs_ty.defined_in.extend_ident(&abs_ty.type_ident.ident);
                 Some(type_path.to_string())
             }
@@ -110,26 +102,6 @@ impl TypeChecker<'_> {
     pub fn type_name(&self, ty: impl Into<Type>) -> String {
         self.try_type_name(ty)
             .unwrap_or_else(|| String::from("UnknownType"))
-    }
-
-    // TODO: Make this consistent with ProgramMetaData.
-    #[inline]
-    fn find_ty_method_owner_def(&self, ty: KitTy, method_ident: &str) -> Option<OwnerDefId> {
-        match ty {
-            KitTy::Abstract(adt_id) => {
-                let adt = self.type_registry.get_from_type_id(adt_id)?;
-                self.namespace.find_method_owner_def(
-                    &adt.defined_in,
-                    adt.type_ident.str(),
-                    method_ident,
-                )
-            }
-            t => self.namespace.find_method_owner_def(
-                &IdentPath::new_empty(true),
-                &t.to_type_str()?,
-                method_ident,
-            ),
-        }
     }
 }
 
@@ -335,7 +307,7 @@ impl TypeChecker<'_> {
 
         if let HIRNode::Expr(expr) = node {
             let expr_ty = self.eval_expr_type(expr, hlir)?;
-            self.type_map.insert(id, expr_ty.clone());
+            self.meta.type_map.insert(id, expr_ty.clone());
             Ok(expr_ty)
         } else {
             Err(type_fail!(
@@ -496,7 +468,9 @@ impl TypeChecker<'_> {
 
                 match expr_ty {
                     Type::Resolved(t) => {
-                        let Some(method_def) = self.find_ty_method_owner_def(t, ident.str()) else {
+                        let Some(method_def) =
+                            self.meta.find_ty_method_owner_def(expr_ty, ident.str())
+                        else {
                             return Err(type_fail!(
                                 hlir,
                                 expr.id,
@@ -558,6 +532,7 @@ impl TypeChecker<'_> {
                 match expr_ty {
                     Type::Resolved(KitTy::Abstract(type_id)) => {
                         let type_info = self
+                            .meta
                             .type_registry
                             .get_from_type_id(type_id)
                             .expect("Type exists");
@@ -597,16 +572,18 @@ impl TypeChecker<'_> {
                     ));
                 };
                 let struct_type = Type::Resolved(KitTy::Abstract(*type_id));
-                let struct_adt =
-                    self.type_registry
-                        .get_from_type_id(*type_id)
-                        .ok_or_else(|| {
-                            type_fail!(
-                                on_span,
-                                struct_initialisation.ty_path.span(),
-                                "Struct initialisation type not found?"
-                            )
-                        })?;
+                let struct_adt = self
+                    .meta
+                    .type_registry
+                    .get_from_type_id(*type_id)
+                    .ok_or_else(|| {
+                        type_fail!(
+                            on_span,
+                            struct_initialisation.ty_path.span(),
+                            "Struct initialisation type not found?"
+                        )
+                    })?
+                    .clone();
 
                 struct_initialisation
                     .fields
@@ -1002,12 +979,8 @@ impl TypeCheckFail {
 /// This function will run the type checker stage on the resolved HIR output.
 /// This will validate that all type rules are followed, as well as fill in any types that must be
 /// inferred from context.
-pub fn run_type_checker(
-    hlir: &mut HLIR,
-    type_registry: &TypeRegistry,
-    namespace: &Namespace,
-) -> LowerResult<TypeMap> {
-    let mut checker = TypeChecker::new(type_registry, namespace, true);
+pub fn run_type_checker(hlir: &mut HLIR, meta: &mut ProgramMetaData) -> LowerResult<()> {
+    let mut checker = TypeChecker::new(meta, true);
 
     checker.walk_mut(hlir);
 
@@ -1017,6 +990,6 @@ pub fn run_type_checker(
             SourceSpan::null_span(),
         ))
     } else {
-        Ok(checker.type_map)
+        Ok(())
     }
 }

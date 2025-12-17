@@ -6,54 +6,53 @@ use crate::intermediate::hir::nodes::{
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
 
+use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::resolver::errors::{
     ResolveResult, ResolverError, ResolverErrorKind, push_resolve_err, resolve_err,
 };
-use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeID, TypeRegistry};
+use crate::intermediate::resolver::{NamespaceKind, TypeID};
 use crate::intermediate::types::KitTy;
 
 struct TypeResolver<'a> {
     pub current_impl: Option<Type>,
-
     pub path_stack: Vec<IdentPath>,
-    pub type_registry: TypeRegistry,
 
-    pub root_namespace: &'a Namespace,
+    pub meta: &'a mut ProgramMetaData,
 
     pub errors: Vec<ResolverError>,
 }
 
 impl<'a> TypeResolver<'a> {
-    pub fn new(root_namespace: &'a Namespace, registry: TypeRegistry) -> Self {
+    pub fn new(meta: &'a mut ProgramMetaData) -> Self {
         Self {
             current_impl: None,
             path_stack: vec![IdentPath::from_segments(Vec::new(), true)],
-            type_registry: registry,
-            root_namespace,
+            meta,
             errors: Vec::new(),
         }
     }
 }
 
 impl TypeResolver<'_> {
-    pub fn resolve_types(&mut self, hlir: &mut HLIR) -> ResolveResult<TypeRegistry> {
+    pub fn resolve_types(&mut self, hlir: &mut HLIR) -> ResolveResult<()> {
         self.walk_mut(hlir);
 
         if !self.errors.is_empty() {
             return Err(ResolverErrorKind::ResolverErrors(self.errors.clone()).with_no_span());
         }
 
-        Ok(self.type_registry.clone())
+        Ok(())
     }
 
     fn resolve_type(&self, path: &IdentPath) -> ResolveResult<TypeID> {
         let final_path = path.rebase_from_path(
             &self
-                .root_namespace
+                .meta
+                .namespace
                 .find_previous_module(self.current_path()),
         );
 
-        let Some(def) = self.root_namespace.find_definition(&final_path) else {
+        let Some(def) = self.meta.namespace.find_definition(&final_path) else {
             return Err(resolve_err!(
                 no_span,
                 "Cannot find parent namespace while type checking for path `{}`",
@@ -252,6 +251,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                     field.ty = Type::Resolved(KitTy::Abstract(type_id));
 
                     let struct_info = self
+                        .meta
                         .type_registry
                         .get_from_type_id_mut(current_struct_type)
                         .expect("Has to exist.");
@@ -276,7 +276,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     fn visit_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'_>) {
         let impl_path = impl_info.self_ty.rebase_from_path(self.current_path());
 
-        if let Some(t) = self.type_registry.find_type_from_path(&impl_path) {
+        if let Some(t) = self.meta.type_registry.find_type_from_path(&impl_path) {
             self.current_impl = Some(Type::Resolved(t));
             self.super_impl_mut(impl_info, hlir);
             self.current_impl = None;
@@ -291,10 +291,6 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     }
 }
 
-pub fn resolve_types(
-    hlir: &mut HLIR,
-    root_namespace: &Namespace,
-    registry: TypeRegistry,
-) -> ResolveResult<TypeRegistry> {
-    TypeResolver::new(root_namespace, registry).resolve_types(hlir)
+pub fn resolve_types(hlir: &mut HLIR, meta: &mut ProgramMetaData) -> ResolveResult<()> {
+    TypeResolver::new(meta).resolve_types(hlir)
 }

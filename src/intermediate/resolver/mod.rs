@@ -15,6 +15,7 @@ use crate::intermediate::hir::nodes::{ResolvedID, Type};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
 use crate::intermediate::resolver::errors::ResolveResult;
 use crate::intermediate::types::KitTy;
+use crate::intermediate::hir::ProgramMetaData;
 
 // use crate::intermediate::types::KitTy;
 
@@ -326,14 +327,14 @@ impl Namespace {
     }
 }
 
-pub fn resolve_paths(hlir: &mut HLIR) -> ResolveResult<(Namespace, TypeRegistry)> {
+pub fn resolve_paths(hlir: &mut HLIR, meta_data: &mut ProgramMetaData) -> ResolveResult<()> {
     locals::resolve_scope_paths(hlir)?;
-    let (namespace, mut registry) = associated_references::resolve_associated_references(hlir)?;
+    associated_references::resolve_associated_references(hlir, meta_data)?;
 
-    registry = types::resolve_types(hlir, &namespace, registry)?;
+    types::resolve_types(hlir, meta_data)?;
 
     // Verify all references have been resolved.
     verifier::verify_references(hlir)?;
 
-    Ok((namespace, registry))
+    Ok(())
 }

@@ -389,21 +389,18 @@ pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
 /// (Type checking, resolution, etc).
 pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData, HLIR)> {
     let mut hlir = lower_ast_to_hir(ast)?;
+    let mut meta_data = ProgramMetaData {
+        namespace: Namespace::default_root_definition(),
+        type_registry: TypeRegistry::default(),
+        type_map: TypeMap::default(),
+    };
 
     // Resolution..
-    let (namespaces, type_registry) = match resolve_paths(&mut hlir) {
-        Ok((ns, tr)) => (ns, tr),
-        Err(e) => return Err(LoweringErrorKind::ResolverError(e).with_no_span()),
-    };
+    resolve_paths(&mut hlir, &mut meta_data)
+        .map_err(|e| LoweringErrorKind::ResolverError(e).with_no_span())?;
 
     // Type checking..
-    let type_map = run_type_checker(&mut hlir, &type_registry, &namespaces)?;
-
-    let meta_data = ProgramMetaData {
-        namespace: namespaces,
-        type_registry,
-        type_map,
-    };
+    run_type_checker(&mut hlir, &mut meta_data)?;
 
     Ok((meta_data, hlir))
 }

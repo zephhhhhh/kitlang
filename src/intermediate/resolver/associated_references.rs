@@ -13,9 +13,8 @@ use crate::intermediate::resolver::errors::{
     ResolutionFailure, ResolveResult, ResolverError, ResolverErrorKind, UnresolvedReference,
     UnresolvedReferences, push_resolve_err, resolve_err,
 };
-use crate::intermediate::resolver::{
-    ADTStructField, ADTTypeInfo, Namespace, NamespaceKind, TypeRegistry,
-};
+use crate::intermediate::resolver::{ADTStructField, ADTTypeInfo, Namespace, NamespaceKind};
+use crate::intermediate::hir::ProgramMetaData;
 
 use log::*;
 
@@ -64,29 +63,27 @@ use log::*;
 /// this makes it possible to report multiple errors in one go instead of failing fast on the first error encountered.
 /// As a developer this makes it much easier to fix multiple errors at once, instead of having to re-run the compiler
 /// multiple times to fix each error one by one.
-struct AssociatedReferenceMapper {
+struct AssociatedReferenceMapper<'a> {
+    pub meta: &'a mut ProgramMetaData,
+
     pub global_functions: HashMap<String, OwnerDefId>,
 
     pub path_stack: Vec<IdentPath>,
     pub impl_path_lut: Vec<(OwnerDefId, IdentPath)>,
 
-    pub type_registry: TypeRegistry,
-
-    pub root_namespace: Namespace,
     pub stage1_complete: bool,
 
     pub errors: Vec<ResolverError>,
     pub resolution_failures: Vec<(HirId, SpannedIdentPath, ResolutionFailure)>,
 }
 
-impl AssociatedReferenceMapper {
-    pub fn new() -> Self {
+impl<'a> AssociatedReferenceMapper<'a> {
+    pub fn new(meta: &'a mut ProgramMetaData) -> Self {
         Self {
             global_functions: HashMap::new(),
+            meta,
             path_stack: vec![IdentPath::from_segments(Vec::new(), true)],
             impl_path_lut: Vec::new(),
-            type_registry: TypeRegistry::default(),
-            root_namespace: Namespace::default_root_definition(),
             stage1_complete: false,
             errors: Vec::new(),
             resolution_failures: Vec::new(),
@@ -144,7 +141,7 @@ impl AssociatedReferenceMapper {
             .into_iter()
             .map(builtin_namespace)
             .for_each(|ns| {
-                self.root_namespace.insert(ns);
+                self.meta.namespace.insert(ns);
             });
     }
 
@@ -194,7 +191,7 @@ impl AssociatedReferenceMapper {
         }
     }
 
-    pub fn map_references(&mut self, hlir: &mut HLIR) -> ResolveResult<(Namespace, TypeRegistry)> {
+    pub fn map_references(&mut self, hlir: &mut HLIR) -> ResolveResult<()> {
         self.inject_builtin_definitions();
 
         // Map all except impls..
@@ -212,11 +209,11 @@ impl AssociatedReferenceMapper {
             }
         }
 
-        let root_namespace_clone = self.root_namespace.clone();
+        let root_namespace_clone = self.meta.namespace.clone();
         let mut resolve_use_errors = Vec::new();
         Self::resolve_uses_in_namespace(
             &root_namespace_clone,
-            &mut self.root_namespace,
+            &mut self.meta.namespace,
             IdentPath::new_empty(true),
             &mut resolve_use_errors,
         );
@@ -250,7 +247,7 @@ impl AssociatedReferenceMapper {
             return Err(ResolverErrorKind::ResolverErrors(self.errors.clone()).with_no_span());
         }
 
-        Ok((self.root_namespace.clone(), self.type_registry.clone()))
+        Ok(())
     }
 
     fn find_last_enclosing_path(&self, path: &IdentPath) -> Option<IdentPath> {
@@ -258,7 +255,7 @@ impl AssociatedReferenceMapper {
             return Some(IdentPath::new_empty(true));
         }
 
-        Some(self.root_namespace.find_previous_enclosing_scope(path))
+        Some(self.meta.namespace.find_previous_enclosing_scope(path))
     }
 
     fn search_backtracking_for_definition(
@@ -267,7 +264,7 @@ impl AssociatedReferenceMapper {
         mut base_path: IdentPath,
     ) -> Option<(IdentPath, ResolvedID)> {
         let path = ident_path.rebase_from_path(&base_path);
-        if let Some(def) = self.root_namespace.find_definition(&path) {
+        if let Some(def) = self.meta.namespace.find_definition(&path) {
             return Some((path, def.id));
         }
 
@@ -373,7 +370,7 @@ impl AssociatedReferenceMapper {
     }
 }
 
-impl AssociatedReferenceMapper {
+impl AssociatedReferenceMapper<'_> {
     #[inline]
     pub fn current_path(&self) -> &IdentPath {
         self.path_stack
@@ -404,7 +401,7 @@ impl AssociatedReferenceMapper {
     }
 }
 
-impl AssociatedReferenceMapper {
+impl AssociatedReferenceMapper<'_> {
     fn should_be_local(&self, path: &IdentPath) -> bool {
         let Some(namespace) = self.get_namespace(path) else {
             return false;
@@ -413,7 +410,7 @@ impl AssociatedReferenceMapper {
     }
 
     fn get_namespace(&self, path: &IdentPath) -> Option<&Namespace> {
-        let mut curr_namespace = &self.root_namespace;
+        let mut curr_namespace = &self.meta.namespace;
         for segment in path.segments() {
             curr_namespace = curr_namespace.get(segment)?;
         }
@@ -421,7 +418,7 @@ impl AssociatedReferenceMapper {
     }
 
     fn get_namespace_mut(&mut self, path: &IdentPath) -> Option<&mut Namespace> {
-        let mut curr_namespace = &mut self.root_namespace;
+        let mut curr_namespace = &mut self.meta.namespace;
         for segment in path.segments() {
             curr_namespace = curr_namespace.get_mut(segment)?;
         }
@@ -429,7 +426,7 @@ impl AssociatedReferenceMapper {
     }
 }
 
-impl HLIRVisitor for AssociatedReferenceMapper {
+impl HLIRVisitor for AssociatedReferenceMapper<'_> {
     fn visit_module(&mut self, module: &Module, hlir: &HLIR) {
         if module.owner_id == OwnerDefId::ROOT_NODE {
             self.super_module(module, hlir);
@@ -534,12 +531,14 @@ impl HLIRVisitor for AssociatedReferenceMapper {
                 })
                 .collect();
 
-            self.type_registry.register_adt(ADTTypeInfo::new_struct(
-                structure.owner_id,
-                self.current_path().clone(),
-                structure.ident.clone(),
-                fields,
-            ))
+            self.meta
+                .type_registry
+                .register_adt(ADTTypeInfo::new_struct(
+                    structure.owner_id,
+                    self.current_path().clone(),
+                    structure.ident.clone(),
+                    fields,
+                ))
         } else {
             push_resolve_err!(
                 self,
@@ -663,7 +662,7 @@ impl HLIRVisitor for AssociatedReferenceMapper {
     }
 }
 
-impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
+impl HLIRVisitorMut<'_> for AssociatedReferenceMapper<'_> {
     fn visit_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'_>) {
         if module.owner_id != OwnerDefId::ROOT_NODE {
             self.push_to_current_path(module.ident.ident().str());
@@ -705,6 +704,9 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper {
     }
 }
 
-pub fn resolve_associated_references(hlir: &mut HLIR) -> ResolveResult<(Namespace, TypeRegistry)> {
-    AssociatedReferenceMapper::new().map_references(hlir)
+pub fn resolve_associated_references(
+    hlir: &mut HLIR,
+    meta_data: &mut ProgramMetaData,
+) -> ResolveResult<()> {
+    AssociatedReferenceMapper::new(meta_data).map_references(hlir)
 }

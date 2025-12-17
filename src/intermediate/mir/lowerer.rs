@@ -618,11 +618,11 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 );
 
                 self.builder_mut_expect()
-                .set_exit_kind(BlockExitKind::Branch(
-                    Operand::Copy(condition_expr.into()),
-                    BasicBlockId::PLACEHOLDER_ID,
-                    BasicBlockId::PLACEHOLDER_ID,
-                ));
+                    .set_exit_kind(BlockExitKind::Branch(
+                        Operand::Copy(condition_expr.into()),
+                        BasicBlockId::PLACEHOLDER_ID,
+                        BasicBlockId::PLACEHOLDER_ID,
+                    ));
                 let branch_block_id = self.emit_and_replace_block().unwrap();
 
                 self.visit_block_by_id(*loop_block_expr_id, hlir);
