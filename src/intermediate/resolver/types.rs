@@ -205,10 +205,11 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
 
     fn visit_let_statement_mut(
         &mut self,
-        _id: crate::intermediate::hir::HirId,
+        id: crate::intermediate::hir::HirId,
         let_statement: &mut crate::intermediate::hir::nodes::LetStatement,
-        _hlir: &mut HLIRDisjointMut<'_>,
+        hlir: &mut HLIRDisjointMut<'_>,
     ) {
+        self.super_let_statement_mut(id, let_statement, hlir);
         if let Type::Unresolved(Ty::Type(type_path)) = &let_statement.ty {
             match self.resolve_type(&type_path.path) {
                 Ok(type_id) => {
