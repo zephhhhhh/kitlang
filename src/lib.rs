@@ -1,5 +1,6 @@
 #![feature(iter_advance_by)]
 #![feature(debug_closure_helpers)]
+#![allow(clippy::too_long_first_doc_paragraph)]
 
 //! Kitlang is a language built for embedding/scripting purposes
 //!
@@ -50,12 +51,10 @@ impl KitlangError {
     #[must_use]
     pub fn format_as_error_message(&self, source_string: &str) -> String {
         match self {
-            KitlangError::ParserError(err) => err.format_as_error_message(source_string),
-            KitlangError::LoweringError(err) => err.format_as_error_message(source_string),
-            KitlangError::ExecutionEndedUnexpectedly => {
-                "Error: Execution ended unexpectedly.".to_string()
-            }
-            KitlangError::FailedToFindEntryPoint => {
+            Self::ParserError(err) => err.format_as_error_message(source_string),
+            Self::LoweringError(err) => err.format_as_error_message(source_string),
+            Self::ExecutionEndedUnexpectedly => "Error: Execution ended unexpectedly.".to_string(),
+            Self::FailedToFindEntryPoint => {
                 "Error: Failed to find entry point 'main' function.".to_string()
             }
         }

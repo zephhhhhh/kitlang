@@ -31,7 +31,7 @@ struct HIRToMIRBlockBuilder {
 }
 
 impl HIRToMIRBlockBuilder {
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.statements.is_empty()
     }
 
@@ -86,7 +86,7 @@ struct HIRToMIRLoopState {
 }
 
 impl HIRToMIRLoopState {
-    pub fn new(condition_block_id: BasicBlockId) -> Self {
+    pub const fn new(condition_block_id: BasicBlockId) -> Self {
         Self {
             condition_block_id,
             breaks_to_update: Vec::new(),
@@ -98,7 +98,7 @@ impl HIRToMIRLoopState {
     }
 }
 
-fn read_and_reset<T: Copy>(v: &mut Option<T>) -> Option<T> {
+const fn read_and_reset<T: Copy>(v: &mut Option<T>) -> Option<T> {
     if v.is_some() {
         let value = *v;
         *v = None;
@@ -109,19 +109,19 @@ fn read_and_reset<T: Copy>(v: &mut Option<T>) -> Option<T> {
 }
 
 impl HIRToMIRFuncLowererState {
-    pub fn read_assign_target(&mut self) -> Option<AssignTarget> {
+    pub const fn read_assign_target(&mut self) -> Option<AssignTarget> {
         read_and_reset(&mut self.assign_target)
     }
 
-    pub fn read_last_block_target(&mut self) -> Option<AssignTarget> {
+    pub const fn read_last_block_target(&mut self) -> Option<AssignTarget> {
         read_and_reset(&mut self.last_block_target)
     }
 
-    pub fn read_owner_target(&mut self) -> Option<OwnerDefId> {
+    pub const fn read_owner_target(&mut self) -> Option<OwnerDefId> {
         read_and_reset(&mut self.owner_target)
     }
 
-    pub fn is_in_loop(&self) -> bool {
+    pub const fn is_in_loop(&self) -> bool {
         !self.loop_stack.is_empty()
     }
 
@@ -198,7 +198,7 @@ impl HIRToMIRFuncLowerer<'_> {
         self.block_stack.last_mut()
     }
 
-    fn builder_expect(&mut self) -> &HIRToMIRBlockBuilder {
+    fn builder_expect(&self) -> &HIRToMIRBlockBuilder {
         self.block_stack
             .last()
             .expect("MIR Lowering block builder doesn't exist.")
@@ -274,11 +274,8 @@ impl HIRToMIRFuncLowerer<'_> {
 
 impl HIRToMIRFuncLowerer<'_> {
     fn is_directive_set(&self) -> bool {
-        if let Some(builder) = self.builder() {
-            builder.directive.is_some()
-        } else {
-            false
-        }
+        self.builder()
+            .is_some_and(|builder| builder.directive.is_some())
     }
 
     fn process_statement_expr(&mut self, _statement: &Statement, hlir: &HLIR, expr_id: HirId) {
@@ -308,7 +305,7 @@ impl HIRToMIRFuncLowerer<'_> {
         self.new_temp_local_with_mut(Mutability::Immutable)
     }
 
-    fn last_local(&mut self) -> LocalId {
+    const fn last_local(&self) -> LocalId {
         let locals = self.body.locals.len() as u32;
         LocalId(locals.saturating_sub(1))
     }
@@ -380,27 +377,23 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     .push_local_assign(local, RValue::literal(literal.clone()));
             }
             ExprKind::BinaryOp(binary_op_kind, hir_id, hir_id1) => {
-                if let Some(lhs_local) = self.visit_expr_assigned(*hir_id, hlir) {
-                    if let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) {
-                        let local = self.new_temp_local();
-                        self.builder_mut_expect().push_local_assign(
-                            local,
-                            RValue::BinaryOp(
-                                *binary_op_kind,
-                                (Operand::Copy(lhs_local), Operand::Copy(rhs_local)),
-                            ),
-                        );
-                    } else {
-                        push_lower_err!(
-                            self,
-                            hlir,
-                            *hir_id1,
-                            "Failed to resolve RHS of binary op."
-                        );
-                    }
-                } else {
+                let Some(lhs_local) = self.visit_expr_assigned(*hir_id, hlir) else {
                     push_lower_err!(self, hlir, *hir_id, "Failed to resolve LHS of binary op.");
-                }
+                    return;
+                };
+                let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) else {
+                    push_lower_err!(self, hlir, *hir_id1, "Failed to resolve RHS of binary op.");
+                    return;
+                };
+
+                let local = self.new_temp_local();
+                self.builder_mut_expect().push_local_assign(
+                    local,
+                    RValue::BinaryOp(
+                        *binary_op_kind,
+                        (Operand::Copy(lhs_local), Operand::Copy(rhs_local)),
+                    ),
+                );
             }
             ExprKind::UnaryOp(unary_op_kind, hir_id) => {
                 if let Some(rhs_local) = self.visit_expr_assigned(*hir_id, hlir) {
@@ -443,12 +436,11 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     self.visit_block_by_id(*true_block, hlir);
                     if !self.is_directive_set() {
                         let true_block_last_target = self.state.read_last_block_target();
-                        let true_final_assign_value =
-                            if let Some(last_target) = &true_block_last_target {
+                        let true_final_assign_value = true_block_last_target
+                            .as_ref()
+                            .map_or_else(RValue::unit, |last_target| {
                                 RValue::Unchanged(Operand::Copy(*last_target))
-                            } else {
-                                RValue::unit()
-                            };
+                            });
                         self.builder_mut_expect()
                             .push_local_assign(if_result_local, true_final_assign_value);
                         is_local_set = true;
@@ -470,12 +462,11 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         }
                         if !self.is_directive_set() {
                             let false_block_last_target = self.state.read_last_block_target();
-                            let false_final_assign_value =
-                                if let Some(last_target) = &false_block_last_target {
+                            let false_final_assign_value = false_block_last_target
+                                .as_ref()
+                                .map_or_else(RValue::unit, |last_target| {
                                     RValue::Unchanged(Operand::Copy(*last_target))
-                                } else {
-                                    RValue::unit()
-                                };
+                                });
                             self.builder_mut_expect()
                                 .push_local_assign(if_result_local, false_final_assign_value);
                         }

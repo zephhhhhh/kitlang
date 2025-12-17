@@ -11,33 +11,33 @@ use std::fmt::Debug;
 
 use crate::ast::{IdentPath, IdentPathSegment, SpannedIdent, Visibility};
 
+use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::hir::nodes::{ResolvedID, Type};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
 use crate::intermediate::resolver::errors::ResolveResult;
 use crate::intermediate::types::KitTy;
-use crate::intermediate::hir::ProgramMetaData;
 
 // use crate::intermediate::types::KitTy;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ADTStructField {
     pub ident: SpannedIdent,
     pub ty: Type,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ADTKind {
     Struct(Vec<ADTStructField>),
 }
 
 impl ADTKind {
     #[allow(dead_code)]
-    pub fn is_struct(&self) -> bool {
-        matches!(self, ADTKind::Struct(_))
+    pub const fn is_struct(&self) -> bool {
+        matches!(self, Self::Struct(_))
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ADTTypeInfo {
     pub owner_id: OwnerDefId,
     pub type_id: TypeID,
@@ -60,7 +60,7 @@ impl Debug for ADTTypeInfo {
 }
 
 impl ADTTypeInfo {
-    pub fn new_struct(
+    pub const fn new_struct(
         owner_id: OwnerDefId,
         defined_in: IdentPath,
         type_ident: SpannedIdent,
@@ -120,7 +120,7 @@ impl ADTTypeInfo {
 pub type TypeID = usize;
 const PLACEHOLDER_TYPE_ID: TypeID = usize::MAX;
 
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct TypeRegistry {
     all_paths: Vec<(IdentPath, TypeID)>,
     lut: HashMap<IdentPath, TypeID>,
@@ -165,7 +165,7 @@ impl TypeRegistry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NamespaceKind {
     Module,
     Function,
@@ -178,16 +178,16 @@ pub enum NamespaceKind {
 
 impl NamespaceKind {
     #[allow(dead_code)]
-    pub fn is_resolvable_type(&self) -> bool {
-        !matches!(self, NamespaceKind::Module)
+    pub const fn is_resolvable_type(&self) -> bool {
+        !matches!(self, Self::Module)
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Namespace {
     pub ident: String,
     pub kind: NamespaceKind,
-    pub items: HashMap<String, Namespace>,
+    pub items: HashMap<String, Self>,
     pub id: ResolvedID,
     pub vis: Visibility,
     pub local: bool,
@@ -208,17 +208,17 @@ impl Namespace {
 
 impl Namespace {
     #[inline]
-    pub fn get(&self, ident: &str) -> Option<&Namespace> {
+    pub fn get(&self, ident: &str) -> Option<&Self> {
         self.items.get(ident)
     }
 
     #[inline]
-    pub fn get_mut(&mut self, ident: &str) -> Option<&mut Namespace> {
+    pub fn get_mut(&mut self, ident: &str) -> Option<&mut Self> {
         self.items.get_mut(ident)
     }
 
     #[inline]
-    pub fn insert(&mut self, namespace: Namespace) {
+    pub fn insert(&mut self, namespace: Self) {
         self.items.insert(namespace.ident.clone(), namespace);
     }
 
@@ -228,7 +228,7 @@ impl Namespace {
     }
 
     #[allow(dead_code)]
-    pub fn is_resolvable_type(&self) -> bool {
+    pub const fn is_resolvable_type(&self) -> bool {
         self.kind.is_resolvable_type()
     }
 
@@ -285,7 +285,7 @@ impl Namespace {
         self.find_previous_module(&path.rebase_from_path(base))
     }
 
-    pub fn find_definition_from_segments(&self, path: &[IdentPathSegment]) -> Option<&Namespace> {
+    pub fn find_definition_from_segments(&self, path: &[IdentPathSegment]) -> Option<&Self> {
         let mut curr_namespace = self;
         for segment in path {
             curr_namespace = curr_namespace.get(segment)?;
@@ -293,11 +293,11 @@ impl Namespace {
         Some(curr_namespace)
     }
 
-    pub fn find_definition(&self, path: &IdentPath) -> Option<&Namespace> {
+    pub fn find_definition(&self, path: &IdentPath) -> Option<&Self> {
         self.find_definition_from_segments(path.segments())
     }
 
-    pub fn find_definition_from(&self, base: &IdentPath, path: &IdentPath) -> Option<&Namespace> {
+    pub fn find_definition_from(&self, base: &IdentPath, path: &IdentPath) -> Option<&Self> {
         let final_path = path.rebase_from_path(base);
         self.find_definition_from_segments(final_path.segments())
     }
@@ -307,7 +307,7 @@ impl Namespace {
         defined_in: &IdentPath,
         data_type_ident: &str,
         method_ident: &str,
-    ) -> Option<&Namespace> {
+    ) -> Option<&Self> {
         self.find_definition(defined_in)?
             .items
             .get(data_type_ident)?

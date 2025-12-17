@@ -23,7 +23,7 @@ impl<'a> CodeCursor<'a> {
     /// Construct a new code character iterator with a provided input string.
     #[inline]
     #[must_use]
-    pub fn new(input: &'a str) -> CodeCursor<'a> {
+    pub fn new(input: &'a str) -> Self {
         Self {
             length: input.len() as CodeCursorIndex,
             chars: input.chars(),
@@ -58,7 +58,7 @@ impl<'a> CodeCursor<'a> {
     /// The previous `symbol` to be consumed by the stream, or `EOF` if there is no valid previous.
     #[inline]
     #[must_use]
-    pub fn prev(&self) -> char {
+    pub const fn prev(&self) -> char {
         self.previous
     }
 
@@ -267,7 +267,7 @@ impl<'a> CodeCursor<'a> {
 /// Returns true if `c` is considered a 'whitespace' character.
 #[inline]
 #[must_use]
-pub fn is_whitespace(c: char) -> bool {
+pub const fn is_whitespace(c: char) -> bool {
     matches!(
         c,
         '\u{0009}'   // Tab ('\t')
@@ -288,12 +288,12 @@ pub fn is_whitespace(c: char) -> bool {
 }
 
 /// Returns true if the character sequence describes a comment or doc block.
-fn is_comment_sequence(first_char: char, second_char: char) -> bool {
+const fn is_comment_sequence(first_char: char, second_char: char) -> bool {
     first_char == '/' && (second_char == '/' || second_char == '*')
 }
 
-/// Returns true if the char is considered a newline char (`'\r'`` or `'\n'`)
-fn is_newline_char(c: char) -> bool {
+/// Returns true if the char is considered a newline char (`'\r'` or `'\n'`)
+const fn is_newline_char(c: char) -> bool {
     c == '\r' || c == '\n'
 }
 
@@ -306,7 +306,7 @@ struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     /// Construct a new lexer state from an input string.
-    pub fn new(source_string: &'a str) -> Lexer<'a> {
+    pub fn new(source_string: &'a str) -> Self {
         Self {
             source_string,
             cursor: CodeCursor::new(source_string),
@@ -473,11 +473,10 @@ impl Lexer<'_> {
                 .consume_while(unicode_xid::UnicodeXID::is_xid_continue);
         let ident_value = self.substr(pos, end_pos);
 
-        let kind = if let Some(keyword) = Keyword::from_string(ident_value) {
-            TokenKind::Keyword(keyword)
-        } else {
-            TokenKind::Ident(ident_value.to_string())
-        };
+        let kind = Keyword::from_string(ident_value).map_or_else(
+            || TokenKind::Ident(ident_value.to_string()),
+            TokenKind::Keyword,
+        );
 
         Some(Token::new(kind, pos, end_pos))
     }
@@ -591,7 +590,7 @@ impl Lexer<'_> {
 }
 
 /// Returns `true` if the token kind is a comment, or documentation token.
-fn is_comment_token_kind(t: &TokenKind) -> bool {
+const fn is_comment_token_kind(t: &TokenKind) -> bool {
     matches!(
         t,
         TokenKind::Comment(_)

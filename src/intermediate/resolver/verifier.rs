@@ -25,7 +25,7 @@ impl HLIRVisitor for UnresolvedReferenceChecker {
 }
 
 impl UnresolvedReferenceChecker {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             unresolved_references: Vec::new(),
         }
@@ -47,6 +47,6 @@ impl UnresolvedReferenceChecker {
     }
 }
 
-pub fn verify_references(hlir: &mut HLIR) -> ResolveResult<()> {
+pub fn verify_references(hlir: &HLIR) -> ResolveResult<()> {
     UnresolvedReferenceChecker::new().verify_references(hlir)
 }

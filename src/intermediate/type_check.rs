@@ -6,11 +6,11 @@ use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringError
 use crate::intermediate::hir::visitor::HLIRVisitorMut;
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
+use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::hir::nodes::{
     Block, Expr, ExprKind, HIRNode, RefPath, ResolvedID, Statement, StatementKind, Type,
 };
 use crate::intermediate::types::{KitFloat, KitInt, KitTy};
-use crate::intermediate::hir::ProgramMetaData;
 
 use super::hir::nodes::{Function, LetStatement};
 use super::hir::visitor::HLIRDisjointMut;
@@ -64,7 +64,7 @@ struct TypeChecker<'a> {
 }
 
 impl<'a> TypeChecker<'a> {
-    pub fn new(meta_data: &'a mut ProgramMetaData, should_infer: bool) -> Self {
+    pub const fn new(meta_data: &'a mut ProgramMetaData, should_infer: bool) -> Self {
         Self {
             meta: meta_data,
             should_infer,
@@ -106,12 +106,7 @@ impl TypeChecker<'_> {
 }
 
 impl TypeChecker<'_> {
-    fn resolved_type(
-        &self,
-        id: HirId,
-        t: &Type,
-        hlir: &mut HLIRDisjointMut<'_>,
-    ) -> TypeResult<KitTy> {
+    fn resolved_type(&self, id: HirId, t: &Type, hlir: &HLIRDisjointMut<'_>) -> TypeResult<KitTy> {
         t.resolved()
             .ok_or_else(|| {
                 type_fail!(
@@ -222,10 +217,10 @@ impl TypeChecker<'_> {
 
 impl TypeChecker<'_> {
     fn validate_return_value(
-        &mut self,
+        &self,
         id: HirId,
         t: Type,
-        hlir: &mut HLIRDisjointMut<'_>,
+        hlir: &HLIRDisjointMut<'_>,
     ) -> TypeResult<Type> {
         let expected_return = self
             .current_expected_return()
@@ -252,11 +247,7 @@ impl TypeChecker<'_> {
         self.validate_return_value(expr_id, return_type, hlir)
     }
 
-    fn eval_non_expr_hir_id(
-        &mut self,
-        id: HirId,
-        hlir: &mut HLIRDisjointMut<'_>,
-    ) -> TypeResult<Type> {
+    fn eval_non_expr_hir_id(&self, id: HirId, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
         let Some(node) = hlir.get_hir_node_mut(id) else {
             return Err(type_fail!(
                 hlir,
@@ -334,34 +325,38 @@ impl TypeChecker<'_> {
                 let lhs_r = self.resolved_type(*hir_id, &lhs, hlir)?;
                 let rhs_r = self.resolved_type(*hir_id1, &rhs, hlir)?;
 
-                if let Some(resulting_type) = lhs_r.binary_op_result_type(&rhs_r, *binary_op_kind) {
-                    Ok(Type::Resolved(resulting_type))
-                } else {
-                    Err(type_fail!(
-                        hlir,
-                        expr.id,
-                        "Failed to determine binary operation result type! `{}` {} `{}`",
-                        self.type_name(lhs),
-                        binary_op_kind.symbols(),
-                        self.type_name(rhs)
-                    ))
-                }
+                lhs_r
+                    .binary_op_result_type(&rhs_r, *binary_op_kind)
+                    .map_or_else(
+                        || {
+                            Err(type_fail!(
+                                hlir,
+                                expr.id,
+                                "Failed to determine binary operation result type! `{}` {} `{}`",
+                                self.type_name(lhs),
+                                binary_op_kind.symbols(),
+                                self.type_name(rhs)
+                            ))
+                        },
+                        |resulting_type| Ok(Type::Resolved(resulting_type)),
+                    )
             }
             ExprKind::UnaryOp(unary_op_kind, hir_id) => {
                 let rhs = self.eval_expr_type_by_id(*hir_id, hlir)?;
                 let rhs_r = self.resolved_type(*hir_id, &rhs, hlir)?;
 
-                if let Some(resulting_type) = rhs_r.unary_op_result_type(*unary_op_kind) {
-                    Ok(Type::Resolved(resulting_type))
-                } else {
-                    Err(type_fail!(
-                        hlir,
-                        expr.id,
-                        "Failed to determine unary op result type: {} `{}`",
-                        unary_op_kind.symbols(),
-                        self.type_name(rhs)
-                    ))
-                }
+                rhs_r.unary_op_result_type(*unary_op_kind).map_or_else(
+                    || {
+                        Err(type_fail!(
+                            hlir,
+                            expr.id,
+                            "Failed to determine unary op result type: {} `{}`",
+                            unary_op_kind.symbols(),
+                            self.type_name(rhs)
+                        ))
+                    },
+                    |resulting_type| Ok(Type::Resolved(resulting_type)),
+                )
             }
             ExprKind::If(hir_id, hir_id1, hir_id2) => {
                 let condition_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
@@ -536,11 +531,10 @@ impl TypeChecker<'_> {
                             .type_registry
                             .get_from_type_id(type_id)
                             .expect("Type exists");
-                        if let Some(field) = type_info.get_field_by_ident(ident.str()) {
-                            Ok(field.ty.clone())
-                        } else {
-                            Err(type_fail!(hlir, *hir_id, "Can't find field '{:?}'", ident))
-                        }
+                        type_info.get_field_by_ident(ident.str()).map_or_else(
+                            || Err(type_fail!(hlir, *hir_id, "Can't find field '{:?}'", ident)),
+                            |field| Ok(field.ty.clone()),
+                        )
                     }
                     Type::Unresolved(t) => Err(type_fail!(
                         hlir,
@@ -680,17 +674,18 @@ impl TypeChecker<'_> {
                     )
                 })?;
 
-                if let Some(cast_result_type) = expr_type_r.cast_result_type(&target_type_r) {
-                    Ok(Type::Resolved(cast_result_type))
-                } else {
-                    Err(type_fail!(
-                        hlir,
-                        expr.id,
-                        "Cannot cast type `{}` to `{}`",
-                        self.type_name(expr_type),
-                        self.type_name(target_type.clone())
-                    ))
-                }
+                expr_type_r.cast_result_type(&target_type_r).map_or_else(
+                    || {
+                        Err(type_fail!(
+                            hlir,
+                            expr.id,
+                            "Cannot cast type `{}` to `{}`",
+                            self.type_name(expr_type),
+                            self.type_name(target_type.clone())
+                        ))
+                    },
+                    |cast_result_type| Ok(Type::Resolved(cast_result_type)),
+                )
             }
             ExprKind::Range(min_id, max_id, _) => {
                 let min_type = self.eval_expr_type_by_id(*min_id, hlir)?;
@@ -803,10 +798,10 @@ impl TypeChecker<'_> {
                 "Let statement type mismatch. Tried to assign {}: {} = {}",
                 let_statement.ident.str(),
                 self.type_name(let_statement.ty.clone()),
-                self.type_name(init_ty.clone())
+                self.type_name(init_ty)
             ))
         } else {
-            Ok(init_ty.clone())
+            Ok(init_ty)
         }
     }
 
@@ -855,7 +850,7 @@ impl TypeChecker<'_> {
     }
 
     fn is_id_return_statement(
-        &mut self,
+        &self,
         id: HirId,
         hlir: &mut HLIRDisjointMut<'_>,
     ) -> TypeResult<bool> {
@@ -882,7 +877,7 @@ impl TypeChecker<'_> {
 
     fn eval_block_type(
         &mut self,
-        block: &mut Block,
+        block: &Block,
         hlir: &mut HLIRDisjointMut<'_>,
     ) -> TypeResult<Type> {
         let statement_count = block.statements.len();
@@ -961,7 +956,7 @@ impl HLIRVisitorMut<'_> for TypeChecker<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeCheckFail {
     pub span: SourceSpan,
     pub reason: String,

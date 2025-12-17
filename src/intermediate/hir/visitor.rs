@@ -256,11 +256,11 @@ pub struct HLIRDisjointMut<'a> {
 }
 
 impl<'a> HLIRDisjointMut<'a> {
-    pub fn new(hlir: &'a mut HLIR) -> Self {
+    pub const fn new(hlir: &'a mut HLIR) -> Self {
         Self { hlir }
     }
 
-    pub fn nonmut_ref<'b>(&'a self) -> &'b HLIR
+    pub const fn nonmut_ref<'b>(&'a self) -> &'b HLIR
     where
         'a: 'b,
     {
@@ -333,7 +333,7 @@ impl<T> std::ops::DerefMut for Disjoint<T> {
 }
 
 impl<T> Disjoint<T> {
-    pub fn from_mut_ref(v: &mut T) -> Self {
+    pub const fn from_mut_ref(v: &mut T) -> Self {
         Self {
             v: std::ptr::from_mut(v),
         }

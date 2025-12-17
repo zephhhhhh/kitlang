@@ -136,10 +136,10 @@ impl ResolutionFailure {
     /// Returns a human-readable description of the resolution failure with a specific target ident.
     pub fn error_message_for(&self, target_ident: &str) -> String {
         match self {
-            ResolutionFailure::NotFound => {
+            Self::NotFound => {
                 format!("The referenced item '{}' was not found.", target_ident)
             }
-            ResolutionFailure::Inaccessible => format!(
+            Self::Inaccessible => format!(
                 "The referenced item '{}' is not accessible from the current scope.",
                 target_ident
             ),
@@ -147,7 +147,7 @@ impl ResolutionFailure {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct UnresolvedReference {
     pub path: SpannedIdentPath,
     pub id: HirId,
@@ -160,7 +160,7 @@ impl Debug for UnresolvedReference {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct UnresolvedReferences {
     pub references: Vec<UnresolvedReference>,
 }

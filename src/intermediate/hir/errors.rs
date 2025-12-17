@@ -21,10 +21,12 @@ pub enum LoweringErrorKind {
 }
 
 impl LoweringErrorKind {
+    #[must_use]
     pub fn with_span(&self, span: impl Into<SourceSpan>) -> LoweringError {
         LoweringError::new(self.clone(), span)
     }
 
+    #[must_use]
     pub fn with_no_span(&self) -> LoweringError {
         LoweringError::new(self.clone(), SourceSpan::null_span())
     }
@@ -57,6 +59,7 @@ impl LoweringError {
         }
     }
 
+    #[must_use]
     pub fn format_as_error_message(&self, source_string: &str) -> String {
         match &self.error_kind {
             LoweringErrorKind::LoweringErrors(errs) => {

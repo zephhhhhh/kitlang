@@ -9,12 +9,12 @@ use crate::intermediate::hir::nodes::{
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitor, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
+use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::resolver::errors::{
     ResolutionFailure, ResolveResult, ResolverError, ResolverErrorKind, UnresolvedReference,
     UnresolvedReferences, push_resolve_err, resolve_err,
 };
 use crate::intermediate::resolver::{ADTStructField, ADTTypeInfo, Namespace, NamespaceKind};
-use crate::intermediate::hir::ProgramMetaData;
 
 use log::*;
 
@@ -328,11 +328,9 @@ impl<'a> AssociatedReferenceMapper<'a> {
                     return Err(ResolutionFailure::Inaccessible);
                 }
 
-                let inside_func = if let Some(ns) = self.get_namespace(&local_check) {
-                    ns.kind == NamespaceKind::Function
-                } else {
-                    false
-                };
+                let inside_func = self
+                    .get_namespace(&local_check)
+                    .is_some_and(|ns| ns.kind == NamespaceKind::Function);
 
                 if segment_match.saturating_add(1) >= p.len() {
                     // Fully matched, no need to check further.
@@ -581,7 +579,7 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
         let local = self.should_be_local(&current_path);
         if let Some(ns) = self.get_namespace_mut(&current_path) {
             ns.insert(Namespace {
-                ident: struct_ident.clone(),
+                ident: struct_ident,
                 kind: NamespaceKind::Enum,
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(enumeration.owner_id),
@@ -605,7 +603,7 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
         let local = self.should_be_local(&current_path);
         if let Some(ns) = self.get_namespace_mut(&current_path) {
             ns.insert(Namespace {
-                ident: const_ident.clone(),
+                ident: const_ident,
                 kind: NamespaceKind::Constant,
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(constant.owner_id),

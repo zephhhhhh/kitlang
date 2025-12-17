@@ -37,7 +37,7 @@ impl SpannedErrorLine {
     }
 
     /// The index of the last character in this line in the global source code string.
-    pub fn end_of_line_index(&self) -> u32 {
+    pub const fn end_of_line_index(&self) -> u32 {
         self.line_start_global_index
             .saturating_add(self.source.len() as u32)
     }
@@ -183,14 +183,14 @@ impl SpannedErrorBuilder {
 
     /// Add blank prefix lines above the source code view and below if there are `footer_lines`
     /// present.
-    pub fn pad_around_source_view(&mut self, should_pad: bool) -> &mut Self {
+    pub const fn pad_around_source_view(&mut self, should_pad: bool) -> &mut Self {
         self.pad_around_source_view = should_pad;
         self
     }
 
     /// Show the location (file name, line number and character index) that the error span starts
     /// at as a header line above the source code view.
-    pub fn show_location(&mut self, should_show: bool) -> &mut Self {
+    pub const fn show_location(&mut self, should_show: bool) -> &mut Self {
         self.show_location = should_show;
         self
     }

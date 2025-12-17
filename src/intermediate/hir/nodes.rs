@@ -13,7 +13,7 @@ use paste::paste;
 // Owning nodes..
 
 /// Describes a kind of node that "controls" a scope and owns it's contents.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwningNodeKind {
     Item(Item),
     ImplItem(Item),
@@ -22,52 +22,52 @@ pub enum OwningNodeKind {
 impl OwningNodeKind {
     pub fn ident(&self) -> Option<String> {
         match self {
-            OwningNodeKind::Item(item) => item.ident(),
-            OwningNodeKind::ImplItem(item) => item.ident(),
+            Self::Item(item) => item.ident(),
+            Self::ImplItem(item) => item.ident(),
         }
     }
 
-    pub fn owner_id(&self) -> OwnerDefId {
+    pub const fn owner_id(&self) -> OwnerDefId {
         match self {
-            OwningNodeKind::Item(item) => item.owner_id,
-            OwningNodeKind::ImplItem(item) => item.owner_id,
+            Self::Item(item) => item.owner_id,
+            Self::ImplItem(item) => item.owner_id,
         }
     }
 
-    pub fn set_owner_id(&mut self, owner_id: OwnerDefId) {
+    pub const fn set_owner_id(&mut self, owner_id: OwnerDefId) {
         match self {
-            OwningNodeKind::Item(item) => item.owner_id = owner_id,
-            OwningNodeKind::ImplItem(item) => item.owner_id = owner_id,
+            Self::Item(item) => item.owner_id = owner_id,
+            Self::ImplItem(item) => item.owner_id = owner_id,
         }
     }
 
-    pub fn item(&self) -> Option<&Item> {
+    pub const fn item(&self) -> Option<&Item> {
         match self {
-            OwningNodeKind::Item(item) | OwningNodeKind::ImplItem(item) => Some(item),
+            Self::Item(item) | Self::ImplItem(item) => Some(item),
         }
     }
 
-    pub fn item_mut(&mut self) -> Option<&mut Item> {
+    pub const fn item_mut(&mut self) -> Option<&mut Item> {
         match self {
-            OwningNodeKind::Item(item) | OwningNodeKind::ImplItem(item) => Some(item),
+            Self::Item(item) | Self::ImplItem(item) => Some(item),
         }
     }
 
-    pub fn span(&self) -> Option<SourceSpan> {
+    pub const fn span(&self) -> Option<SourceSpan> {
         match self {
-            OwningNodeKind::Item(item) | OwningNodeKind::ImplItem(item) => item.span(),
+            Self::Item(item) | Self::ImplItem(item) => item.span(),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub enum Type {
     Unresolved(ASTTy),
     Resolved(KitTy),
 }
 
 impl Type {
-    pub fn unit() -> Self {
+    pub const fn unit() -> Self {
         Self::Resolved(KitTy::Unit)
     }
 
@@ -78,17 +78,17 @@ impl Type {
         *resolved == KitTy::Unit
     }
 
-    pub fn is_resolved(&self) -> bool {
+    pub const fn is_resolved(&self) -> bool {
         matches!(self, Self::Resolved(_))
     }
 
-    pub fn is_infer(&self) -> bool {
+    pub const fn is_infer(&self) -> bool {
         matches!(self, Self::Unresolved(ASTTy::Infer))
     }
 
-    pub fn resolved(&self) -> Option<&KitTy> {
+    pub const fn resolved(&self) -> Option<&KitTy> {
         match self {
-            Type::Resolved(kit_ty) => Some(kit_ty),
+            Self::Resolved(kit_ty) => Some(kit_ty),
             _ => None,
         }
     }
@@ -96,18 +96,15 @@ impl Type {
 
 impl Type {
     pub fn from_ast_ty(ty: &ASTTy) -> Self {
-        match KitTy::try_from_ast_ty(ty) {
-            Some(t) => Self::Resolved(t),
-            None => Self::Unresolved(ty.clone()),
-        }
+        KitTy::try_from_ast_ty(ty).map_or_else(|| Self::Unresolved(ty.clone()), Self::Resolved)
     }
 }
 
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Unresolved(ty) => write!(f, "Unresolved({:?})", ty),
-            Type::Resolved(kit_ty) => {
+            Self::Unresolved(ty) => write!(f, "Unresolved({:?})", ty),
+            Self::Resolved(kit_ty) => {
                 if let Some(ty_str) = kit_ty.to_type_str() {
                     write!(f, "{}", ty_str)
                 } else {
@@ -153,14 +150,14 @@ pub enum HIRNode {
 }
 
 impl HIRNode {
-    pub fn span(&self) -> SourceSpan {
+    pub const fn span(&self) -> SourceSpan {
         match self {
-            HIRNode::Param(parameter) => parameter.span,
-            HIRNode::Block(block) => block.span,
-            HIRNode::Expr(expr) => expr.span,
-            HIRNode::Statement(statement) => statement.span,
-            HIRNode::Field(struct_field) => struct_field.span,
-            HIRNode::Path(ref_path) => ref_path.span(),
+            Self::Param(parameter) => parameter.span,
+            Self::Block(block) => block.span,
+            Self::Expr(expr) => expr.span,
+            Self::Statement(statement) => statement.span,
+            Self::Field(struct_field) => struct_field.span,
+            Self::Path(ref_path) => ref_path.span(),
         }
     }
 }
@@ -214,14 +211,14 @@ pub struct OwningNode {
 }
 
 impl OwningNode {
-    pub fn new(kind: OwningNodeKind) -> Self {
+    pub const fn new(kind: OwningNodeKind) -> Self {
         Self {
             kind,
             nodes: Vec::new(),
         }
     }
 
-    pub fn from_item(item: Item, impl_item: bool) -> Self {
+    pub const fn from_item(item: Item, impl_item: bool) -> Self {
         Self::new(if impl_item {
             OwningNodeKind::ImplItem(item)
         } else {
@@ -229,11 +226,11 @@ impl OwningNode {
         })
     }
 
-    pub fn set_owner_id(&mut self, owner_id: OwnerDefId) {
+    pub const fn set_owner_id(&mut self, owner_id: OwnerDefId) {
         self.kind.set_owner_id(owner_id);
     }
 
-    pub fn owner_id(&self) -> OwnerDefId {
+    pub const fn owner_id(&self) -> OwnerDefId {
         self.kind.owner_id()
     }
 
@@ -241,29 +238,29 @@ impl OwningNode {
         self.kind.ident()
     }
 
-    pub fn item(&self) -> Option<&Item> {
+    pub const fn item(&self) -> Option<&Item> {
         self.kind.item()
     }
 
-    pub fn item_mut(&mut self) -> Option<&mut Item> {
+    pub const fn item_mut(&mut self) -> Option<&mut Item> {
         self.kind.item_mut()
     }
 
-    pub fn span(&self) -> Option<SourceSpan> {
+    pub const fn span(&self) -> Option<SourceSpan> {
         self.kind.span()
     }
 }
 
 impl OwningNode {
-    pub fn local_count(&self) -> u32 {
+    pub const fn local_count(&self) -> u32 {
         self.nodes.len() as u32
     }
 
-    pub fn next_local_id(&self) -> LocalDefId {
+    pub const fn next_local_id(&self) -> LocalDefId {
         LocalDefId(self.local_count())
     }
 
-    pub fn next_hir_id(&self) -> HirId {
+    pub const fn next_hir_id(&self) -> HirId {
         HirId {
             owner: self.owner_id(),
             id: self.next_local_id(),
@@ -293,7 +290,7 @@ macro_rules! impl_item_kind_shorthand {
     ) => {
         paste! {
             impl OwningNode {
-                #[inline] pub fn [<hir_ $item_name _mut>](&mut self) -> Option<&mut $return_ty> {
+                #[inline] pub const fn [<hir_ $item_name _mut>](&mut self) -> Option<&mut $return_ty> {
                     let item = match &mut self.kind {
                         OwningNodeKind::Item(item) => item,
                         OwningNodeKind::ImplItem(item) => item,
@@ -304,7 +301,7 @@ macro_rules! impl_item_kind_shorthand {
                     }
                 }
 
-                #[inline] pub fn [<hir_ $item_name _ref>](&self) -> Option<&$return_ty> {
+                #[inline] pub const fn [<hir_ $item_name _ref>](&self) -> Option<&$return_ty> {
                     let item = match &self.kind {
                         OwningNodeKind::Item(item) => item,
                         OwningNodeKind::ImplItem(item) => item,
@@ -329,45 +326,43 @@ impl_item_kind_shorthand!(use, ItemKind::Use(u) => u, UsePath);
 
 // Item kind tys..
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleSpan {
     Declaration(SourceSpan),
     Implementation(SourceSpan),
 }
 
 impl ModuleSpan {
-    pub fn span(&self) -> SourceSpan {
+    pub const fn span(&self) -> SourceSpan {
         match self {
-            ModuleSpan::Declaration(source_span) | ModuleSpan::Implementation(source_span) => {
-                *source_span
-            }
+            Self::Declaration(source_span) | Self::Implementation(source_span) => *source_span,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleIdent {
     RawIdent(Ident),
     SpannedIdent(SpannedIdent),
 }
 
 impl ModuleIdent {
-    pub fn ident(&self) -> &Ident {
+    pub const fn ident(&self) -> &Ident {
         match self {
-            ModuleIdent::RawIdent(ident) => ident,
-            ModuleIdent::SpannedIdent(spanned_ident) => &spanned_ident.ident,
+            Self::RawIdent(ident) => ident,
+            Self::SpannedIdent(spanned_ident) => &spanned_ident.ident,
         }
     }
 
-    pub fn span(&self) -> SourceSpan {
+    pub const fn span(&self) -> SourceSpan {
         match self {
-            ModuleIdent::RawIdent(_) => SourceSpan::new(0, 0),
-            ModuleIdent::SpannedIdent(spanned_ident) => spanned_ident.span,
+            Self::RawIdent(_) => SourceSpan::new(0, 0),
+            Self::SpannedIdent(spanned_ident) => spanned_ident.span,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
     pub owner_id: OwnerDefId,
     pub ident: ModuleIdent,
@@ -377,7 +372,7 @@ pub struct Module {
 }
 
 /// An individual parameter to a function.
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, PartialOrd)]
 pub struct Parameter {
     pub id: HirId,
     pub fn_id: OwnerDefId,
@@ -397,7 +392,7 @@ impl Debug for Parameter {
 }
 
 /// The "signature" of a function, holds the return type and the parameter types.
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct FunctionSig {
     pub parameter_idents: Vec<String>,
     pub parameters: Vec<Type>,
@@ -405,13 +400,13 @@ pub struct FunctionSig {
     pub span: SourceSpan,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionBody {
     pub params: Vec<HirId>,
     pub block: HirId,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Function {
     pub owner_id: OwnerDefId,
     pub ident: SpannedIdent,
@@ -438,7 +433,7 @@ impl Debug for Function {
 }
 
 /// A field of a struct, containing the name of the field and it's associated [`Type`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructField {
     pub id: HirId,
     pub ident: SpannedIdent,
@@ -447,7 +442,7 @@ pub struct StructField {
     pub vis: Visibility,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Struct {
     pub owner_id: OwnerDefId,
     pub ident: SpannedIdent,
@@ -456,7 +451,7 @@ pub struct Struct {
     pub fields: Vec<HirId>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Enum {
     pub owner_id: OwnerDefId,
     pub ident: SpannedIdent,
@@ -466,7 +461,7 @@ pub struct Enum {
 }
 
 /// A declaration of a constant, with the expression it should be evaluated to.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Constant {
     pub owner_id: OwnerDefId,
     pub ident: SpannedIdent,
@@ -476,7 +471,7 @@ pub struct Constant {
     pub expr: HirId,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Impl {
     pub span: SourceSpan,
     pub owner_id: OwnerDefId,
@@ -486,7 +481,7 @@ pub struct Impl {
     pub items: Vec<OwnerDefId>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UsePath {
     pub owner_id: OwnerDefId,
     pub imports: Vec<IdentPath>,
@@ -497,7 +492,7 @@ pub struct UsePath {
 
 // Item implementation..
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ItemKind {
     Module(Module),
     Function(Function),
@@ -511,36 +506,36 @@ pub enum ItemKind {
 impl ItemKind {
     pub fn ident(&self) -> Option<String> {
         match self {
-            ItemKind::Module(md) => Some(md.ident.ident().string()),
-            ItemKind::Function(f) => Some(f.ident.string()),
-            ItemKind::Struct(s) => Some(s.ident.string()),
-            ItemKind::Enum(e) => Some(e.ident.string()),
-            ItemKind::Constant(c) => Some(c.ident.string()),
-            ItemKind::Impl(_) | ItemKind::Use(_) => None,
+            Self::Module(md) => Some(md.ident.ident().string()),
+            Self::Function(f) => Some(f.ident.string()),
+            Self::Struct(s) => Some(s.ident.string()),
+            Self::Enum(e) => Some(e.ident.string()),
+            Self::Constant(c) => Some(c.ident.string()),
+            Self::Impl(_) | Self::Use(_) => None,
         }
     }
 
-    pub fn span(&self) -> Option<SourceSpan> {
+    pub const fn span(&self) -> Option<SourceSpan> {
         match self {
-            ItemKind::Module(md) => Some(md.ident.span()),
-            ItemKind::Function(f) => Some(f.decl_span),
-            ItemKind::Struct(s) => Some(s.ident.span),
-            ItemKind::Enum(e) => Some(e.ident.span),
-            ItemKind::Constant(c) => Some(c.ident.span),
-            ItemKind::Impl(_) => None,
-            ItemKind::Use(u) => Some(u.span),
+            Self::Module(md) => Some(md.ident.span()),
+            Self::Function(f) => Some(f.decl_span),
+            Self::Struct(s) => Some(s.ident.span),
+            Self::Enum(e) => Some(e.ident.span),
+            Self::Constant(c) => Some(c.ident.span),
+            Self::Impl(_) => None,
+            Self::Use(u) => Some(u.span),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
     pub owner_id: OwnerDefId,
     pub kind: ItemKind,
 }
 
 impl Item {
-    pub fn new(kind: ItemKind) -> Self {
+    pub const fn new(kind: ItemKind) -> Self {
         Self {
             owner_id: OwnerDefId::PLACEHOLDER_ID,
             kind,
@@ -551,12 +546,12 @@ impl Item {
         self.kind.ident()
     }
 
-    pub fn span(&self) -> Option<SourceSpan> {
+    pub const fn span(&self) -> Option<SourceSpan> {
         self.kind.span()
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub id: HirId,
     pub statements: Vec<HirId>,
@@ -566,7 +561,7 @@ pub struct Block {
 
 // Statement..
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
     Let(LetStatement),
     Item(OwnerDefId),
@@ -574,14 +569,14 @@ pub enum StatementKind {
     Semi(HirId),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
     pub id: HirId,
     pub kind: StatementKind,
     pub span: SourceSpan,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LetStatement {
     pub ident: Ident,
     pub mutable: Mutability,
@@ -591,13 +586,13 @@ pub struct LetStatement {
 
 // Exprs..
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructFieldInit {
     pub ident: Ident,
     pub expr: HirId,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructInitialisation {
     pub ty_path: RefPath,
     pub fields: Vec<StructFieldInit>,
@@ -605,31 +600,31 @@ pub struct StructInitialisation {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
-    /// Block(HIRNode::Block).
+    /// Block(`HIRNode::Block`).
     Block(HirId),
     /// Literal(Literal)
     Literal(Literal),
-    /// Binary Operation(Kind, lhs: HIRNode::Expr, rhs: HIRNode::Expr)
+    /// Binary Operation(Kind, lhs: `HIRNode::Expr`, rhs: `HIRNode::Expr`)
     BinaryOp(BinaryOpKind, HirId, HirId),
-    /// Unary Operation(Kind, HIRNode::Expr)
+    /// Unary Operation(Kind, `HIRNode::Expr`)
     UnaryOp(UnaryOpKind, HirId),
-    /// If(condition: HIRNode::Expr, true_block: HIRNode::Block, else: HIRNode::Expr)
+    /// If(condition: `HIRNode::Expr`, true_block: `HIRNode::Block`, else: `HIRNode::Expr`)
     If(HirId, HirId, Option<HirId>),
-    /// Infinite loop, with block: HIRNode::Block
+    /// Infinite loop, with block: `HIRNode::Block`
     Loop(HirId),
-    /// For loop, with (enclosing_block, binding, iterable: HIRNode::Expr, loop_block: HIRNode::Block)
+    /// For loop, with (enclosing_block, binding, iterable: `HIRNode::Expr`, loop_block: `HIRNode::Block`)
     For(HirId, HirId, HirId, HirId),
-    /// While(condition: HIRNode::Expr, block: HIRNode::Block)
+    /// While(condition: `HIRNode::Expr`, block: `HIRNode::Block`)
     While(HirId, HirId),
-    /// Assign(target: HIRNode::Expr, value: HIRNode::Expr)
+    /// Assign(target: `HIRNode::Expr`, value: `HIRNode::Expr`)
     Assign(HirId, HirId),
-    /// Call(target: HIRNode::Expr, args: Vec<HIRNode::Expr>)
+    /// Call(target: `HIRNode::Expr`, args: `Vec<HIRNode::Expr>`)
     Call(HirId, Vec<HirId>),
-    /// Method Call(target: HIRNode::Expr, method_name: Ident, args: Vec<HIRNode::Expr>)
+    /// Method Call(target: `HIRNode::Expr`, method_name: Ident, args: `Vec<HIRNode::Expr>`)
     MethodCall(HirId, Ident, Vec<HirId>),
-    /// Index(target: HIRNode::Expr, index: HIRNode::Expr)
+    /// Index(target: `HIRNode::Expr`, index: `HIRNode::Expr`)
     Index(HirId, HirId),
-    /// Field Access(target: HIRNode::Expr, field_name: Ident)
+    /// Field Access(target: `HIRNode::Expr`, field_name: Ident)
     FieldAccess(HirId, Ident),
     /// Struct Initialisation
     StructInit(StructInitialisation),
@@ -654,7 +649,7 @@ pub struct Expr {
     pub span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolvedID {
     Hir(HirId),
     Def(DefId),
@@ -663,30 +658,30 @@ pub enum ResolvedID {
 }
 
 impl ResolvedID {
-    pub fn hir_id(&self) -> Option<HirId> {
+    pub const fn hir_id(&self) -> Option<HirId> {
         match self {
-            ResolvedID::Hir(hir_id) => Some(*hir_id),
+            Self::Hir(hir_id) => Some(*hir_id),
             _ => None,
         }
     }
 
-    pub fn def_id(&self) -> Option<DefId> {
+    pub const fn def_id(&self) -> Option<DefId> {
         match self {
-            ResolvedID::Def(def_id) => Some(*def_id),
+            Self::Def(def_id) => Some(*def_id),
             _ => None,
         }
     }
 
-    pub fn owner_def_id(&self) -> Option<OwnerDefId> {
+    pub const fn owner_def_id(&self) -> Option<OwnerDefId> {
         match self {
-            ResolvedID::OwnerDef(owner_def_id) => Some(*owner_def_id),
+            Self::OwnerDef(owner_def_id) => Some(*owner_def_id),
             _ => None,
         }
     }
 
-    pub fn type_id(&self) -> Option<TypeID> {
+    pub const fn type_id(&self) -> Option<TypeID> {
         match self {
-            ResolvedID::TypeDef(type_id) => Some(*type_id),
+            Self::TypeDef(type_id) => Some(*type_id),
             _ => None,
         }
     }
@@ -728,58 +723,58 @@ impl From<&OwnerDefId> for ResolvedID {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefPath {
     Unresolved(SpannedIdentPath),
     Resolved(SpannedIdentPath, ResolvedID),
 }
 
 impl RefPath {
-    pub fn spanned_ident_path(&self) -> &SpannedIdentPath {
+    pub const fn spanned_ident_path(&self) -> &SpannedIdentPath {
         match self {
-            RefPath::Unresolved(ident_path) => ident_path,
-            RefPath::Resolved(ident_path, _) => ident_path,
+            Self::Unresolved(ident_path) => ident_path,
+            Self::Resolved(ident_path, _) => ident_path,
         }
     }
 
-    pub fn ident_path(&self) -> &IdentPath {
+    pub const fn ident_path(&self) -> &IdentPath {
         match self {
-            RefPath::Unresolved(ident_path) => &ident_path.path,
-            RefPath::Resolved(ident_path, _) => &ident_path.path,
+            Self::Unresolved(ident_path) => &ident_path.path,
+            Self::Resolved(ident_path, _) => &ident_path.path,
         }
     }
 
-    pub fn span(&self) -> SourceSpan {
+    pub const fn span(&self) -> SourceSpan {
         match self {
-            RefPath::Unresolved(ident_path) => ident_path.span,
-            RefPath::Resolved(ident_path, _) => ident_path.span,
+            Self::Unresolved(ident_path) => ident_path.span,
+            Self::Resolved(ident_path, _) => ident_path.span,
         }
     }
 
-    pub fn is_resolved(&self) -> bool {
-        matches!(self, RefPath::Resolved(_, _))
+    pub const fn is_resolved(&self) -> bool {
+        matches!(self, Self::Resolved(_, _))
     }
 
-    pub fn resolved_id(&self) -> Option<ResolvedID> {
+    pub const fn resolved_id(&self) -> Option<ResolvedID> {
         match self {
-            RefPath::Unresolved(_) => None,
-            RefPath::Resolved(_, id) => Some(*id),
+            Self::Unresolved(_) => None,
+            Self::Resolved(_, id) => Some(*id),
         }
     }
 
     pub fn resolve_to(&mut self, id: ResolvedID) {
-        *self = RefPath::Resolved(self.spanned_ident_path().clone(), id);
+        *self = Self::Resolved(self.spanned_ident_path().clone(), id);
     }
 
     pub fn resolve_to_hir_id(&mut self, id: HirId) {
-        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::Hir(id));
+        *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::Hir(id));
     }
 
     pub fn resolve_to_owner_id(&mut self, id: OwnerDefId) {
-        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::OwnerDef(id));
+        *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::OwnerDef(id));
     }
 
     pub fn resolve_to_def_id(&mut self, id: DefId) {
-        *self = RefPath::Resolved(self.spanned_ident_path().clone(), ResolvedID::Def(id));
+        *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::Def(id));
     }
 }

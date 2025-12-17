@@ -35,7 +35,7 @@ impl LocalScope {
     }
 
     #[allow(dead_code)]
-    pub fn is_root_scope(&self) -> bool {
+    pub const fn is_root_scope(&self) -> bool {
         self.parent.is_none()
     }
 
@@ -66,13 +66,14 @@ impl LocalScope {
     }
 
     pub fn find_definition(&self, name: &str) -> Option<ResolvedID> {
-        if let Some(id) = self.definitions.get(name) {
-            Some(*id)
-        } else if let Some(parent) = &self.parent {
-            parent.find_definition(name)
-        } else {
-            None
-        }
+        self.definitions.get(name).map_or_else(
+            || {
+                self.parent
+                    .as_ref()
+                    .and_then(|parent| parent.find_definition(name))
+            },
+            |id| Some(*id),
+        )
     }
 }
 
@@ -82,7 +83,7 @@ struct ScopeResolver {
 }
 
 impl ScopeResolver {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             scope: Vec::new(),
             errors: Vec::new(),

@@ -7,7 +7,7 @@ macro_rules! define_punctuation {
             ($punct_name: ident, $punct_char: literal)
         ),*
     ) => {
-        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub enum Punctuation {
             $($punct_name),*
         }
@@ -26,7 +26,7 @@ macro_rules! define_punctuation {
             /// `Punctuation` can be established.
             #[inline]
             #[must_use]
-            pub fn from_char(c: char) -> Option<Self> {
+            pub const fn from_char(c: char) -> Option<Self> {
                 match c {
                     $($punct_char => Some(Self::$punct_name),)+
                     _ => None
@@ -36,7 +36,7 @@ macro_rules! define_punctuation {
             /// Convert a `Punctuation` into the corresponding `char` value.
             #[inline]
             #[must_use]
-            pub fn to_char(self) -> char {
+            pub const fn to_char(self) -> char {
                 match self {
                     $(Self::$punct_name => $punct_char,)+
                 }
@@ -51,7 +51,7 @@ macro_rules! define_keywords {
             ($keyword_name: ident, $keyword_str: literal)
         ),+
     ) =>{
-        #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub enum Keyword {
             $($keyword_name),*
         }
@@ -80,7 +80,7 @@ macro_rules! define_keywords {
             /// Convert a `Keyword` into the corresponding `string slice` value.
             #[inline]
             #[must_use]
-            pub fn to_str(self) -> &'static str {
+            pub const fn to_str(self) -> &'static str {
                 match self {
                     $(Self::$keyword_name => $keyword_str,)+
                 }
@@ -153,14 +153,14 @@ impl Keyword {
     /// Returns true if the [`Keyword`] is 'significant' (I.e. not a 'modifier' such as `pub`
     /// or `mut`, rather something that can start an `expression` or `item` such as `let`)
     #[inline]
-    pub fn is_significant(self) -> bool {
+    pub const fn is_significant(self) -> bool {
         !matches!(self, Self::Pub | Self::Mut | Self::Native | Self::Global)
     }
 
     /// Returns true if the [`Keyword`] is a valid keyword that can start an `Item` expression,
     /// I.e. Function, Struct, etc..
     #[inline]
-    pub fn can_start_item(self) -> bool {
+    pub const fn can_start_item(self) -> bool {
         matches!(
             self,
             Self::Mod | Self::Use | Self::Fn | Self::Struct | Self::Const | Self::Impl | Self::Enum
@@ -236,7 +236,7 @@ impl TokenKind {
     /// Returns true if the `kind` of token is _not_ an invalid variant.
     #[inline]
     #[must_use]
-    pub fn is_valid(&self) -> bool {
+    pub const fn is_valid(&self) -> bool {
         !matches!(
             self,
             Self::InvalidIdent(_) | Self::InvalidLiteral(_) | Self::InvalidDocumentation(_)
@@ -249,24 +249,24 @@ impl TokenKind {
     /// Returns true if the [`TokenKind`] is a valid token that can start an `Item` expression,
     /// I.e. Function, Struct, etc..
     #[inline]
-    pub fn can_start_item(&self) -> bool {
+    pub const fn can_start_item(&self) -> bool {
         match self {
-            TokenKind::Keyword(kw) => kw.can_start_item(),
+            Self::Keyword(kw) => kw.can_start_item(),
             _ => false,
         }
     }
 
-    /// Returns `true`` if the [`TokenKind`] is a valid `identifier`.
+    /// Returns `true` if the [`TokenKind`] is a valid `identifier`.
     #[inline]
-    pub fn is_ident(&self) -> bool {
-        matches!(self, TokenKind::Ident(_))
+    pub const fn is_ident(&self) -> bool {
+        matches!(self, Self::Ident(_))
     }
 
     /// Returns `Some(ident)` if the [`TokenKind`] is a valid `identifier`, `None` otherwise.
     #[inline]
     pub fn get_ident(&self) -> Option<String> {
         match self {
-            TokenKind::Ident(i) => Some(i.clone()),
+            Self::Ident(i) => Some(i.clone()),
             _ => None,
         }
     }
@@ -274,12 +274,12 @@ impl TokenKind {
     /// Returns `true` if the [`TokenKind`] is 'significant', (I.e. not a 'modifier' such as `pub`
     /// or `mut`, rather something that can start an `expression` or `item` such as `let`)
     #[inline]
-    pub fn is_significant(&self) -> bool {
+    pub const fn is_significant(&self) -> bool {
         match self {
-            TokenKind::Ident(_) => true,
-            TokenKind::Keyword(keyword) => keyword.is_significant(),
-            TokenKind::Punctuation(punctuation) => !matches!(punctuation, Punctuation::Ampersand),
-            TokenKind::StringLiteral(_) | TokenKind::Literal(_) | TokenKind::Eof => true,
+            Self::Ident(_) => true,
+            Self::Keyword(keyword) => keyword.is_significant(),
+            Self::Punctuation(punctuation) => !matches!(punctuation, Punctuation::Ampersand),
+            Self::StringLiteral(_) | Self::Literal(_) | Self::Eof => true,
             _ => false,
         }
     }
@@ -305,7 +305,7 @@ impl Token {
 
     #[inline]
     #[must_use]
-    pub fn new_raw(kind: TokenKind, start: u32, end: u32) -> Self {
+    pub const fn new_raw(kind: TokenKind, start: u32, end: u32) -> Self {
         Self { kind, start, end }
     }
 

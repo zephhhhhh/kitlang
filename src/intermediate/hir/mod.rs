@@ -21,7 +21,7 @@ pub mod visitor;
 pub struct LocalDefId(pub u32);
 
 impl LocalDefId {
-    pub const PLACEHOLDER_ID: LocalDefId = LocalDefId(u32::MAX);
+    pub const PLACEHOLDER_ID: Self = Self(u32::MAX);
 
     pub fn is_placeholder(self) -> bool {
         self == Self::PLACEHOLDER_ID
@@ -39,8 +39,8 @@ impl Debug for LocalDefId {
 pub struct OwnerDefId(pub u32);
 
 impl OwnerDefId {
-    pub const PLACEHOLDER_ID: OwnerDefId = OwnerDefId(u32::MAX);
-    pub const ROOT_NODE: OwnerDefId = OwnerDefId(0);
+    pub const PLACEHOLDER_ID: Self = Self(u32::MAX);
+    pub const ROOT_NODE: Self = Self(0);
 
     pub fn is_placeholder(self) -> bool {
         self == Self::PLACEHOLDER_ID
@@ -61,7 +61,7 @@ pub struct DefId {
 }
 
 impl DefId {
-    pub const PLACEHOLDER_ID: DefId = DefId {
+    pub const PLACEHOLDER_ID: Self = Self {
         module_id: u32::MAX,
         def_id: LocalDefId::PLACEHOLDER_ID,
     };
@@ -77,7 +77,7 @@ impl Debug for DefId {
     }
 }
 
-/// Definition ID that describes which ID into the modules "path_table" owns the node, and which
+/// Definition ID that describes which ID into the modules `"path_table"` owns the node, and which
 /// index into the owners body the node refers to.
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HirId {
@@ -110,7 +110,7 @@ impl From<&HirId> for OwnerDefId {
 }
 
 impl HirId {
-    pub const PLACEHOLDER_ID: HirId = HirId {
+    pub const PLACEHOLDER_ID: Self = Self {
         owner: OwnerDefId::PLACEHOLDER_ID,
         id: LocalDefId::PLACEHOLDER_ID,
     };
@@ -121,7 +121,7 @@ impl HirId {
 }
 
 impl HirId {
-    pub fn next_id(mut self) -> Self {
+    pub const fn next_id(mut self) -> Self {
         self.id = LocalDefId(self.id.0 + 1);
         self
     }
@@ -139,7 +139,7 @@ pub struct HLIR {
 }
 
 impl HLIR {
-    pub fn owner_node_count(&self) -> u32 {
+    pub const fn owner_node_count(&self) -> u32 {
         self.owner_nodes.len() as u32
     }
 
@@ -173,7 +173,7 @@ impl HLIR {
             .expect("Node exists.")
     }
 
-    pub fn next_owner_id(&self) -> OwnerDefId {
+    pub const fn next_owner_id(&self) -> OwnerDefId {
         OwnerDefId(self.owner_node_count())
     }
 
@@ -229,11 +229,8 @@ impl HLIR {
     }
 
     pub fn next_hir_id_on(&self, owner_id: impl Into<OwnerDefId>) -> HirId {
-        if let Some(owner_node) = self.owning_node(owner_id.into()) {
-            owner_node.next_hir_id()
-        } else {
-            HirId::PLACEHOLDER_ID
-        }
+        self.owning_node(owner_id.into())
+            .map_or(HirId::PLACEHOLDER_ID, |owner_node| owner_node.next_hir_id())
     }
 
     pub fn insert_hir_node(
@@ -271,8 +268,8 @@ impl HLIR {
     }
 }
 
-impl AsRef<HLIR> for HLIR {
-    fn as_ref(&self) -> &HLIR {
+impl AsRef<Self> for HLIR {
+    fn as_ref(&self) -> &Self {
         self
     }
 }
@@ -357,7 +354,7 @@ impl ProgramMetaData {
         }
     }
 
-    /// Get the type name of a given type, or "UnknownType" if it cannot be determined.
+    /// Get the type name of a given type, or `"UnknownType"` if it cannot be determined.
     #[inline]
     pub fn type_name(&self, ty: impl Into<Type>) -> String {
         self.try_type_name(ty)

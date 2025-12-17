@@ -29,7 +29,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn new(mir: MIR, registry: TypeRegistry, namespace: Namespace) -> Self {
+    pub const fn new(mir: MIR, registry: TypeRegistry, namespace: Namespace) -> Self {
         Self {
             mir,
             registry,
@@ -49,7 +49,7 @@ pub enum ADTValueKind {
 impl std::fmt::Display for ADTValueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ADTValueKind::Struct(values) => write!(f, "{:?}", values),
+            Self::Struct(values) => write!(f, "{:?}", values),
         }
     }
 }
@@ -78,106 +78,106 @@ impl Value {
         }
     }
 
-    pub fn is_unit(&self) -> bool {
+    pub const fn is_unit(&self) -> bool {
         matches!(self, Self::Unit)
     }
 
     pub fn repr_string(&self) -> String {
         match self {
-            Value::Unit => "()".to_string(),
-            Value::Integer(i) => i.to_string(),
-            Value::UnsignedInteger(u) => u.to_string(),
-            Value::Float(f) => f.to_string(),
-            Value::String(s) => s.clone(),
-            Value::Boolean(b) => b.to_string(),
-            Value::Ref(at) => format!("{:?}", at),
-            Value::ADT(kind) => kind.to_string(),
+            Self::Unit => "()".to_string(),
+            Self::Integer(i) => i.to_string(),
+            Self::UnsignedInteger(u) => u.to_string(),
+            Self::Float(f) => f.to_string(),
+            Self::String(s) => s.clone(),
+            Self::Boolean(b) => b.to_string(),
+            Self::Ref(at) => format!("{:?}", at),
+            Self::ADT(kind) => kind.to_string(),
         }
     }
 
-    pub fn int(&self) -> Option<i64> {
+    pub const fn int(&self) -> Option<i64> {
         match self {
-            Value::Integer(i) => Some(*i),
+            Self::Integer(i) => Some(*i),
             _ => None,
         }
     }
 
-    pub fn uint(&self) -> Option<u64> {
+    pub const fn uint(&self) -> Option<u64> {
         match self {
-            Value::UnsignedInteger(i) => Some(*i),
+            Self::UnsignedInteger(i) => Some(*i),
             _ => None,
         }
     }
 
-    pub fn float(&self) -> Option<f64> {
+    pub const fn float(&self) -> Option<f64> {
         match self {
-            Value::Float(i) => Some(*i),
+            Self::Float(i) => Some(*i),
             _ => None,
         }
     }
 
     pub fn string(&self) -> Option<String> {
         match self {
-            Value::String(s) => Some(s.clone()),
+            Self::String(s) => Some(s.clone()),
             _ => None,
         }
     }
 
     pub fn str_ref(&self) -> Option<&str> {
         match self {
-            Value::String(s) => Some(s),
+            Self::String(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn bool(&self) -> Option<bool> {
+    pub const fn bool(&self) -> Option<bool> {
         match self {
-            Value::Boolean(b) => Some(*b),
+            Self::Boolean(b) => Some(*b),
             _ => None,
         }
     }
 
-    pub fn are_matching_types(&self, other: &Self) -> bool {
+    pub const fn are_matching_types(&self, other: &Self) -> bool {
         match self {
-            Value::Unit => matches!(other, Self::Unit),
-            Value::Integer(_) => matches!(other, Self::Integer(_)),
-            Value::Float(_) => matches!(other, Self::Float(_)),
-            Value::String(_) => matches!(other, Self::String(_)),
-            Value::Boolean(_) => matches!(other, Self::Boolean(_)),
+            Self::Unit => matches!(other, Self::Unit),
+            Self::Integer(_) => matches!(other, Self::Integer(_)),
+            Self::Float(_) => matches!(other, Self::Float(_)),
+            Self::String(_) => matches!(other, Self::String(_)),
+            Self::Boolean(_) => matches!(other, Self::Boolean(_)),
             _ => false,
         }
     }
 
     pub fn perform_unary_op(&self, op: UnaryOpKind) -> Option<Self> {
         match self {
-            Value::Unit => None,
-            Value::Integer(i) => match op {
+            Self::Unit => None,
+            Self::Integer(i) => match op {
                 UnaryOpKind::Dereference => None,
-                UnaryOpKind::Not => Some(Value::Integer(!i)),
-                UnaryOpKind::Negate => Some(Value::Integer(-i)),
+                UnaryOpKind::Not => Some(Self::Integer(!i)),
+                UnaryOpKind::Negate => Some(Self::Integer(-i)),
             },
-            Value::UnsignedInteger(i) => match op {
+            Self::UnsignedInteger(i) => match op {
                 UnaryOpKind::Dereference => None,
-                UnaryOpKind::Not => Some(Value::UnsignedInteger(!i)),
+                UnaryOpKind::Not => Some(Self::UnsignedInteger(!i)),
                 UnaryOpKind::Negate => None,
             },
-            Value::Float(f) => match op {
+            Self::Float(f) => match op {
                 UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => None,
-                UnaryOpKind::Negate => Some(Value::Float(-f)),
+                UnaryOpKind::Negate => Some(Self::Float(-f)),
             },
-            Value::String(_s) => match op {
+            Self::String(_s) => match op {
                 UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => None,
                 UnaryOpKind::Negate => None,
             },
-            Value::Boolean(b) => match op {
+            Self::Boolean(b) => match op {
                 UnaryOpKind::Dereference => None,
-                UnaryOpKind::Not => Some(Value::Boolean(!b)),
+                UnaryOpKind::Not => Some(Self::Boolean(!b)),
                 UnaryOpKind::Negate => None,
             },
-            Value::Ref(_) => todo!(),
-            Value::ADT(_) => todo!(),
+            Self::Ref(_) => todo!(),
+            Self::ADT(_) => todo!(),
         }
     }
 
@@ -186,7 +186,7 @@ impl Value {
             return None;
         }
 
-        fn perform_int_op(lhs: i64, rhs: i64, op: BinaryOpKind) -> Option<Value> {
+        const fn perform_int_op(lhs: i64, rhs: i64, op: BinaryOpKind) -> Option<Value> {
             match op {
                 BinaryOpKind::Add => Some(Value::Integer(lhs + rhs)),
                 BinaryOpKind::Sub => Some(Value::Integer(lhs - rhs)),
@@ -208,7 +208,7 @@ impl Value {
             }
         }
 
-        fn perform_uint_op(lhs: u64, rhs: u64, op: BinaryOpKind) -> Option<Value> {
+        const fn perform_uint_op(lhs: u64, rhs: u64, op: BinaryOpKind) -> Option<Value> {
             match op {
                 BinaryOpKind::Add => Some(Value::UnsignedInteger(lhs + rhs)),
                 BinaryOpKind::Sub => Some(Value::UnsignedInteger(lhs - rhs)),
@@ -260,7 +260,7 @@ impl Value {
             }
         }
 
-        fn perform_bool_op(lhs: bool, rhs: bool, op: BinaryOpKind) -> Option<Value> {
+        const fn perform_bool_op(lhs: bool, rhs: bool, op: BinaryOpKind) -> Option<Value> {
             match op {
                 BinaryOpKind::And => Some(Value::Boolean(lhs && rhs)),
                 BinaryOpKind::Or => Some(Value::Boolean(lhs || rhs)),
@@ -278,33 +278,33 @@ impl Value {
         }
 
         match self {
-            Value::Unit => None,
-            Value::Integer(i) => perform_int_op(*i, rhs.int()?, op),
-            Value::UnsignedInteger(u) => perform_uint_op(*u, rhs.uint()?, op),
-            Value::Float(f) => perform_float_op(*f, rhs.float()?, op),
-            Value::String(s) => perform_string_op(s, rhs.str_ref()?, op),
-            Value::Boolean(b) => perform_bool_op(*b, rhs.bool()?, op),
-            Value::Ref(_) => panic!("Cannot perform binary op on reference values!"),
-            Value::ADT(_) => panic!("Cannot perform binary op on ADT values!"),
+            Self::Unit => None,
+            Self::Integer(i) => perform_int_op(*i, rhs.int()?, op),
+            Self::UnsignedInteger(u) => perform_uint_op(*u, rhs.uint()?, op),
+            Self::Float(f) => perform_float_op(*f, rhs.float()?, op),
+            Self::String(s) => perform_string_op(s, rhs.str_ref()?, op),
+            Self::Boolean(b) => perform_bool_op(*b, rhs.bool()?, op),
+            Self::Ref(_) => panic!("Cannot perform binary op on reference values!"),
+            Self::ADT(_) => panic!("Cannot perform binary op on ADT values!"),
         }
     }
 
-    pub fn perform_increment(&self) -> Option<Self> {
+    pub const fn perform_increment(&self) -> Option<Self> {
         match self {
-            Value::Integer(i) => Some(Value::Integer(i.saturating_add(1))),
-            Value::UnsignedInteger(u) => Some(Value::UnsignedInteger(u.saturating_add(1))),
+            Self::Integer(i) => Some(Self::Integer(i.saturating_add(1))),
+            Self::UnsignedInteger(u) => Some(Self::UnsignedInteger(u.saturating_add(1))),
             _ => None,
         }
     }
 
-    pub fn is_reference(&self) -> bool {
+    pub const fn is_reference(&self) -> bool {
         matches!(self, Self::Ref(_))
     }
 
     #[inline]
-    pub fn field(&self, index: usize) -> Option<&Value> {
+    pub fn field(&self, index: usize) -> Option<&Self> {
         match self {
-            Value::ADT(adtvalue_kind) => match adtvalue_kind {
+            Self::ADT(adtvalue_kind) => match adtvalue_kind {
                 ADTValueKind::Struct(values) => values.get(index),
             },
             _ => None,
@@ -312,9 +312,9 @@ impl Value {
     }
 
     #[inline]
-    pub fn field_mut(&mut self, index: usize) -> Option<&mut Value> {
+    pub fn field_mut(&mut self, index: usize) -> Option<&mut Self> {
         match self {
-            Value::ADT(adtvalue_kind) => match adtvalue_kind {
+            Self::ADT(adtvalue_kind) => match adtvalue_kind {
                 ADTValueKind::Struct(values) => values.get_mut(index),
             },
             _ => None,
@@ -512,12 +512,13 @@ impl InterpreterState {
     }
 
     pub fn call_native_function(&mut self, name: &str, args: &[Value]) -> Option<Value> {
-        if let Some(f) = self.native_functions.get_mut(name) {
-            f(args)
-        } else {
-            error!("Failed to find native function: {}", name);
-            None
-        }
+        self.native_functions.get_mut(name).map_or_else(
+            || {
+                error!("Failed to find native function: {}", name);
+                None
+            },
+            |f| f(args),
+        )
     }
 
     pub fn execute_from_entry(&mut self, program: &ProgramType) -> Option<Value> {
@@ -655,7 +656,7 @@ impl InterpreterState {
         return_value
     }
 
-    fn eval_operand(&mut self, operand: &Operand) -> Option<Value> {
+    fn eval_operand(&self, operand: &Operand) -> Option<Value> {
         match operand {
             Operand::Copy(local) => {
                 // FIXME: Don't assume deref.
@@ -670,7 +671,7 @@ impl InterpreterState {
         }
     }
 
-    fn eval_rvalue(&mut self, rvalue: &RValue) -> Option<Value> {
+    fn eval_rvalue(&self, rvalue: &RValue) -> Option<Value> {
         match rvalue {
             RValue::Unchanged(operand) => self.eval_operand(operand),
             RValue::BinaryOp(binary_op_kind, (lhs, rhs)) => {
@@ -694,12 +695,13 @@ impl InterpreterState {
                         .iter()
                         .map(|o| self.eval_operand(o))
                         .collect::<Option<Vec<_>>>();
-                    if let Some(values) = adt_values {
-                        Some(Value::ADT(ADTValueKind::Struct(values)))
-                    } else {
-                        error!("Failed to evaluate all field values!");
-                        None
-                    }
+                    adt_values.map_or_else(
+                        || {
+                            error!("Failed to evaluate all field values!");
+                            None
+                        },
+                        |values| Some(Value::ADT(ADTValueKind::Struct(values))),
+                    )
                 }
             },
             RValue::Cast(operand, cast_kind) => {
@@ -905,10 +907,9 @@ fn internal_execute_mir(
         );
     }
 
-    match result_value {
-        Some(v) => Ok(v),
-        None => Err(crate::KitlangError::ExecutionEndedUnexpectedly),
-    }
+    result_value.map_or(Err(crate::KitlangError::ExecutionEndedUnexpectedly), |v| {
+        Ok(v)
+    })
 }
 
 /// Execute MIR with no default compiler intrinsics registered.
@@ -918,17 +919,19 @@ pub fn execute_mir_no_intrinsics(
     register_fns: RegisterNativeFns,
     time_execution: bool,
 ) -> crate::KitlangResult<Value> {
-    if let Some(mut interpreter) = Interpreter::new_with_program(Program::new(
+    Interpreter::new_with_program(Program::new(
         mir,
         meta_data.type_registry.clone(),
         meta_data.namespace.clone(),
-    )) {
-        register_fns(&mut interpreter);
+    ))
+    .map_or(
+        Err(crate::KitlangError::FailedToFindEntryPoint),
+        |mut interpreter| {
+            register_fns(&mut interpreter);
 
-        internal_execute_mir(&mut interpreter, time_execution)
-    } else {
-        Err(crate::KitlangError::FailedToFindEntryPoint)
-    }
+            internal_execute_mir(&mut interpreter, time_execution)
+        },
+    )
 }
 
 /// Execute MIR with default compiler intrinsics registered.
@@ -938,18 +941,20 @@ pub fn execute_mir(
     register_fns: RegisterNativeFns,
     time_execution: bool,
 ) -> crate::KitlangResult<Value> {
-    if let Some(mut interpreter) = Interpreter::new_with_program(Program::new(
+    Interpreter::new_with_program(Program::new(
         mir,
         meta_data.type_registry.clone(),
         meta_data.namespace.clone(),
-    )) {
-        register_compiler_intrinsics(&mut interpreter);
-        register_fns(&mut interpreter);
+    ))
+    .map_or(
+        Err(crate::KitlangError::FailedToFindEntryPoint),
+        |mut interpreter| {
+            register_compiler_intrinsics(&mut interpreter);
+            register_fns(&mut interpreter);
 
-        internal_execute_mir(&mut interpreter, time_execution)
-    } else {
-        Err(crate::KitlangError::FailedToFindEntryPoint)
-    }
+            internal_execute_mir(&mut interpreter, time_execution)
+        },
+    )
 }
 
 // Compiler intrinsics implementations..

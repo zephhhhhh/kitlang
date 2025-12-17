@@ -22,7 +22,7 @@ impl BasicBlockId {
         self == Self::PLACEHOLDER_ID
     }
 
-    pub fn next(self) -> Self {
+    pub const fn next(self) -> Self {
         Self(self.0.saturating_add(1))
     }
 }
@@ -38,8 +38,8 @@ impl Debug for BasicBlockId {
 pub struct LocalId(pub u32);
 
 impl LocalId {
-    pub const PLACEHOLDER_ID: LocalId = LocalId(u32::MAX);
-    pub const RETURN_VALUE: LocalId = LocalId(0);
+    pub const PLACEHOLDER_ID: Self = Self(u32::MAX);
+    pub const RETURN_VALUE: Self = Self(0);
 
     pub fn is_placeholder(self) -> bool {
         self == Self::PLACEHOLDER_ID
@@ -49,7 +49,7 @@ impl LocalId {
         self == Self::RETURN_VALUE
     }
 
-    pub fn next(self) -> Self {
+    pub const fn next(self) -> Self {
         Self(self.0.saturating_add(1))
     }
 }
@@ -118,11 +118,11 @@ pub enum CastKind {
 }
 
 impl CastKind {
-    pub fn from_type(ty: KitTy) -> Option<Self> {
+    pub const fn from_type(ty: KitTy) -> Option<Self> {
         match ty {
-            KitTy::Int(int_kind) => Some(CastKind::Int(int_kind)),
-            KitTy::UInt(uint_kind) => Some(CastKind::UInt(uint_kind)),
-            KitTy::Float(float_kind) => Some(CastKind::Float(float_kind)),
+            KitTy::Int(int_kind) => Some(Self::Int(int_kind)),
+            KitTy::UInt(uint_kind) => Some(Self::UInt(uint_kind)),
+            KitTy::Float(float_kind) => Some(Self::Float(float_kind)),
             _ => None,
         }
     }
@@ -173,30 +173,30 @@ impl Debug for RValue {
 }
 
 impl RValue {
-    pub fn unit() -> Self {
+    pub const fn unit() -> Self {
         Self::Unchanged(Operand::Unit)
     }
 
-    pub fn literal(literal: Literal) -> Self {
+    pub const fn literal(literal: Literal) -> Self {
         Self::Unchanged(Operand::Literal(literal))
     }
 
-    pub fn copy(assign_target: AssignTarget) -> Self {
+    pub const fn copy(assign_target: AssignTarget) -> Self {
         Self::Unchanged(Operand::Copy(assign_target))
     }
 
-    pub fn refer(assign_target: AssignTarget) -> Self {
+    pub const fn refer(assign_target: AssignTarget) -> Self {
         Self::Ref(assign_target)
     }
 
-    pub fn cast(operand: Operand, target_type: CastKind) -> Self {
+    pub const fn cast(operand: Operand, target_type: CastKind) -> Self {
         Self::Cast(operand, target_type)
     }
 }
 
 /// Defines a `slot` that is the target for a value to be assigned or copied into.
 /// This can either be a [`LocalId`] or a `Field` defined in a [`LocalId`].
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AssignTarget {
     Local(LocalId),
@@ -204,17 +204,17 @@ pub enum AssignTarget {
 }
 
 impl AssignTarget {
-    pub fn from_local(id: LocalId) -> Self {
+    pub const fn from_local(id: LocalId) -> Self {
         Self::Local(id)
     }
 
-    pub fn from_field_access(id: LocalId, field_index: usize) -> Self {
+    pub const fn from_field_access(id: LocalId, field_index: usize) -> Self {
         Self::Field(id, field_index)
     }
 
     /// Returns either the `LocalId` if `self` is of the `Local` variant, or the `LocalId` of the
     /// object being accessed if `self` is of the `Field` variant.
-    pub fn local_id(&self) -> LocalId {
+    pub const fn local_id(&self) -> LocalId {
         match self {
             Self::Local(local_id) | Self::Field(local_id, _) => *local_id,
         }
@@ -222,31 +222,31 @@ impl AssignTarget {
 
     /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Local` variant.
     /// Returns `None` otherwise.
-    pub fn local(&self) -> Option<LocalId> {
+    pub const fn local(&self) -> Option<LocalId> {
         match self {
-            AssignTarget::Local(local_id) => Some(*local_id),
+            Self::Local(local_id) => Some(*local_id),
             _ => None,
         }
     }
 
     /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Local` variant.
     /// Panics otherwise.
-    pub fn local_expect(&self) -> LocalId {
+    pub const fn local_expect(&self) -> LocalId {
         self.local().expect("Assign target should be local!")
     }
 
     /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Field` assignment variant.
     /// Returns `None` otherwise.
-    pub fn field_access(&self) -> Option<(LocalId, usize)> {
+    pub const fn field_access(&self) -> Option<(LocalId, usize)> {
         match self {
-            AssignTarget::Field(local_id, field_index) => Some((*local_id, *field_index)),
+            Self::Field(local_id, field_index) => Some((*local_id, *field_index)),
             _ => None,
         }
     }
 
     /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Field` assignment variant.
     /// Panics otherwise.
-    pub fn field_access_expect(&self) -> (LocalId, usize) {
+    pub const fn field_access_expect(&self) -> (LocalId, usize) {
         self.field_access()
             .expect("Assign target should be field access!")
     }
@@ -322,7 +322,7 @@ impl Debug for ExitDirective {
 }
 
 impl ExitDirective {
-    pub fn from_kind(kind: BlockExitKind) -> Self {
+    pub const fn from_kind(kind: BlockExitKind) -> Self {
         Self { kind }
     }
 }
@@ -342,7 +342,7 @@ pub struct Body {
 }
 
 impl Body {
-    fn get_return_slot_def() -> LocalDefinition {
+    const fn get_return_slot_def() -> LocalDefinition {
         LocalDefinition {
             mutable: Mutability::Mutable,
             info: LocalInfo::Temp,
@@ -393,15 +393,15 @@ impl Body {
         Some(&mut self.block_mut(id)?.exit_directive.kind)
     }
 
-    pub fn current_block_id(&mut self) -> BasicBlockId {
+    pub const fn current_block_id(&mut self) -> BasicBlockId {
         BasicBlockId(self.blocks.len().saturating_sub(1) as u32)
     }
 
-    pub fn next_block_id(&mut self) -> BasicBlockId {
+    pub const fn next_block_id(&mut self) -> BasicBlockId {
         BasicBlockId(self.blocks.len() as u32)
     }
 
-    pub fn next_local_id(&mut self) -> LocalId {
+    pub const fn next_local_id(&mut self) -> LocalId {
         LocalId(self.locals.len() as u32)
     }
 }

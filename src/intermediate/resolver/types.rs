@@ -107,20 +107,16 @@ impl TypeResolver<'_> {
 
 impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     fn visit_expr_mut(&mut self, expr: &mut Expr, hlir: &mut HLIRDisjointMut<'_>) {
-        match &mut expr.kind {
-            ExprKind::StructInit(struct_init) => {
-                if let RefPath::Unresolved(ty_path) = &struct_init.ty_path {
-                    match self.resolve_type(&ty_path.path) {
-                        Ok(type_id) => {
-                            struct_init.ty_path =
-                                RefPath::Resolved(ty_path.clone(), ResolvedID::TypeDef(type_id));
-                        }
-                        Err(e) => self.errors.push(e),
-                    }
+        if let ExprKind::StructInit(struct_init) = &mut expr.kind
+            && let RefPath::Unresolved(ty_path) = &struct_init.ty_path
+        {
+            match self.resolve_type(&ty_path.path) {
+                Ok(type_id) => {
+                    struct_init.ty_path =
+                        RefPath::Resolved(ty_path.clone(), ResolvedID::TypeDef(type_id));
                 }
+                Err(e) => self.errors.push(e),
             }
-            ExprKind::MethodCall(tar, ident, args) => {}
-            _ => {}
         }
 
         self.super_expr_mut(expr, hlir);
@@ -177,7 +173,8 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                             .sig
                             .parameter_idents
                             .get(i)
-                            .unwrap_or(&"??".to_string()),
+                            .cloned()
+                            .unwrap_or_else(|| "??".to_string()),
                         self.current_path()
                     );
                 }

@@ -29,7 +29,7 @@ pub struct TokenCursor<'a> {
 impl<'a> TokenCursor<'a> {
     #[inline]
     #[must_use]
-    pub fn new(tokens: &'a TokenList) -> TokenCursor<'a> {
+    pub const fn new(tokens: &'a TokenList) -> Self {
         Self {
             tokens,
             position: 0,
@@ -42,35 +42,35 @@ impl TokenCursor<'_> {
     /// Returns the total number tokens in the underlying [`TokenList`].
     #[inline]
     #[must_use]
-    pub fn len(&self) -> u32 {
+    pub const fn len(&self) -> u32 {
         self.tokens.len() as u32
     }
 
     /// Returns if the total number of tokens in the underlying [`TokenList`] is `zero`.
     #[inline]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.tokens.is_empty()
     }
 
     /// Returns the current position of the [`TokenCursor`] as an index.
     #[inline]
     #[must_use]
-    pub fn position(&self) -> u32 {
+    pub const fn position(&self) -> u32 {
         self.position
     }
 
     /// Returns the total number of tokens remaining until the end of the [`TokenList`].
     #[inline]
     #[must_use]
-    pub fn remaining(&self) -> u32 {
+    pub const fn remaining(&self) -> u32 {
         self.len() - self.position
     }
 
     /// Returns true if the current cursor position is at the end of the [`TokenList`].
     #[inline]
     #[must_use]
-    pub fn is_end(&self) -> bool {
+    pub const fn is_end(&self) -> bool {
         self.position >= self.len()
     }
 
@@ -85,81 +85,62 @@ impl TokenCursor<'_> {
     #[inline]
     #[must_use]
     pub fn get_current_source_end(&self) -> u32 {
-        if let Some(token) = self.get(self.position()) {
-            token.end
-        } else if let Some(token) = self.tokens.last() {
-            token.end
-        } else {
-            0
-        }
+        self.get(self.position()).map_or_else(
+            || self.tokens.last().map_or(0, |token| token.end),
+            |token| token.end,
+        )
     }
 
     /// Returns the start of the current token.
     #[inline]
     #[must_use]
     pub fn get_current_source_start(&self) -> u32 {
-        if let Some(token) = self.get(self.position()) {
-            token.start
-        } else if let Some(token) = self.tokens.last() {
-            token.start
-        } else {
-            0
-        }
+        self.get(self.position()).map_or_else(
+            || self.tokens.last().map_or(0, |token| token.start),
+            |token| token.start,
+        )
     }
 
     /// Returns the start of the previous token.
     #[inline]
     #[must_use]
     pub fn get_previous_source_start(&self) -> u32 {
-        if let Some(token) = self.get(self.position().saturating_sub(1)) {
-            token.start
-        } else {
-            self.get_current_source_start()
-        }
+        self.get(self.position().saturating_sub(1))
+            .map_or_else(|| self.get_current_source_start(), |token| token.start)
     }
 
     /// Returns the end of the previous token.
     #[inline]
     #[must_use]
     pub fn get_previous_source_end(&self) -> u32 {
-        if let Some(token) = self.get(self.position().saturating_sub(1)) {
-            token.end
-        } else {
-            self.get_current_source_end()
-        }
+        self.get(self.position().saturating_sub(1))
+            .map_or_else(|| self.get_current_source_end(), |token| token.end)
     }
 
     /// Returns a range that represents the start token.
     #[inline]
     #[must_use]
     pub fn first_span(&self) -> Range<u32> {
-        if let Some(token) = self.tokens.first() {
-            token.start..token.end
-        } else {
-            0..0
-        }
+        self.tokens
+            .first()
+            .map_or(0..0, |token| token.start..token.end)
     }
 
     /// Returns a range that represents the end of the file.
     #[inline]
     #[must_use]
     pub fn eof_span(&self) -> Range<u32> {
-        if let Some(token) = self.tokens.last() {
-            token.start..token.end
-        } else {
-            0..0
-        }
+        self.tokens
+            .last()
+            .map_or(0..0, |token| token.start..token.end)
     }
 
     /// Returns a range that represents the current token index.
     #[inline]
     #[must_use]
     pub fn current_span(&self) -> Range<u32> {
-        if let Some(token) = self.get(self.position()) {
-            token.start..token.end
-        } else {
-            self.eof_span()
-        }
+        self.get(self.position())
+            .map_or_else(|| self.eof_span(), |token| token.start..token.end)
     }
 
     /// Returns a range that represents the full file of tokens.
@@ -182,7 +163,7 @@ impl TokenCursor<'_> {
     /// # Returns
     /// `true` if the cursor could advance, `false` otherwise.
     #[inline]
-    pub fn advance(&mut self) -> bool {
+    pub const fn advance(&mut self) -> bool {
         if self.position < self.len() {
             self.position = self.position.saturating_add(1);
             true
@@ -250,10 +231,7 @@ pub(crate) struct Parser<'a, 'b> {
 impl<'a, 'b> Parser<'a, 'b> {
     #[inline]
     #[must_use]
-    pub fn from_cursor(
-        token_cursor: TokenCursor<'b>,
-        context: &'a ParserContext,
-    ) -> Parser<'a, 'b> {
+    pub const fn from_cursor(token_cursor: TokenCursor<'b>, context: &'a ParserContext) -> Self {
         Self {
             context,
             cursor: token_cursor,
@@ -277,7 +255,7 @@ impl RefType {
     /// Return the [`Mutability`] of the [`RefType`].
     /// I.e. `RefMut` = `Mutability::Mutable`, `Ref` & `None` = `Mutability::Immutable`.
     #[inline]
-    pub fn mutability(self) -> Mutability {
+    pub const fn mutability(self) -> Mutability {
         match self {
             Self::RefMut => Mutability::Mutable,
             _ => Mutability::Immutable,
@@ -286,7 +264,7 @@ impl RefType {
 
     /// Returns `true` if `self` is a `reference`.
     #[inline]
-    pub fn is_ref(self) -> bool {
+    pub const fn is_ref(self) -> bool {
         matches!(self, Self::Ref | Self::RefMut)
     }
 }
@@ -474,11 +452,7 @@ impl Parser<'_, '_> {
     #[inline]
     fn check_kind<T: Into<TokenKind>>(&self, expected_kind: T) -> bool {
         let expected = expected_kind.into();
-        if let Some(t) = self.cursor.peek() {
-            t.kind == expected
-        } else {
-            false
-        }
+        self.cursor.peek().is_some_and(|t| t.kind == expected)
     }
 
     /// Peek at the specified `offset`, return `true` if the [`TokenKind`] of the [`Token`] matches the
@@ -486,11 +460,9 @@ impl Parser<'_, '_> {
     #[inline]
     fn check_kind_at<T: Into<TokenKind>>(&self, offset: u32, expected_kind: T) -> bool {
         let expected = expected_kind.into();
-        if let Some(t) = self.cursor.peek_at(offset) {
-            t.kind == expected
-        } else {
-            false
-        }
+        self.cursor
+            .peek_at(offset)
+            .is_some_and(|t| t.kind == expected)
     }
 
     /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
@@ -509,22 +481,18 @@ impl Parser<'_, '_> {
     /// is an `Identifier`.
     #[inline]
     fn check_ident(&self) -> bool {
-        if let Some(t) = self.cursor.peek() {
-            matches!(t.kind, TokenKind::Ident(_))
-        } else {
-            false
-        }
+        self.cursor
+            .peek()
+            .is_some_and(|t| matches!(t.kind, TokenKind::Ident(_)))
     }
 
     /// Peek at an offset from the current token, return `true` if the [`TokenKind`] of the [`Token`]
     /// is an `Identifier`.
     #[inline]
     fn check_ident_at(&self, offset: u32) -> bool {
-        if let Some(t) = self.cursor.peek_at(offset) {
-            matches!(t.kind, TokenKind::Ident(_))
-        } else {
-            false
-        }
+        self.cursor
+            .peek_at(offset)
+            .is_some_and(|t| matches!(t.kind, TokenKind::Ident(_)))
     }
 
     /// Peek at the current token, check if the [`TokenKind`] of the [`Token`]

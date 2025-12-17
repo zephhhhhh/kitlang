@@ -14,7 +14,7 @@ pub struct ASTRoot {
 
 impl ASTRoot {
     #[inline]
-    pub fn new_with_span(full_file_span: SourceSpan) -> Self {
+    pub const fn new_with_span(full_file_span: SourceSpan) -> Self {
         Self {
             items: Vec::new(),
             full_file_span,
@@ -39,15 +39,15 @@ pub struct SourceSpan {
 }
 
 impl SourceSpan {
-    pub fn new(start: u32, end: u32) -> Self {
+    pub const fn new(start: u32, end: u32) -> Self {
         Self { start, end }
     }
 
-    pub fn null_span() -> Self {
+    pub const fn null_span() -> Self {
         Self::new(0, 0)
     }
 
-    pub fn is_null_span(&self) -> bool {
+    pub const fn is_null_span(&self) -> bool {
         self.start == 0 && self.end == 0
     }
 }
@@ -59,7 +59,7 @@ impl From<(u32, u32)> for SourceSpan {
 }
 
 impl<T: Into<u32>> From<Range<T>> for SourceSpan {
-    fn from(value: Range<T>) -> SourceSpan {
+    fn from(value: Range<T>) -> Self {
         Self::new(value.start.into(), value.end.into())
     }
 }
@@ -82,11 +82,11 @@ pub type IdentPathSegments = Vec<IdentPathSegment>;
 /// A "path" consisting of `Identifiers`. You can think of this as a file system path like:
 /// "Users/Username/Downloads", except this describes paths between different modules/files in our code,
 /// and instead of slashes we use the sequence of characters "::" as our seperator. So in our case
-/// this would be represented as "Users::Username::Downloads".
+/// this would be represented as `"Users::Username::Downloads"`.
 /// # Notes
 /// A path can be defined as relative to the root "module" instead of the current scope by starting the path
 /// with the seperator, such as: `::Struct::Function`.
-#[derive(Clone, Eq, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct IdentPath {
     segments: IdentPathSegments,
     root_relative: bool,
@@ -104,15 +104,13 @@ impl IdentPath {
     #[inline]
     pub fn new(src: impl AsRef<str>) -> Self {
         let src = src.as_ref();
-        let (root_relative, remainder) = if let Some(stripped) = src.strip_prefix(Self::PATH_SEP) {
-            (true, stripped)
-        } else {
-            (false, src)
-        };
+        let (root_relative, remainder) = src
+            .strip_prefix(Self::PATH_SEP)
+            .map_or((false, src), |stripped| (true, stripped));
 
         let segments = remainder
             .split(Self::PATH_SEP)
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         Self {
@@ -123,7 +121,7 @@ impl IdentPath {
 
     /// Create an empty path.
     #[inline]
-    pub fn new_empty(root_relative: bool) -> Self {
+    pub const fn new_empty(root_relative: bool) -> Self {
         Self {
             segments: Vec::new(),
             root_relative,
@@ -132,7 +130,7 @@ impl IdentPath {
 
     /// Create a path from segments.
     #[inline]
-    pub fn from_segments(segments: IdentPathSegments, root_relative: bool) -> Self {
+    pub const fn from_segments(segments: IdentPathSegments, root_relative: bool) -> Self {
         Self {
             segments,
             root_relative,
@@ -176,6 +174,7 @@ impl IdentPath {
 
     /// Rebase this path onto a string-based path.
     #[inline]
+    #[must_use]
     pub fn rebase_from_string(&self, base_str: impl AsRef<str>) -> Self {
         self.rebase_from_path(&Self::new(base_str))
     }
@@ -188,13 +187,13 @@ impl IdentPath {
 
     /// Check if this path is root-relative.
     #[inline]
-    pub fn is_root_relative(&self) -> bool {
+    pub const fn is_root_relative(&self) -> bool {
         self.root_relative
     }
 
     /// Check if this path is exactly one segment and not root-relative.
     #[inline]
-    pub fn is_only_ident(&self) -> bool {
+    pub const fn is_only_ident(&self) -> bool {
         self.segments.len() == 1 && !self.root_relative
     }
 
@@ -221,13 +220,13 @@ impl IdentPath {
 
     /// Number of segments in this path.
     #[inline]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.segments.len()
     }
 
     /// Check if the path has no segments.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.segments.is_empty()
     }
 
@@ -239,7 +238,7 @@ impl IdentPath {
 
     /// Get mutable access to segments.
     #[inline]
-    pub fn segments_mut(&mut self) -> &mut Vec<IdentPathSegment> {
+    pub const fn segments_mut(&mut self) -> &mut Vec<IdentPathSegment> {
         &mut self.segments
     }
 
@@ -293,7 +292,7 @@ impl IdentPath {
 
     /// Create a new path with all segments from another path.
     #[inline]
-    pub fn extend_path(&self, path: &IdentPath) -> Self {
+    pub fn extend_path(&self, path: &Self) -> Self {
         let mut new_path = self.clone();
         new_path.push_segments(&path.segments);
         new_path
@@ -307,7 +306,7 @@ impl IdentPath {
 
     /// Check if this path starts with all segments of another path.
     #[inline]
-    pub fn is_subpath_of(&self, other: &IdentPath) -> bool {
+    pub fn is_subpath_of(&self, other: &Self) -> bool {
         if self.len() < other.len() {
             return false;
         }
@@ -319,7 +318,7 @@ impl IdentPath {
     }
 
     #[inline]
-    pub fn matching_segment_count(&self, other: &IdentPath) -> usize {
+    pub fn matching_segment_count(&self, other: &Self) -> usize {
         self.segments()
             .iter()
             .zip(other.segments().iter())
@@ -345,18 +344,18 @@ impl Debug for IdentPath {
         } else {
             "Path"
         };
-        write!(f, "{}('{}')", kind, path_str)
+        write!(f, "{kind}('{path_str}')")
     }
 }
 
-#[derive(Clone, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SpannedIdentPath {
     pub path: IdentPath,
     pub span: SourceSpan,
 }
 
 impl SpannedIdentPath {
-    pub fn new(path: IdentPath, span: SourceSpan) -> Self {
+    pub const fn new(path: IdentPath, span: SourceSpan) -> Self {
         Self { path, span }
     }
 }
@@ -394,7 +393,7 @@ impl Display for SpannedIdentPath {
 }
 
 /// Describes whether an [`Item`] is able to be accessed/referenced from other modules/scopes.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Visibility {
     Public,
     Private,
@@ -403,19 +402,19 @@ pub enum Visibility {
 impl Visibility {
     /// Construct a [`Visibility`] from a bool denoting if the `vis` is `public` or `private`.
     #[inline]
-    pub fn from_is_public(v: bool) -> Self {
+    pub const fn from_is_public(v: bool) -> Self {
         if v { Self::Public } else { Self::Private }
     }
 
     /// Returns true if `self` is `Visibility::Public`.
     #[inline]
-    pub fn is_public(self) -> bool {
-        matches!(self, Visibility::Public)
+    pub const fn is_public(self) -> bool {
+        matches!(self, Self::Public)
     }
 }
 
 /// Describes the mutability of a reference or variable.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Mutability {
     Mutable,
     Immutable,
@@ -424,14 +423,14 @@ pub enum Mutability {
 impl Mutability {
     /// Construct a [`Mutability`] from a bool denoting if the `mutability` is `Mutable` (`true`) or `Immutable` (`false`).
     #[inline]
-    pub fn from_is_mutable(v: bool) -> Self {
+    pub const fn from_is_mutable(v: bool) -> Self {
         if v { Self::Mutable } else { Self::Immutable }
     }
 
     /// Returns true if the `self` is `Mutability::Mutable`.
     #[inline]
-    pub fn is_mutable(self) -> bool {
-        matches!(self, Mutability::Mutable)
+    pub const fn is_mutable(self) -> bool {
+        matches!(self, Self::Mutable)
     }
 }
 
@@ -449,11 +448,11 @@ pub enum UnaryOpKind {
 impl UnaryOpKind {
     /// Returns the combination of characters that represent this operation.
     #[inline]
-    pub fn symbols(self) -> &'static str {
+    pub const fn symbols(self) -> &'static str {
         match self {
-            UnaryOpKind::Dereference => "*",
-            UnaryOpKind::Not => "!",
-            UnaryOpKind::Negate => "-",
+            Self::Dereference => "*",
+            Self::Not => "!",
+            Self::Negate => "-",
         }
     }
 }
@@ -503,7 +502,7 @@ impl BinaryOpKind {
     /// Returns how many tokens the operation takes to represent.
     /// (I.e. `Equal (=)` = 1, `And (&&)` = 2)
     #[inline]
-    pub fn token_count(self) -> u32 {
+    pub const fn token_count(self) -> u32 {
         match self {
             Self::And
             | Self::Or
@@ -519,7 +518,7 @@ impl BinaryOpKind {
 
     /// Returns the combination of characters that represent this operation.
     #[inline]
-    pub fn symbols(self) -> &'static str {
+    pub const fn symbols(self) -> &'static str {
         match self {
             Self::Add => "+",
             Self::Sub => "-",
@@ -543,7 +542,7 @@ impl BinaryOpKind {
     }
 
     #[inline]
-    pub fn is_valid_assign_op(self) -> bool {
+    pub const fn is_valid_assign_op(self) -> bool {
         matches!(
             self,
             Self::Add
@@ -588,7 +587,7 @@ impl ItemKind {
     /// # Example usage
     /// `ItemKind::Fn(..).get_name()` = "Function"
     #[inline]
-    pub fn get_name(&self) -> &'static str {
+    pub const fn get_name(&self) -> &'static str {
         match self {
             Self::Use(_) => "Use",
             Self::Const(_) => "Const",
@@ -630,7 +629,7 @@ impl Debug for ItemKind {
 
 /// An `Identifier`. This is is defined as a unique type so it does not get confused as to what it
 /// describes.
-#[derive(Clone, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ident(pub String);
 
 impl Ident {
@@ -665,7 +664,7 @@ impl Debug for Ident {
 
 /// An identifier with an associated `Span` describing the range of bytes in the source code the
 /// identifier occupies.
-#[derive(Clone, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SpannedIdent {
     pub ident: Ident,
     pub span: SourceSpan,
@@ -727,7 +726,7 @@ impl Debug for SpannedIdent {
 
 /// Describes a `Type`. This structure is `self-referential`, I.e. an array will be described as a
 /// `Ty::Array(Ty::Type(Identifier))`.
-#[derive(Clone, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Ty {
     /// The type is the unit '()' type. (void)
     Unit(SourceSpan),
@@ -736,13 +735,13 @@ pub enum Ty {
     /// `Self`.
     This(SourceSpan),
     /// A reference to a [`Ty`], with a description of if it is `mutable` or not.
-    Ref(Box<Ty>, Mutability, SourceSpan),
+    Ref(Box<Self>, Mutability, SourceSpan),
     /// Just a plain type, no reference or anything else.
     Type(SpannedIdentPath),
     /// An array of a specified [`Ty`].
-    Array(Box<Ty>, SourceSpan),
+    Array(Box<Self>, SourceSpan),
     /// A tuple of multiple [`Ty`]'s.
-    Tuple(Vec<Box<Ty>>, SourceSpan),
+    Tuple(Vec<Box<Self>>, SourceSpan),
 }
 
 impl Ty {
@@ -750,7 +749,7 @@ impl Ty {
     /// # Returns
     /// `Ty::Type(src)`
     #[inline]
-    pub fn new(src: SpannedIdentPath) -> Self {
+    pub const fn new(src: SpannedIdentPath) -> Self {
         Self::Type(src)
     }
 
@@ -762,27 +761,27 @@ impl Ty {
     #[inline]
     pub fn get_type_ident(&self) -> Option<String> {
         match self {
-            Ty::Unit(_) => Some("()".to_string()),
-            Ty::Infer => None,
-            Ty::This(_) => None,
-            Ty::Ref(ty, _, _) => ty.get_type_ident(),
-            Ty::Type(t) => Some(t.to_string()),
-            Ty::Array(ty, _) => ty.get_type_ident(),
-            Ty::Tuple(_, _) => None, // TODO: ?
+            Self::Unit(_) => Some("()".to_string()),
+            Self::Infer => None,
+            Self::This(_) => None,
+            Self::Ref(ty, _, _) => ty.get_type_ident(),
+            Self::Type(t) => Some(t.to_string()),
+            Self::Array(ty, _) => ty.get_type_ident(),
+            Self::Tuple(_, _) => None, // TODO: ?
         }
     }
 
     /// Returns the span of the type specifier if possible.
     #[inline]
-    pub fn get_span(&self) -> Option<SourceSpan> {
+    pub const fn get_span(&self) -> Option<SourceSpan> {
         match self {
-            Ty::Unit(s) => Some(*s),
-            Ty::Infer => None,
-            Ty::This(s) => Some(*s),
-            Ty::Ref(_, _, s) => Some(*s),
-            Ty::Type(t) => Some(t.span),
-            Ty::Array(_, s) => Some(*s),
-            Ty::Tuple(_, s) => Some(*s), // TODO: ?
+            Self::Unit(s) => Some(*s),
+            Self::Infer => None,
+            Self::This(s) => Some(*s),
+            Self::Ref(_, _, s) => Some(*s),
+            Self::Type(t) => Some(t.span),
+            Self::Array(_, s) => Some(*s),
+            Self::Tuple(_, s) => Some(*s), // TODO: ?
         }
     }
 }
@@ -790,18 +789,18 @@ impl Ty {
 impl Debug for Ty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Ty::Unit(_) => write!(f, "Unit"),
-            Ty::Infer => write!(f, "Infer"),
-            Ty::This(_) => write!(f, "Self"),
-            Ty::Ref(t, mutable, _) => {
+            Self::Unit(_) => write!(f, "Unit"),
+            Self::Infer => write!(f, "Infer"),
+            Self::This(_) => write!(f, "Self"),
+            Self::Ref(t, mutable, _) => {
                 if mutable.is_mutable() {
                     write!(f, "MutRef({t:?})")
                 } else {
                     write!(f, "Ref({t:?})")
                 }
             }
-            Ty::Array(t, _) => write!(f, "Array({t:?})"),
-            Ty::Tuple(t, _) => {
+            Self::Array(t, _) => write!(f, "Array({t:?})"),
+            Self::Tuple(t, _) => {
                 write!(f, "Tuple(")?;
                 for (i, ty) in t.iter().enumerate() {
                     if i == 0 {
@@ -812,7 +811,7 @@ impl Debug for Ty {
                 }
                 write!(f, ")")
             }
-            Ty::Type(t) => write!(f, "Type({})", t.path),
+            Self::Type(t) => write!(f, "Type({})", t.path),
         }
     }
 }
@@ -828,7 +827,7 @@ pub struct Item {
 
 impl Item {
     #[inline]
-    pub fn new(kind: ItemKind, vis: Visibility, span: SourceSpan) -> Self {
+    pub const fn new(kind: ItemKind, vis: Visibility, span: SourceSpan) -> Self {
         Self { vis, kind, span }
     }
 }
@@ -845,7 +844,7 @@ impl Debug for Item {
 /// Describes the "order" or "precedence" of each type of expression.
 /// This is implemented as an enum with an ordering derive, so that the enum can be compared with
 /// itself to determine which of the expressions has higher precendence.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ExpressionOrder {
     /// `return`, `break`, etc..
     Jump,
@@ -879,7 +878,7 @@ pub enum ExpressionOrder {
 
 /// Describes the association of an expression. I.e. If the left-hand side or the right-hand side
 /// should be evaluated first.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum ExpressionAssociation {
     /// Left-associative
     Left,
@@ -891,7 +890,7 @@ pub enum ExpressionAssociation {
 
 impl BinaryOpKind {
     #[inline]
-    pub fn get_order(self) -> ExpressionOrder {
+    pub const fn get_order(self) -> ExpressionOrder {
         match self {
             Self::Add | Self::Sub => ExpressionOrder::Sum,
             Self::Mul | Self::Div | Self::Mod => ExpressionOrder::Product,
@@ -911,7 +910,7 @@ impl BinaryOpKind {
     }
 
     #[inline]
-    pub fn get_association(self) -> ExpressionAssociation {
+    pub const fn get_association(self) -> ExpressionAssociation {
         match self {
             Self::Add
             | Self::Sub
@@ -966,7 +965,7 @@ pub enum ExpressionKind {
     UnaryOp(UnaryOpKind, Box<Expression>),
     /// If statement, with a block or "body", and an optional "else" case block.
     /// # Notes
-    /// The tuple values are: (condition_expression, if_true_block, else_block).
+    /// The tuple values are: (`condition_expression`, `if_true_block`, `else_block`).
     /// # Kit Example
     /// ```ignore
     /// if random_number() == 20 {
@@ -978,7 +977,7 @@ pub enum ExpressionKind {
     Loop(Box<Block>),
     /// For loop, with a block or "body" and an identifier for the loop variable.
     /// # Notes
-    /// The tuple values are: (variable_binding, iterable_expression, loop_block).
+    /// The tuple values are: (`variable_binding`, `iterable_expression`, `loop_block`).
     /// # Kit Example
     /// ```
     /// for i in 0..10 {
@@ -988,7 +987,7 @@ pub enum ExpressionKind {
     For(SpannedIdent, Box<Expression>, Box<Block>),
     /// While loop, with a block or "body", and an optional "else" case block.
     /// # Notes
-    /// The tuple values are: (condition_expression, loop_block).
+    /// The tuple values are: (`condition_expression`, `loop_block`).
     /// # Kit Example
     /// ```ignore
     /// while i > 0 {
@@ -998,14 +997,14 @@ pub enum ExpressionKind {
     While(Box<Expression>, Box<Block>),
     /// Assignment of an already declared value.
     /// # Notes
-    /// The tuple values are: (variable_to_be_assigned_to, new_value)
+    /// The tuple values are: (`variable_to_be_assigned_to`, `new_value`)
     /// # Kit Example
     /// `x = x + 1`
     ///
     Assign(Box<Expression>, Box<Expression>),
     /// Calling a free function, or using the call operator of an object.
     /// # Notes
-    /// The tuple values are: (call_target, parameters)
+    /// The tuple values are: (`call_target`, `parameters`)
     /// # Kit Example
     /// ```ignore
     /// random_number(0, 20)
@@ -1019,7 +1018,7 @@ pub enum ExpressionKind {
     MethodCall(Box<MethodCall>),
     /// Index into an array or an object that implements the indexing operator.
     /// # Notes
-    /// The tuple values are: (object_to_be_indexed, index)
+    /// The tuple values are: (`object_to_be_indexed`, `index`)
     /// # Kit Example
     /// ```ignore
     /// list_of_names[2]
@@ -1027,7 +1026,7 @@ pub enum ExpressionKind {
     Index(Box<Expression>, Box<Expression>),
     /// Access a data field on an object.
     /// # Notes
-    /// The tuple values are: (object_to_access, field_to_access)
+    /// The tuple values are: (`object_to_access`, `field_to_access`)
     /// # Kit Examples
     /// ```ignore
     /// vec2.x
@@ -1062,38 +1061,32 @@ impl ExpressionKind {
     /// Returns `true` if the expression is allowed to omit the trailing semi-colon without being
     /// the last statement in a block.
     #[inline]
-    pub fn can_be_non_semi(&self) -> bool {
+    pub const fn can_be_non_semi(&self) -> bool {
         matches!(
             self,
-            ExpressionKind::Block(..)
-                | ExpressionKind::If(..)
-                | ExpressionKind::While(..)
-                | ExpressionKind::Loop(..)
-                | ExpressionKind::For(..)
+            Self::Block(..) | Self::If(..) | Self::While(..) | Self::Loop(..) | Self::For(..)
         )
     }
 
     /// Get the "precendence" of the expression.
     #[inline]
-    pub fn get_order(&self) -> ExpressionOrder {
+    pub const fn get_order(&self) -> ExpressionOrder {
         match self {
-            ExpressionKind::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_order(),
-            ExpressionKind::UnaryOp(_, _) => ExpressionOrder::Prefix,
-            ExpressionKind::Assign(_, _) => ExpressionOrder::Assign,
-            ExpressionKind::Continue | ExpressionKind::Return(_) | ExpressionKind::Break => {
-                ExpressionOrder::Jump
-            }
+            Self::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_order(),
+            Self::UnaryOp(_, _) => ExpressionOrder::Prefix,
+            Self::Assign(_, _) => ExpressionOrder::Assign,
+            Self::Continue | Self::Return(_) | Self::Break => ExpressionOrder::Jump,
             _ => ExpressionOrder::Unambiguous,
         }
     }
 
     /// Get the "association" of the expression.
     #[inline]
-    pub fn get_association(&self) -> ExpressionAssociation {
+    pub const fn get_association(&self) -> ExpressionAssociation {
         match self {
-            ExpressionKind::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_association(),
-            ExpressionKind::UnaryOp(_, _) => ExpressionAssociation::None,
-            ExpressionKind::Assign(_, _) => ExpressionAssociation::Right,
+            Self::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_association(),
+            Self::UnaryOp(_, _) => ExpressionAssociation::None,
+            Self::Assign(_, _) => ExpressionAssociation::Right,
             _ => ExpressionAssociation::None,
         }
     }
@@ -1159,7 +1152,7 @@ pub struct Expression {
 
 impl Expression {
     #[inline]
-    pub fn new(kind: ExpressionKind, span: SourceSpan) -> Self {
+    pub const fn new(kind: ExpressionKind, span: SourceSpan) -> Self {
         Self { kind, span }
     }
 
@@ -1170,13 +1163,13 @@ impl Expression {
 
     /// Get the "precendence" of the expression.
     #[inline]
-    pub fn get_order(&self) -> ExpressionOrder {
+    pub const fn get_order(&self) -> ExpressionOrder {
         self.kind.get_order()
     }
 
     /// Get the "association" of the expression.
     #[inline]
-    pub fn get_association(&self) -> ExpressionAssociation {
+    pub const fn get_association(&self) -> ExpressionAssociation {
         self.kind.get_association()
     }
 }
@@ -1223,7 +1216,7 @@ pub struct Statement {
 
 impl Statement {
     #[inline]
-    pub fn new(kind: StatementKind, source_span: SourceSpan) -> Self {
+    pub const fn new(kind: StatementKind, source_span: SourceSpan) -> Self {
         Self {
             kind,
             span: source_span,
@@ -1276,7 +1269,7 @@ pub struct Local {
 
 impl Local {
     #[inline]
-    pub fn new(ident: SpannedIdent, ty: Ty, kind: LocalKind, mutable: Mutability) -> Self {
+    pub const fn new(ident: SpannedIdent, ty: Ty, kind: LocalKind, mutable: Mutability) -> Self {
         Self {
             ident,
             ty,
@@ -1324,7 +1317,7 @@ pub struct Constant {
 
 impl Constant {
     #[inline]
-    pub fn new(ident: SpannedIdent, ty: Ty, expr: Box<Expression>) -> Self {
+    pub const fn new(ident: SpannedIdent, ty: Ty, expr: Box<Expression>) -> Self {
         Self { ident, ty, expr }
     }
 
@@ -1359,14 +1352,14 @@ impl Debug for Block {
 
 impl Block {
     #[inline]
-    pub fn new(statements: Vec<Statement>, span: SourceSpan) -> Self {
+    pub const fn new(statements: Vec<Statement>, span: SourceSpan) -> Self {
         Self { statements, span }
     }
 }
 
 /// An individual parameter to a function, includes the name `Identifier`, the [`Ty`] of the
 /// parameter, as well as if it is declared as `mutable` or not.
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Parameter {
     pub ident: SpannedIdent,
     pub ty: Ty,
@@ -1376,7 +1369,7 @@ pub struct Parameter {
 
 impl Parameter {
     #[inline]
-    pub fn new(ident: SpannedIdent, ty: Ty, mutable: Mutability, span: SourceSpan) -> Self {
+    pub const fn new(ident: SpannedIdent, ty: Ty, mutable: Mutability, span: SourceSpan) -> Self {
         Self {
             ident,
             ty,
@@ -1399,7 +1392,7 @@ impl Debug for Parameter {
 /// The return type of a function. If not specified this will default to
 /// `FunctionReturnTy::Default` which is the unit type `()`, otherwise this holds the specified
 /// return type.
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FunctionReturnTy {
     /// No return type specified.
     Default,
@@ -1408,7 +1401,7 @@ pub enum FunctionReturnTy {
 }
 
 /// The "signature" of a function, holds the return type and the parameters.
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FunctionSig {
     pub parameters: Vec<Parameter>,
     pub output: FunctionReturnTy,
@@ -1431,7 +1424,7 @@ pub struct Function {
 
 impl Function {
     #[inline]
-    pub fn new(
+    pub const fn new(
         ident: SpannedIdent,
         native: bool,
         sig: FunctionSig,
@@ -1464,7 +1457,7 @@ impl Debug for Function {
 }
 
 /// A field of a struct, containing the name of the field and it's associated [`Ty`].
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct StructField {
     pub ident: SpannedIdent,
     pub ty: Ty,
@@ -1474,7 +1467,7 @@ pub struct StructField {
 
 impl StructField {
     #[inline]
-    pub fn new(ident: SpannedIdent, ty: Ty, vis: Visibility, span: SourceSpan) -> Self {
+    pub const fn new(ident: SpannedIdent, ty: Ty, vis: Visibility, span: SourceSpan) -> Self {
         Self {
             ident,
             ty,
@@ -1495,7 +1488,7 @@ impl Debug for StructField {
 }
 
 /// A `Struct` [`Item`] in the AST, with an `Identifier` for it's name, with all it's associated fields.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Struct {
     pub ident: SpannedIdent,
     pub fields: Vec<StructField>,
@@ -1503,7 +1496,7 @@ pub struct Struct {
 
 impl Struct {
     #[inline]
-    pub fn new(ident: SpannedIdent, fields: Vec<StructField>) -> Self {
+    pub const fn new(ident: SpannedIdent, fields: Vec<StructField>) -> Self {
         Self { ident, fields }
     }
 
@@ -1536,7 +1529,7 @@ impl Debug for Struct {
 /// *   `Alive` is a `Tuple`-type enum variant.
 /// *   `Dead` is a `Struct`-type enum variant.
 /// *   `None` is a `unit`-type enum variant.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VariantData {
     Struct(Vec<StructField>),
     Tuple(Vec<Ty>),
@@ -1545,7 +1538,7 @@ pub enum VariantData {
 
 /// Describes one of the variants of an [`Enum`], includes the name/`Identifier` of the variant and
 /// what kind of variant it is: `Tuple`, `Struct` or `Unit`.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct EnumVariant {
     pub ident: Ident,
     pub data: VariantData,
@@ -1553,7 +1546,7 @@ pub struct EnumVariant {
 
 impl EnumVariant {
     #[inline]
-    pub fn new(ident: Ident, data: VariantData) -> Self {
+    pub const fn new(ident: Ident, data: VariantData) -> Self {
         Self { ident, data }
     }
 }
@@ -1569,7 +1562,7 @@ impl Debug for EnumVariant {
 
 /// Enumeration [`Item`] in the AST, with a specified name `Identifier`, and all possible `variants`
 /// of the [`Enum`].
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Enum {
     pub ident: SpannedIdent,
     pub variants: Vec<EnumVariant>,
@@ -1577,7 +1570,7 @@ pub struct Enum {
 
 impl Enum {
     #[inline]
-    pub fn new(ident: SpannedIdent, variants: Vec<EnumVariant>) -> Self {
+    pub const fn new(ident: SpannedIdent, variants: Vec<EnumVariant>) -> Self {
         Self { ident, variants }
     }
 
@@ -1588,13 +1581,13 @@ impl Enum {
 
     /// Does the enum have 'zero' variants?
     #[inline]
-    pub fn is_never_type(&self) -> bool {
+    pub const fn is_never_type(&self) -> bool {
         self.variants.is_empty()
     }
 
     /// Does the enum have exactly 'one' variant?
     #[inline]
-    pub fn is_unit_type(&self) -> bool {
+    pub const fn is_unit_type(&self) -> bool {
         self.variants.len() == 1
     }
 }
@@ -1626,7 +1619,7 @@ pub struct Module {
 
 impl Module {
     #[inline]
-    pub fn new(ident: SpannedIdent, kind: ModuleKind) -> Self {
+    pub const fn new(ident: SpannedIdent, kind: ModuleKind) -> Self {
         Self { ident, kind }
     }
 
@@ -1656,7 +1649,7 @@ pub struct Impl {
 
 impl Impl {
     #[inline]
-    pub fn new(target_path: SpannedIdentPath, lang_item: bool, items: Vec<Item>) -> Self {
+    pub const fn new(target_path: SpannedIdentPath, lang_item: bool, items: Vec<Item>) -> Self {
         Self {
             target_path,
             lang_item,
@@ -1694,7 +1687,7 @@ pub struct MethodCall {
 
 impl MethodCall {
     #[inline]
-    pub fn new(
+    pub const fn new(
         target_expr: Box<Expression>,
         method_ident: SpannedIdent,
         args: Vec<Box<Expression>>,
@@ -1738,7 +1731,7 @@ pub struct FieldInitialisation {
 
 impl FieldInitialisation {
     #[inline]
-    pub fn new(ident: Ident, expr: Box<Expression>, span: SourceSpan) -> Self {
+    pub const fn new(ident: Ident, expr: Box<Expression>, span: SourceSpan) -> Self {
         Self { ident, expr, span }
     }
 }
@@ -1762,7 +1755,7 @@ pub struct StructInitialisation {
 
 impl StructInitialisation {
     #[inline]
-    pub fn new(path: SpannedIdentPath, fields: Vec<FieldInitialisation>) -> Self {
+    pub const fn new(path: SpannedIdentPath, fields: Vec<FieldInitialisation>) -> Self {
         Self { path, fields }
     }
 
@@ -1782,7 +1775,7 @@ impl Debug for StructInitialisation {
 }
 
 /// Describes a `use` [`Item`] in the AST.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct UseImport {
     pub span: SourceSpan,
     /// Paths to import.
@@ -1791,7 +1784,7 @@ pub struct UseImport {
 
 impl UseImport {
     #[inline]
-    pub fn new(span: SourceSpan, imports: Vec<IdentPath>) -> Self {
+    pub const fn new(span: SourceSpan, imports: Vec<IdentPath>) -> Self {
         Self { span, imports }
     }
 }
