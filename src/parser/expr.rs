@@ -133,6 +133,7 @@ impl Parser<'_, '_> {
                 Keyword::True | Keyword::False => self.parse_literal(),
                 Keyword::If => self.parse_if(),
                 Keyword::While => self.parse_while(),
+                Keyword::For => self.parse_for(),
                 Keyword::Loop => self.parse_loop(),
                 Keyword::Continue => self.parse_continue(),
                 Keyword::Return => self.parse_return(),
@@ -505,6 +506,21 @@ impl Parser<'_, '_> {
 
         Ok(Expression::new_boxed(
             ExpressionKind::Loop(body),
+            self.finish_span(span_start),
+        ))
+    }
+
+    fn parse_for(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+
+        self.expect_kind(Keyword::For)?;
+        let iterator_ident = self.expect_ident_spanned()?;
+        self.expect_kind(Keyword::In)?;
+        let iterable_expr = self.parse_expression()?;
+        let body = self.parse_block_expression()?;
+
+        Ok(Expression::new_boxed(
+            ExpressionKind::For(iterator_ident, iterable_expr, body),
             self.finish_span(span_start),
         ))
     }

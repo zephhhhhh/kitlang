@@ -169,6 +169,9 @@ pub trait HLIRVisitor {
                 self.visit_expr_by_id(*min_id, hlir);
                 self.visit_expr_by_id(*max_id, hlir);
             }
+            ExprKind::For(enclosing_id, _, _, _) => {
+                self.visit_block_by_id(*enclosing_id, hlir);
+            }
             _ => {}
         }
     }
@@ -533,6 +536,9 @@ pub trait HLIRVisitorMut<'a> {
                 self.visit_expr_by_id_mut(*min_id, hlir);
                 self.visit_expr_by_id_mut(*max_id, hlir);
             }
+            ExprKind::For(enclosing_id, _, _, _) => {
+                self.visit_block_by_id_mut(*enclosing_id, hlir);
+            }
             _ => {}
         }
     }
@@ -542,6 +548,11 @@ pub trait HLIRVisitorMut<'a> {
     fn visit_expr_by_id_mut(&mut self, expr_id: HirId, hlir: &mut HLIRDisjointMut<'a>) {
         if let Some(HIRNode::Expr(expr)) = hlir.get_hir_node_mut(expr_id) {
             self.visit_expr_mut(expr, hlir);
+        }
+    }
+    fn visit_block_by_id_mut(&mut self, block_id: HirId, hlir: &mut HLIRDisjointMut<'a>) {
+        if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(block_id) {
+            self.visit_block_mut(block, hlir);
         }
     }
 

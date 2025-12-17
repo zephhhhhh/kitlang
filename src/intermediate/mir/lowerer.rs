@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::Mutability;
+use crate::ast::{BinaryOpKind, Mutability};
 
 use crate::intermediate::hir::errors::{LowerResult, lowering_err, push_lower_err};
 use crate::intermediate::hir::nodes::{
@@ -515,6 +515,10 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
 
                 let loop_result_local = self.new_temp_local();
 
+                let init_binding_local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(init_binding_local, RValue::unit());
+
                 let loop_body_start_id = self.body.next_block_id();
                 self.state
                     .loop_stack
@@ -552,6 +556,130 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 self.builder_mut_expect()
                     .push_local_assign(loop_result_local, RValue::unit());
                 self.state.last_block_target = Some(loop_result_local.into());
+            }
+            ExprKind::For(_, binding_id, iterable_id, loop_block_expr_id) => {
+                if !self.builder_expect().is_empty() {
+                    self.emit_and_replace_block();
+                }
+
+                let _init_block_id = self.body.next_block_id();
+                let for_result_local = self.new_temp_local();
+                let binding_local = self.new_temp_local();
+                let (inclusive, max_expr_id) = {
+                    let Some(HIRNode::Expr(iterable_expr)) = hlir.get_hir_node(*iterable_id) else {
+                        push_lower_err!(self, hlir, *iterable_id, "Failed to get iterable expr.");
+                        return;
+                    };
+                    let ExprKind::Range(min_expr, max_expr, inclusive) = &iterable_expr.kind else {
+                        push_lower_err!(self, hlir, *iterable_id, "Iterable is not a range.");
+                        return;
+                    };
+
+                    if let Some(binding_init_rhs_local) = self.visit_expr_assigned(*min_expr, hlir)
+                    {
+                        self.builder_mut_expect().push_assign(
+                            binding_local.into(),
+                            RValue::Unchanged(Operand::Copy(binding_init_rhs_local)),
+                        );
+                        self.emit_and_replace_block();
+                    } else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *min_expr,
+                            "Failed to eval for loop binding initial value."
+                        );
+                        return;
+                    }
+
+                    self.lut.insert(*binding_id, binding_local);
+
+                    (*inclusive, *max_expr)
+                };
+
+                let condition_check_bb_id = self.body.next_block_id();
+                self.state
+                    .loop_stack
+                    .push(HIRToMIRLoopState::new(condition_check_bb_id));
+
+                let condition_expr = self.new_temp_local();
+                let binary_op_kind = if inclusive {
+                    BinaryOpKind::LessThanOrEqual
+                } else {
+                    BinaryOpKind::LessThan
+                };
+                let Some(max_expr) = self.visit_expr_assigned(max_expr_id, hlir) else {
+                    push_lower_err!(self, hlir, max_expr_id, "Failed to eval max expr!");
+                    return;
+                };
+                self.builder_mut_expect().push_local_assign(
+                    condition_expr,
+                    RValue::BinaryOp(
+                        binary_op_kind,
+                        (Operand::Copy(binding_local.into()), Operand::Copy(max_expr)),
+                    ),
+                );
+
+                let loop_body_start_id = condition_check_bb_id.next();
+                self.builder_mut_expect()
+                    .set_exit_kind(BlockExitKind::Branch(
+                        Operand::Copy(condition_expr.into()),
+                        loop_body_start_id,
+                        BasicBlockId::PLACEHOLDER_ID,
+                    ));
+                assert!(
+                    self.emit_and_replace_block().unwrap() == condition_check_bb_id,
+                    "Blocks not equal"
+                );
+
+                self.visit_block_by_id(*loop_block_expr_id, hlir);
+                self.builder_mut_expect().push_local_assign(
+                    binding_local,
+                    RValue::Increment(Operand::Copy(binding_local.into())),
+                );
+                self.builder_mut_expect()
+                    .set_exit_kind(BlockExitKind::Goto(condition_check_bb_id));
+                let final_loop_body_id = self.emit_and_replace_block().unwrap();
+
+                if let Some(BlockExitKind::Branch(_, _, else_block)) =
+                    self.body.block_exit_kind_mut(condition_check_bb_id)
+                {
+                    *else_block = final_loop_body_id.next();
+                } else {
+                    push_lower_err!(self, hlir, expr.id, "Failed to get while branch block.");
+                }
+
+                for break_to_update in &self
+                    .state
+                    .current_loop()
+                    .expect("Not in loop?")
+                    .breaks_to_update
+                {
+                    if let Some(BlockExitKind::Goto(break_goto)) =
+                        self.body.block_exit_kind_mut(*break_to_update)
+                    {
+                        if Self::DEBUG_LOOP_STATE {
+                            debug!("Updated Goto.");
+                        }
+                        *break_goto = final_loop_body_id.next();
+                    } else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            expr.id,
+                            "Failed to update break goto target in for loop."
+                        );
+                    }
+                }
+
+                if Self::DEBUG_LOOP_STATE {
+                    debug!("Popped loop stack.");
+                }
+                self.state.loop_stack.pop();
+
+                self.builder_mut_expect()
+                    .push_local_assign(for_result_local, RValue::unit());
+                self.state.last_block_target = Some(for_result_local.into());
             }
             ExprKind::While(loop_condition_id, block_id) => {
                 if !self.builder_expect().is_empty() {
@@ -1020,7 +1148,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
         match &statement.kind {
             StatementKind::Expr(hir_id) => {
                 self.process_statement_expr(statement, hlir, *hir_id);
-                
+
                 if is_non_expr_expr(hlir, *hir_id) {
                     self.state.read_last_block_target();
                     return;
@@ -1073,7 +1201,10 @@ pub fn is_non_expr_expr(hlir: &HLIR, expr_id: HirId) -> bool {
     let Some(HIRNode::Expr(e)) = hlir.get_hir_node(expr_id) else {
         return false;
     };
-    matches!(e.kind, ExprKind::Loop(..) | ExprKind::While(..))
+    matches!(
+        e.kind,
+        ExprKind::Loop(..) | ExprKind::While(..) | ExprKind::For(..)
+    )
 }
 
 pub fn lower_hir_to_mir(hlir: &HLIR, type_info: &ProgramMetaData) -> LowerResult<MIR> {

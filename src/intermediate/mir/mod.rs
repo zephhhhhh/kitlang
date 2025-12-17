@@ -56,7 +56,7 @@ impl LocalId {
 
 impl Debug for LocalId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LocalId({})", self.0)
+        write!(f, "Local({})", self.0)
     }
 }
 
@@ -139,6 +139,7 @@ pub enum RValue {
     Ref(AssignTarget),
     BinaryOp(BinaryOpKind, (Operand, Operand)),
     UnaryOp(UnaryOpKind, Operand),
+    Increment(Operand),
     ADT(ADTKind, Vec<Operand>),
     Cast(Operand, CastKind),
 }
@@ -152,6 +153,7 @@ impl Debug for RValue {
                 write!(f, "BinaryOp({:?}, ({:?}, {:?}))", arg0, arg1.0, arg1.1)
             }
             Self::UnaryOp(arg0, arg1) => write!(f, "UnaryOp({:?}, {:?})", arg0, arg1),
+            Self::Increment(arg0) => write!(f, "Increment({:?})", arg0),
             Self::ADT(kind, operands) => {
                 write!(f, "ADT({:?}, ", kind)?;
                 for (i, operand) in operands.iter().enumerate() {

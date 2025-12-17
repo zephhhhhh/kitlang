@@ -284,8 +284,16 @@ impl Value {
             Value::Float(f) => perform_float_op(*f, rhs.float()?, op),
             Value::String(s) => perform_string_op(s, rhs.str_ref()?, op),
             Value::Boolean(b) => perform_bool_op(*b, rhs.bool()?, op),
-            Value::Ref(_) => todo!(),
-            Value::ADT(_) => todo!(),
+            Value::Ref(_) => panic!("Cannot perform binary op on reference values!"),
+            Value::ADT(_) => panic!("Cannot perform binary op on ADT values!"),
+        }
+    }
+
+    pub fn perform_increment(&self) -> Option<Self> {
+        match self {
+            Value::Integer(i) => Some(Value::Integer(i.saturating_add(1))),
+            Value::UnsignedInteger(u) => Some(Value::UnsignedInteger(u.saturating_add(1))),
+            _ => None,
         }
     }
 
@@ -513,6 +521,7 @@ impl InterpreterState {
     }
 
     pub fn execute_from_entry(&mut self, program: &ProgramType) -> Option<Value> {
+        // log::info!("Running program: {:#?}", program);
         self.execute_function(program, self.entry, &[])
     }
 }
@@ -672,8 +681,11 @@ impl InterpreterState {
             }
             RValue::UnaryOp(unary_op_kind, operand) => {
                 let rhs_value = self.eval_operand(operand)?;
-
                 rhs_value.perform_unary_op(*unary_op_kind)
+            }
+            RValue::Increment(operand) => {
+                let rhs_value = self.eval_operand(operand)?;
+                rhs_value.perform_increment()
             }
             RValue::Ref(assign_target) => Some(Value::Ref(*assign_target)),
             RValue::ADT(kind, operands) => match kind {

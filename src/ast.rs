@@ -976,6 +976,16 @@ pub enum ExpressionKind {
     If(Box<Expression>, Box<Block>, Option<Box<Expression>>),
     /// An infinite loop, with a block or "body".
     Loop(Box<Block>),
+    /// For loop, with a block or "body" and an identifier for the loop variable.
+    /// # Notes
+    /// The tuple values are: (variable_binding, iterable_expression, loop_block).
+    /// # Kit Example
+    /// ```
+    /// for i in 0..10 {
+    ///     println(i.to_string());
+    /// }
+    /// ```
+    For(SpannedIdent, Box<Expression>, Box<Block>),
     /// While loop, with a block or "body", and an optional "else" case block.
     /// # Notes
     /// The tuple values are: (condition_expression, loop_block).
@@ -991,6 +1001,7 @@ pub enum ExpressionKind {
     /// The tuple values are: (variable_to_be_assigned_to, new_value)
     /// # Kit Example
     /// `x = x + 1`
+    ///
     Assign(Box<Expression>, Box<Expression>),
     /// Calling a free function, or using the call operator of an object.
     /// # Notes
@@ -1058,6 +1069,7 @@ impl ExpressionKind {
                 | ExpressionKind::If(..)
                 | ExpressionKind::While(..)
                 | ExpressionKind::Loop(..)
+                | ExpressionKind::For(..)
         )
     }
 
@@ -1107,6 +1119,12 @@ impl Debug for ExpressionKind {
                 .finish(),
             Self::Loop(arg0) => f.debug_tuple("Loop").field(arg0).finish(),
             Self::While(arg0, arg1) => f.debug_tuple("While").field(arg0).field(arg1).finish(),
+            Self::For(arg0, arg1, arg2) => f
+                .debug_tuple("For")
+                .field(arg0)
+                .field(arg1)
+                .field(arg2)
+                .finish(),
             Self::Assign(arg0, arg1) => f.debug_tuple("Assign").field(arg0).field(arg1).finish(),
             Self::Call(arg0, arg1) => f.debug_tuple("Call").field(arg0).field(arg1).finish(),
             Self::MethodCall(arg0) => arg0.fmt(f),

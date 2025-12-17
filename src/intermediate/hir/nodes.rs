@@ -617,6 +617,8 @@ pub enum ExprKind {
     If(HirId, HirId, Option<HirId>),
     /// Infinite loop, with block: HIRNode::Block
     Loop(HirId),
+    /// For loop, with (enclosing_block, binding, iterable: HIRNode::Expr, loop_block: HIRNode::Block)
+    For(HirId, HirId, HirId, HirId),
     /// While(condition: HIRNode::Expr, block: HIRNode::Block)
     While(HirId, HirId),
     /// Assign(target: HIRNode::Expr, value: HIRNode::Expr)

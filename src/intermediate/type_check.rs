@@ -44,7 +44,12 @@ fn statement_mut_by_id(
     if let HIRNode::Statement(statement) = node {
         Ok(statement)
     } else {
-        Err(TypeCheckFail::new(node.span(), "Node is not a statement"))
+        Err(type_fail!(
+            on_span,
+            node.span(),
+            "Node is not a statement but rather: {:?}",
+            node
+        ))
     }
 }
 
@@ -336,7 +341,8 @@ impl TypeChecker<'_> {
             Err(type_fail!(
                 on_span,
                 node.span(),
-                "Node is not an expression."
+                "Node is not an expression, but rather `{:?}`",
+                node
             ))
         }
     }
@@ -730,6 +736,36 @@ impl TypeChecker<'_> {
                 self.eval_block_type_by_id(*body_id, hlir)?;
                 Ok(Type::unit())
             }
+            ExprKind::For(_, binding_id, iterable_id, loop_block_id) => {
+                let iterable_type = self.eval_expr_type_by_id(*iterable_id, hlir)?;
+                let binding_statement = statement_mut_by_id(*binding_id, hlir)?;
+                let binding_type = match binding_statement.kind {
+                    StatementKind::Let(ref mut let_statement) => {
+                        self.eval_and_infer_let_statement(*binding_id, let_statement, hlir)?
+                    }
+                    _ => {
+                        return Err(type_fail!(
+                            hlir,
+                            expr.id,
+                            "For loop binding is not a let statement."
+                        ));
+                    }
+                };
+
+                if iterable_type != binding_type {
+                    return Err(type_fail!(
+                        hlir,
+                        expr.id,
+                        "For loop iterable and binding type mismatch. Iterable: `{}`, Binding: `{}`",
+                        self.type_name(iterable_type),
+                        self.type_name(binding_type)
+                    ));
+                }
+
+                self.eval_block_type_by_id(*loop_block_id, hlir)?;
+
+                Ok(Type::unit())
+            }
             unk => Err(type_fail!(
                 hlir,
                 expr.id,
@@ -832,7 +868,12 @@ impl TypeChecker<'_> {
         if let HIRNode::Block(block) = node {
             self.eval_block_type(block, hlir)
         } else {
-            Err(type_fail!(on_span, node.span(), "Node is not a block."))
+            Err(type_fail!(
+                on_span,
+                node.span(),
+                "Node is not a block, but rather: {:?}",
+                node
+            ))
         }
     }
 

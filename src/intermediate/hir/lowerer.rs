@@ -31,7 +31,7 @@
 //!   owning node. These receive [`HirId`]s scoped to their owner, where a [`HirId`] is essentially
 //!   both an [`OwnerDefId`] and an index within that owning node's HIR node storage.
 
-use crate::ast::{self, SourceSpan, Visibility};
+use crate::ast::{self, SourceSpan, SpannedIdent, Visibility};
 
 use crate::intermediate::hir::errors::{LowerResult, lowering_err};
 use crate::intermediate::hir::nodes::{
@@ -474,6 +474,125 @@ impl HLIRLowerer<'_> {
         Ok(block_id)
     }
 
+    fn lower_for_loop(
+        &mut self,
+        binding: &SpannedIdent,
+        iterable_expr: &ast::Expression,
+        block: &ast::Block,
+        owner_node: OwnerDefId,
+    ) -> LowerResult<ExprKind> {
+        let enclosing_block_id = self.hlir.next_hir_id_on(owner_node);
+        self.hlir.insert_hir_node(
+            owner_node,
+            HIRNode::Block(Block {
+                id: enclosing_block_id,
+                statements: vec![],
+                root_block: false,
+                span: block.span,
+            }),
+        );
+
+        let iterable_expr_id = self.lower_expression(iterable_expr, owner_node)?;
+        let Some(HIRNode::Expr(iterable_expr)) = self.hlir.get_hir_node(iterable_expr_id) else {
+            return Err(lowering_err!(
+                on_span,
+                iterable_expr.span,
+                "Only range expressions are supported as for-loop iterables currently."
+            ));
+        };
+
+        let min = match &iterable_expr.kind {
+            ExprKind::Range(min_expr_id, _, _) => *min_expr_id,
+            e => {
+                return Err(lowering_err!(
+                    on_span,
+                    iterable_expr.span,
+                    "Only range expressions are supported as for-loop iterables currently, got {:?}",
+                    e
+                ));
+            }
+        };
+
+        let binding_id = {
+            let hir_statement = Statement {
+                id: self.hlir.next_hir_id_on(owner_node),
+                kind: StatementKind::Let(LetStatement {
+                    ident: binding.ident.clone(),
+                    mutable: ast::Mutability::Mutable,
+                    ty: Type::Unresolved(ast::Ty::Infer),
+                    initial_value: Some(min),
+                }),
+                span: binding.span,
+            };
+            let Some(bid) = self
+                .hlir
+                .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
+            else {
+                return Err(lowering_err!(
+                    on_span,
+                    binding.span,
+                    "Failed to create for-loop binding."
+                ));
+            };
+            bid
+        };
+
+        let loop_block_real_id = self.lower_block(block, false, owner_node)?;
+
+        let block_expr_id = self.hlir.next_hir_id_on(owner_node);
+        let block_expr = Expr {
+            id: block_expr_id,
+            kind: ExprKind::Block(loop_block_real_id),
+            span: block.span,
+        };
+        let Some(loop_block_expr_id) = self
+            .hlir
+            .insert_hir_node(owner_node, HIRNode::Expr(block_expr))
+        else {
+            return Err(lowering_err!(
+                on_span,
+                block.span,
+                "Failed to create for-loop block expression."
+            ));
+        };
+
+        let loop_block_id = {
+            let hir_statement = Statement {
+                id: self.hlir.next_hir_id_on(owner_node),
+                kind: StatementKind::Expr(loop_block_expr_id),
+                span: binding.span,
+            };
+            let Some(bid) = self
+                .hlir
+                .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
+            else {
+                return Err(lowering_err!(
+                    on_span,
+                    binding.span,
+                    "Failed to create for-loop loop block statement."
+                ));
+            };
+            bid
+        };
+
+        if let HIRNode::Block(block) = self.hlir.get_hir_node_mut_unchecked(enclosing_block_id) {
+            block.statements = vec![binding_id, loop_block_id];
+        } else {
+            Err(lowering_err!(
+                on_span,
+                block.span,
+                "Failed to get loop block node after insertion?? WHAT"
+            ))?;
+        }
+
+        Ok(ExprKind::For(
+            enclosing_block_id,
+            binding_id,
+            iterable_expr_id,
+            loop_block_real_id,
+        ))
+    }
+
     /// Lowers an expression to HIR.
     fn lower_expression(
         &mut self,
@@ -520,6 +639,9 @@ impl HLIRLowerer<'_> {
             ast::ExpressionKind::Loop(block) => {
                 let loop_block = self.lower_block(block, false, owner_node)?;
                 Ok(ExprKind::Loop(loop_block))
+            }
+            ast::ExpressionKind::For(binding, iterable_expr, block) => {
+                self.lower_for_loop(binding, iterable_expr, block, owner_node)
             }
             ast::ExpressionKind::While(expression, block) => {
                 let condition = self.lower_expression(expression, owner_node)?;
