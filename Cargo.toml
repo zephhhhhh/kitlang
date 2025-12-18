@@ -42,3 +42,6 @@ kitlang-macros = { path = "crates/kitlang-macros" }
 
 [workspace]
 members = ["crates/kitlang-macros"]
+
+[profile.release]
+lto = "fat"
