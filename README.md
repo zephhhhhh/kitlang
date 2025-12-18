@@ -105,15 +105,20 @@ Kitlang follows a traditional multi-pass compiler architecture:
 ```
 kitlang/
 └── src/
-    ├── lexer.rs           # Tokenization
-    ├── parser/            # Syntax analysis
+    ├── token.rs           # Token definitions
+    ├── lexer.rs           # Tokenizer
     ├── ast.rs             # Abstract Syntax Tree definitions
-    ├── intermediate/      # HIR, type checking, MIR
+    ├── parser/            # Syntax analysis (Tokens -> AST)
+    │
+    ├── intermediate/      
     │   ├── hir/           # High-level IR
     │   ├── mir/           # Mid-level IR
-    │   ├── resolver.rs    # Name resolution
-    │   └── type_check.rs  # Type system
-    └── interpreter/       # MIR interpreter
+    │   ├── resolver/      # Name resolution, type resolution, visibility checking, etc.
+    │   └── type_check.rs  # Type system checking
+    │
+    ├── interpreter/       # MIR interpreter
+    │
+    └── spanned_error.rs   # Error message formatting
 ```
 
 ## Development Status and roadmap
@@ -133,8 +138,6 @@ Run specific test modules:
 ```bash
 cargo test lexer
 ```
-### Note
-Currently the test suite is limited in coverage and only covers the lexer stage. A more comprehensive test suite is in the roadmap for the near future.
 
 ## Documentation
 
