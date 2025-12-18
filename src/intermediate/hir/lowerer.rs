@@ -416,7 +416,6 @@ impl HLIRLowerer<'_> {
             owner_id: use_node_id,
             imports: useimport.imports.clone(),
             span,
-            resolved_id: None,
             vis,
         }));
         self.hlir.insert_owning_node_with_parent(
@@ -797,10 +796,6 @@ impl HLIRLowerer<'_> {
         Ok(lowered)
     }
 }
-
-// ================================================================================================
-// Public API
-// ================================================================================================
 
 /// Lowers an Abstract Syntax Tree to High-Level Intermediate Representation.
 ///

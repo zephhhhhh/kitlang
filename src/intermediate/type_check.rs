@@ -927,14 +927,7 @@ impl TypeChecker<'_> {
                 owner_def_id
             ));
         };
-        let Some(owning_node_item) = owning_node.item_mut() else {
-            let span = owning_node.span().expect("Owning node span exists.");
-            return Err(type_fail!(
-                on_span,
-                span,
-                "Failed to get owning node item? Should be impossible."
-            ));
-        };
+        let owning_node_item = owning_node.item_mut();
         match &mut owning_node_item.kind {
             super::hir::nodes::ItemKind::Function(function) => {
                 self.visit_function_mut(function, hlir);

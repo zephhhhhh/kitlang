@@ -21,6 +21,7 @@ pub mod visitor;
 pub struct LocalDefId(pub u32);
 
 impl LocalDefId {
+    /// Placeholder ID constant.
     pub const PLACEHOLDER_ID: Self = Self(u32::MAX);
 
     /// Check if this is a placeholder ID. I.e. (`self == u32::MAX`).
@@ -42,7 +43,9 @@ impl Debug for LocalDefId {
 pub struct OwnerDefId(pub u32);
 
 impl OwnerDefId {
+    /// Placeholder ID constant.
     pub const PLACEHOLDER_ID: Self = Self(u32::MAX);
+    /// Owner definition of the root node (I.e. the module with the main function.)
     pub const ROOT_NODE: Self = Self(0);
 
     /// Check if this is a placeholder ID. I.e. (`self == u32::MAX`).
@@ -67,6 +70,7 @@ pub struct DefId {
 }
 
 impl DefId {
+    // Placeholder ID constant.
     pub const PLACEHOLDER_ID: Self = Self {
         module_id: u32::MAX,
         def_id: LocalDefId::PLACEHOLDER_ID,
@@ -90,7 +94,9 @@ impl Debug for DefId {
 /// index into the owners body the node refers to.
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HirId {
+    /// Index into the HLIR owning node list of the owner of this node.
     pub owner: OwnerDefId,
+    /// Index into the owning node's HIR node list.
     pub id: LocalDefId,
 }
 
@@ -119,6 +125,7 @@ impl From<&HirId> for OwnerDefId {
 }
 
 impl HirId {
+    /// Placeholder ID constant.
     pub const PLACEHOLDER_ID: Self = Self {
         owner: OwnerDefId::PLACEHOLDER_ID,
         id: LocalDefId::PLACEHOLDER_ID,
@@ -148,12 +155,28 @@ impl Debug for HirId {
     }
 }
 
+/// High Level Intermediate Representation of the program.
+///
+/// Contains all HIR nodes in owning nodes, which are organized in a structure where
+/// top level items such as structures, impls, etc each have their own owning node.
+///
+/// And all lower level nodes such as statements, expressions, etc are stored within those owning nodes.
+///
+/// In this fashion, the HIR can represent the entire program in a structure that is much flatter
+/// than the tree structure of the AST, while still maintaining the hierarchical relationships.
+///
+/// This means that all nodes have a small `HirId` that can be used to reference them, without needing
+/// to traverse a large tree structure.
+///
+/// This makes lookups and storing side channel data such as type information much easier and more efficient.
 #[derive(Default, Clone)]
 pub struct HLIR {
+    /// List of all owning nodes in the HIR.
     pub owner_nodes: Vec<OwningNode>,
 }
 
 impl HLIR {
+    /// Get the total count of owner nodes in the HIR.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
@@ -161,29 +184,34 @@ impl HLIR {
         self.owner_nodes.len() as u32
     }
 
+    /// Get an iterator over all owner IDs in the HIR.
     #[inline]
     pub fn owner_id_iter(&self) -> impl Iterator<Item = OwnerDefId> {
         (0..self.owner_node_count()).map(OwnerDefId)
     }
 
+    /// Get a reference to the root module owning node.
     #[inline]
     #[must_use]
     pub fn root_module(&self) -> Option<&OwningNode> {
         self.owning_node(OwnerDefId::ROOT_NODE)
     }
 
+    /// Get a mutable reference to the root module owning node.
     #[inline]
     #[must_use]
     pub fn root_module_mut(&mut self) -> Option<&mut OwningNode> {
         self.owning_node_mut(OwnerDefId::ROOT_NODE)
     }
 
+    /// Get a reference to the owning node with a specified [`OwnerDefId`].
     #[inline]
     #[must_use]
     pub fn owning_node(&self, id: OwnerDefId) -> Option<&OwningNode> {
         self.owner_nodes.get(id.0 as usize)
     }
 
+    /// Get a mutable reference to the owning node with a specified [`OwnerDefId`].
     #[inline]
     #[must_use]
     pub fn owning_node_mut(&mut self, id: OwnerDefId) -> Option<&mut OwningNode> {
@@ -210,12 +238,14 @@ impl HLIR {
             .expect("Node exists.")
     }
 
+    /// Get the next available owner ID for inserting a new owning node.
     #[inline]
     #[must_use]
     pub const fn next_owner_id(&self) -> OwnerDefId {
         OwnerDefId(self.owner_node_count())
     }
 
+    /// Insert a new owning node into the HIR, returning its assigned [`OwnerDefId`].
     #[inline]
     pub fn insert_owning_node(&mut self, mut owner_node: OwningNode) -> OwnerDefId {
         let next_id = self.next_owner_id();
@@ -224,6 +254,8 @@ impl HLIR {
         next_id
     }
 
+    /// Insert a new owning node into the HIR, updating its parent's item list,
+    /// and returning its assigned [`OwnerDefId`].
     #[inline]
     pub fn insert_owning_node_with_parent(
         &mut self,
@@ -238,6 +270,7 @@ impl HLIR {
         new_node_id
     }
 
+    /// Push a new item to the parent owning node's item list.
     fn update_parent_item_list(&mut self, new_node: OwnerDefId, parent_id: OwnerDefId) {
         if let Some(parent_module) = self
             .owning_node_mut(parent_id)
@@ -286,6 +319,7 @@ impl HLIR {
             .expect("HIRNode exists.")
     }
 
+    /// Get the next available [`HirId`] for a specified owner.
     #[inline]
     #[must_use]
     pub fn next_hir_id_on(&self, owner_id: impl Into<OwnerDefId>) -> HirId {
@@ -293,6 +327,7 @@ impl HLIR {
             .map_or(HirId::PLACEHOLDER_ID, nodes::OwningNode::next_hir_id)
     }
 
+    /// Insert a new [`HirNode`] into the HIR under the specified owner, returning its assigned [`HirId`].
     #[inline]
     pub fn insert_hir_node(
         &mut self,
@@ -309,27 +344,31 @@ impl HLIR {
 }
 
 impl HLIR {
+    /// Get a reference to the owning node's item with a specified [`OwnerDefId`].
     #[inline]
     #[must_use]
     pub fn owning_node_item(&self, owner_id: OwnerDefId) -> Option<&Item> {
-        self.owning_node(owner_id)?.item()
+        Some(self.owning_node(owner_id)?.item())
     }
 
+    /// Get a mutable reference to the owning node's item with a specified [`OwnerDefId`].
     #[inline]
     #[must_use]
     pub fn owning_node_item_mut(&mut self, owner_id: OwnerDefId) -> Option<&mut Item> {
-        self.owning_node_mut(owner_id)?.item_mut()
+        Some(self.owning_node_mut(owner_id)?.item_mut())
     }
 }
 
 // "Helper" functions..
 impl HLIR {
+    /// Get the source span for a given owning node ID, if it exists.
     #[inline]
     #[must_use]
     pub fn span_by_owner_id(&self, id: OwnerDefId) -> Option<SourceSpan> {
-        self.owning_node(id)?.span()
+        Some(self.owning_node(id)?.span())
     }
 
+    /// Get the source span for a given [`HirId`], if it exists.
     #[inline]
     #[must_use]
     pub fn span_by_hir_id(&self, id: HirId) -> Option<SourceSpan> {
@@ -354,12 +393,17 @@ impl Debug for HLIR {
 /// Contains metadata about the program stored in HIR, such as type information, namespace etc.
 #[derive(Debug, Clone)]
 pub struct ProgramMetaData {
+    /// The program's namespace information, I.e. all defined modules, types, functions, etc.
     pub namespace: Namespace,
+    /// The program's type registry, containing all defined types.
     pub type_registry: TypeRegistry,
+    /// The program's type map, containing side channel
+    /// information about what types a given [`HirId`] evaluates to.
     pub type_map: TypeMap,
 }
 
 impl ProgramMetaData {
+    /// Find a method in the namespace given its defining path, data type identifier, and method identifier.
     #[inline]
     #[must_use]
     pub fn find_method(
@@ -372,6 +416,7 @@ impl ProgramMetaData {
             .find_method(defined_in, data_type_ident, method_ident)
     }
 
+    /// Find a method owner definition ID in the namespace given its defining path, data type identifier, and method identifier.
     #[inline]
     #[must_use]
     pub fn find_method_owner_def(
@@ -384,6 +429,7 @@ impl ProgramMetaData {
             .find_method_owner_def(defined_in, data_type_ident, method_ident)
     }
 
+    /// Find the owner definition ID for a method defined on an ADT.
     #[inline]
     #[must_use]
     pub fn find_adt_method_owner_def(
@@ -394,6 +440,7 @@ impl ProgramMetaData {
         self.find_method_owner_def(&adt.defined_in, adt.type_ident.str(), method_ident)
     }
 
+    /// Find the owner definition ID for a method defined on a given type.
     #[inline]
     #[must_use]
     pub fn find_ty_method_owner_def(&self, ty: &Type, method_ident: &str) -> Option<OwnerDefId> {

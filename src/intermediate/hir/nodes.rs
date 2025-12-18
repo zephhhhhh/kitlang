@@ -15,11 +15,14 @@ use paste::paste;
 /// Describes a kind of node that "controls" a scope and owns it's contents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwningNodeKind {
+    /// An item node, such as a function, struct, or enum.
     Item(Item),
+    /// The same as `OwningNodeKind::Item`, but for items defined inside an `impl` block.
     ImplItem(Item),
 }
 
 impl OwningNodeKind {
+    /// Get the identifier of the item in the node, if it has one.
     #[inline]
     #[must_use]
     pub fn ident(&self) -> Option<String> {
@@ -28,6 +31,7 @@ impl OwningNodeKind {
         }
     }
 
+    /// Get the owner definition ID of the item in the node.
     #[inline]
     #[must_use]
     pub const fn owner_id(&self) -> OwnerDefId {
@@ -36,6 +40,7 @@ impl OwningNodeKind {
         }
     }
 
+    /// Set the owner definition ID of the item in the node.
     #[inline]
     pub const fn set_owner_id(&mut self, owner_id: OwnerDefId) {
         match self {
@@ -43,44 +48,52 @@ impl OwningNodeKind {
         }
     }
 
+    /// Get a reference to the item in the node.
     #[inline]
     #[must_use]
-    pub const fn item(&self) -> Option<&Item> {
+    pub const fn item(&self) -> &Item {
         match self {
-            Self::Item(item) | Self::ImplItem(item) => Some(item),
+            Self::Item(item) | Self::ImplItem(item) => item,
         }
     }
 
+    /// Get a mutable reference to the item in the node.
     #[inline]
     #[must_use]
-    pub const fn item_mut(&mut self) -> Option<&mut Item> {
+    pub const fn item_mut(&mut self) -> &mut Item {
         match self {
-            Self::Item(item) | Self::ImplItem(item) => Some(item),
+            Self::Item(item) | Self::ImplItem(item) => item,
         }
     }
 
+    /// Get the source span of the item in the node.
     #[inline]
     #[must_use]
-    pub const fn span(&self) -> Option<SourceSpan> {
+    pub const fn span(&self) -> SourceSpan {
         match self {
             Self::Item(item) | Self::ImplItem(item) => item.span(),
         }
     }
 }
 
+/// The type of a value in HIR, either unresolved (AST type) or resolved (Kit type).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub enum Type {
+    /// The type has not yet been resolved to it's Kit type (either a `TypeID` or a built-in type).
     Unresolved(ASTTy),
+    /// The type has been resolved to it's Kit type (either a `TypeID` or a built-in type).
     Resolved(KitTy),
 }
 
 impl Type {
+    /// Create a new `Type` representing the unit type.
     #[inline]
     #[must_use]
     pub const fn unit() -> Self {
         Self::Resolved(KitTy::Unit)
     }
 
+    /// Check if the type is the unit type.
     #[inline]
     #[must_use]
     pub fn is_unit(&self) -> bool {
@@ -90,18 +103,22 @@ impl Type {
         *resolved == KitTy::Unit
     }
 
+    /// Check if the type is resolved.
     #[inline]
     #[must_use]
     pub const fn is_resolved(&self) -> bool {
         matches!(self, Self::Resolved(_))
     }
 
+    /// Check if the type is an unresolved infer type.
+    /// Meaning that this value's type should be inferred by the type checker.
     #[inline]
     #[must_use]
     pub const fn is_infer(&self) -> bool {
         matches!(self, Self::Unresolved(ASTTy::Infer))
     }
 
+    /// Get the resolved Kit type, if it exists.
     #[inline]
     #[must_use]
     pub const fn resolved(&self) -> Option<&KitTy> {
@@ -113,6 +130,7 @@ impl Type {
 }
 
 impl Type {
+    /// Create a `Type` from an AST type, attempting to resolve it to a Kit type if the resolution is trivial (e.g. built-in types).
     #[inline]
     #[must_use]
     pub fn from_ast_ty(ty: &ASTTy) -> Self {
@@ -159,17 +177,41 @@ impl From<&crate::ast::Ty> for Type {
     }
 }
 
+/// A node within an owning HIR node.
+/// Represents things such as statements, expressions, parameters, etc.
 #[derive(Clone, PartialEq)]
 pub enum HirNode {
+    /// Parameter of a function.
     Param(Parameter),
+    /// Block of statements.
     Block(Block),
+    /// An expression.
+    /// # Example
+    /// ```ignore
+    /// 3 + 3
+    /// ```
     Expr(Expr),
+    /// A statement.
+    /// This may be a variable declaration, or an expression, etc.
+    /// A logical way to think about this would be a 'line' of code.
+    /// That may be made up of multiple expressions.
+    /// # Example
+    /// ```ignore
+    /// fn some_func() {
+    ///     // This is what this statement type represents.
+    ///     let x = 3 + 3;
+    /// }
+    /// ```
     Statement(Statement),
+    /// A field within a struct.
     Field(StructField),
+    /// A reference to another node via a path.
+    /// Can be either resolved or unresolved.
     Path(RefPath),
 }
 
 impl HirNode {
+    /// Get the source span of the node.
     #[inline]
     #[must_use]
     pub const fn span(&self) -> SourceSpan {
@@ -226,13 +268,17 @@ impl_hir_node_from!(Statement, Statement);
 impl_hir_node_from!(StructField, Field);
 impl_hir_node_from!(RefPath, Path);
 
+/// Owning HIR node, which contains other HIR nodes and manages their scope.
+/// Has a kind, which describes what type of owning node it is (e.g. an `Item` or an `Item` within an `impl` block).
 #[derive(Debug, Clone, PartialEq)]
 pub struct OwningNode {
     pub kind: OwningNodeKind,
+    /// The HIR nodes owned by this owning node.
     pub nodes: Vec<HirNode>,
 }
 
 impl OwningNode {
+    /// Create a new `OwningNode` with the specified kind.
     #[inline]
     #[must_use]
     pub const fn new(kind: OwningNodeKind) -> Self {
@@ -242,6 +288,7 @@ impl OwningNode {
         }
     }
 
+    /// Create a new `OwningNode` from an `Item`, specifying whether it is an item within an `impl` block.
     #[inline]
     #[must_use]
     pub const fn from_item(item: Item, impl_item: bool) -> Self {
@@ -252,43 +299,50 @@ impl OwningNode {
         })
     }
 
+    /// Set the owner definition ID of the owning node.
     #[inline]
     pub const fn set_owner_id(&mut self, owner_id: OwnerDefId) {
         self.kind.set_owner_id(owner_id);
     }
 
+    /// Get the owner definition ID of the owning node.
     #[inline]
     #[must_use]
     pub const fn owner_id(&self) -> OwnerDefId {
         self.kind.owner_id()
     }
 
+    /// Get the identifier of the item in the owning node, if it has one.
     #[inline]
     #[must_use]
     pub fn ident(&self) -> Option<String> {
         self.kind.ident()
     }
 
+    /// Get a reference to the item in the owning node.
     #[inline]
     #[must_use]
-    pub const fn item(&self) -> Option<&Item> {
+    pub const fn item(&self) -> &Item {
         self.kind.item()
     }
 
+    /// Get a mutable reference to the item in the owning node.
     #[inline]
     #[must_use]
-    pub const fn item_mut(&mut self) -> Option<&mut Item> {
+    pub const fn item_mut(&mut self) -> &mut Item {
         self.kind.item_mut()
     }
 
+    /// Get the source span of the item in the owning node, if it has one.
     #[inline]
     #[must_use]
-    pub const fn span(&self) -> Option<SourceSpan> {
+    pub const fn span(&self) -> SourceSpan {
         self.kind.span()
     }
 }
 
 impl OwningNode {
+    /// Get the number of local HIR nodes owned by this owning node.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
@@ -296,12 +350,15 @@ impl OwningNode {
         self.nodes.len() as u32
     }
 
+    /// Get the next available local definition ID for a new HIR node.
     #[inline]
     #[must_use]
     pub const fn next_local_id(&self) -> LocalDefId {
         LocalDefId(self.local_count())
     }
 
+    /// Get the next available HIR ID for a new HIR node.
+    /// Combines the owning node's owner ID with the next local definition ID.
     #[inline]
     #[must_use]
     pub const fn next_hir_id(&self) -> HirId {
@@ -311,6 +368,7 @@ impl OwningNode {
         }
     }
 
+    /// Insert a new HIR node into the owning node, returning its assigned local definition ID.
     #[inline]
     pub fn insert_hir_node(&mut self, hir_node: HirNode) -> LocalDefId {
         let new_id = self.next_local_id();
@@ -318,12 +376,14 @@ impl OwningNode {
         new_id
     }
 
+    /// Get a reference to a HIR node by its local definition ID.
     #[inline]
     #[must_use]
     pub fn get_hir_node(&self, id: LocalDefId) -> Option<&HirNode> {
         self.nodes.get(id.0 as usize)
     }
 
+    /// Get a mutable reference to a HIR node by its local definition ID.
     #[inline]
     #[must_use]
     pub fn get_hir_node_mut(&mut self, id: LocalDefId) -> Option<&mut HirNode> {
@@ -375,13 +435,20 @@ impl_item_kind_shorthand!(use, ItemKind::Use(u) => u, UsePath);
 
 // Item kind tys..
 
+/// Describes the span of a module, either declaration or implementation.
+/// Used to differentiate between the two in error messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleSpan {
+    /// Module declaration span.
+    /// E.g. `module a;`
     Declaration(SourceSpan),
+    /// Span of a module with a body.
+    /// E.g. `module a { ... }`
     Implementation(SourceSpan),
 }
 
 impl ModuleSpan {
+    /// Get the source span of the module span.
     #[inline]
     #[must_use]
     pub const fn span(&self) -> SourceSpan {
@@ -391,13 +458,17 @@ impl ModuleSpan {
     }
 }
 
+/// Identifier for a module, either raw or spanned.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleIdent {
+    /// Essentially the only module with this kind of [`ModuleIdent`] will be the root node.
     RawIdent(Ident),
+    /// Almost all modules will have a [`SpannedIdent`], an Identifier with the span of the identifier.
     SpannedIdent(SpannedIdent),
 }
 
 impl ModuleIdent {
+    /// Get the identifier of the module.
     #[inline]
     #[must_use]
     pub const fn ident(&self) -> &Ident {
@@ -407,6 +478,8 @@ impl ModuleIdent {
         }
     }
 
+    /// Get the [`SourceSpan`] of the module identifier.
+    /// Will return the null span for raw identifiers.
     #[inline]
     #[must_use]
     pub const fn span(&self) -> SourceSpan {
@@ -417,22 +490,36 @@ impl ModuleIdent {
     }
 }
 
+/// A module in HIR, with a list of [`OwnerDefId`]s of the items it contains.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
     pub owner_id: OwnerDefId,
     pub ident: ModuleIdent,
     pub span: ModuleSpan,
+    /// Whether the module is `pub` or not.
     pub vis: Visibility,
+    /// The item IDs of the items contained in the module.
     pub item_ids: Vec<OwnerDefId>,
 }
 
 /// An individual parameter to a function.
+/// # Example
+/// ```ignore
+/// fn some_func(
+///     // This is what this definition represents.
+///     mut x: i32,
+/// ) { ... }
+/// ```
 #[derive(Clone, PartialEq, Eq, PartialOrd)]
 pub struct Parameter {
     pub id: HirId,
+    /// The [`OwnerDefId`] of the function this parameter belongs to.
     pub fn_id: OwnerDefId,
+    /// The identifier of the parameter.
     pub ident: SpannedIdent,
+    /// The span of the full parameter definition (Including type and mutability).
     pub span: SourceSpan,
+    /// If the parameter is marked `mut` or not.
     pub mutable: Mutability,
 }
 
@@ -447,31 +534,55 @@ impl Debug for Parameter {
 }
 
 /// The "signature" of a function, holds the return type and the parameter types.
+/// # Example
+/// ```ignore
+/// fn some_func
+/// // This is what this represents.
+/// (x: f32, y: f32) -> bool
+/// { ... }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct FunctionSig {
+    /// The identifiers of the parameters, in order.
     pub parameter_idents: Vec<String>,
+    /// The types of the parameters, in order.
     pub parameters: Vec<Type>,
+    /// The return type of the function.
     pub output: Type,
+    /// The span of the full function signature.
     pub span: SourceSpan,
 }
 
+/// The body of a [`Function`], containing the parameter IDs and the block ID.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionBody {
+    /// [`HirId`] of the parameters of the function.
     pub params: Vec<HirId>,
+    /// [`HirId`] of the block that makes up the function body.
     pub block: HirId,
 }
 
+/// A function in HIR, containing its signature, body, and other metadata.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Function {
     pub owner_id: OwnerDefId,
+    /// The identifier of the function name.
     pub ident: SpannedIdent,
+    /// Whether the function is `pub` or not.
     pub vis: Visibility,
+    /// Whether the function is marked `native`.
     pub native: bool,
+    /// Whether the function is a method (i.e. defined within an `impl` block with a `self` as the first parameter).
     pub is_method: bool,
+    /// Whether the function is marked `global`.
     pub is_global: bool,
+    /// The signature of the function. (return type, parameter types, etc.)
     pub sig: FunctionSig,
+    /// The span of the function declaration (from `fn` to the end of the signature).
     pub decl_span: SourceSpan,
+    /// The full span of the function (declaration + body).
     pub full_span: SourceSpan,
+    /// The body of the function, if it is not native.
     pub body: Option<FunctionBody>,
 }
 
@@ -492,29 +603,57 @@ impl Debug for Function {
 }
 
 /// A field of a struct, containing the name of the field and it's associated [`Type`].
+/// # Example
+/// ```ignore
+/// struct ExampleStruct {
+///     // This is what this definition represents.
+///     pub field_name: i32,
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructField {
     pub id: HirId,
+    /// The identifier of the field.
     pub ident: SpannedIdent,
+    /// The span of the field definition (including type and visibility).
     pub span: SourceSpan,
+    /// The type of the field.
     pub ty: Type,
+    /// Whether the field is `pub` or not.
     pub vis: Visibility,
 }
 
+/// A struct in HIR, containing its identifier, fields, and other metadata.
+/// # Example
+/// ```ignore
+/// // This is what this definition represents.
+/// struct ExampleStruct {
+///     pub field_name: i32,
+///     ...
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Struct {
     pub owner_id: OwnerDefId,
+    /// The identifier of the struct.
     pub ident: SpannedIdent,
+    /// The span of the full struct definition.
     pub span: SourceSpan,
+    /// Whether the struct is `pub` or not.
     pub vis: Visibility,
+    /// The [`HirId`]s of each [`StructField`] of the struct in order.
     pub fields: Vec<HirId>,
 }
 
+/// An enum in HIR, containing its identifier and other metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Enum {
     pub owner_id: OwnerDefId,
+    /// The identifier of the enum.
     pub ident: SpannedIdent,
+    /// The span of the full enum definition.
     pub span: SourceSpan,
+    /// Whether the enum is `pub` or not.
     pub vis: Visibility,
     // TODO: Variants..
 }
@@ -523,46 +662,81 @@ pub struct Enum {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Constant {
     pub owner_id: OwnerDefId,
+    /// The identifier of the constant.
     pub ident: SpannedIdent,
+    /// The span of the full constant definition.
     pub span: SourceSpan,
+    /// The type of the constant.
     pub ty: Type,
+    /// Whether the constant is `pub` or not.
     pub vis: Visibility,
+    /// The [`HirId`] of the expression that the constant evaluates to.
     pub expr: HirId,
 }
 
+/// An `impl` block in HIR, containing the type being implemented on and the items within the block.
+/// # Example
+/// ```ignore
+/// impl ExampleStruct {
+///     fn some_method(self) { ... }
+///     ...
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Impl {
+    /// The span of the full `impl` block.
     pub span: SourceSpan,
+    /// The owner definition ID of the `impl` block.
     pub owner_id: OwnerDefId,
-    // FIXME: Make this the hir::Ty.
+    /// The span of the type being implemented on.
     pub ty_span: SourceSpan,
+    /// The type being implemented on.
     pub self_ty: IdentPath,
+    /// The list of [`OwnerDefId`]s of the items within the `impl` block.
     pub items: Vec<OwnerDefId>,
 }
 
+/// A `use` path in HIR, containing the path being imported and other metadata.
+/// # Example
+/// ```ignore
+/// use some::module::path::ItemA;
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UsePath {
     pub owner_id: OwnerDefId,
+    /// The list of import paths being imported.
     pub imports: Vec<IdentPath>,
+    /// The span of the full `use` statement.
     pub span: SourceSpan,
-    pub resolved_id: Option<ResolvedID>,
+    /// Whether the `use` statement is `pub` or not.
+    /// I.e. if the imports should be re-exported.
     pub vis: Visibility,
 }
 
 // Item implementation..
 
+/// The different kinds of items in HIR.
+/// Differentiates between modules, functions, structs, constants, etc.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ItemKind {
+    /// A module item.
     Module(Module),
+    /// A function definition.
     Function(Function),
+    /// A struct definition.
     Struct(Struct),
+    /// An enum definition.
     Enum(Enum),
+    /// A constant definition.
     Constant(Constant),
+    /// An `impl` block.
     Impl(Impl),
+    /// A `use` import statement.
     Use(UsePath),
 }
 
 impl ItemKind {
+    /// Get the identifier of the item, if it has one.
     #[inline]
     #[must_use]
     pub fn ident(&self) -> Option<String> {
@@ -576,21 +750,23 @@ impl ItemKind {
         }
     }
 
+    /// Get the source span of the item, for error reporting.
     #[inline]
     #[must_use]
-    pub const fn span(&self) -> Option<SourceSpan> {
+    pub const fn span(&self) -> SourceSpan {
         match self {
-            Self::Module(md) => Some(md.ident.span()),
-            Self::Function(f) => Some(f.decl_span),
-            Self::Struct(s) => Some(s.ident.span),
-            Self::Enum(e) => Some(e.ident.span),
-            Self::Constant(c) => Some(c.ident.span),
-            Self::Impl(_) => None,
-            Self::Use(u) => Some(u.span),
+            Self::Module(md) => md.ident.span(),
+            Self::Function(f) => f.decl_span,
+            Self::Struct(s) => s.ident.span,
+            Self::Enum(e) => e.ident.span,
+            Self::Constant(c) => c.ident.span,
+            Self::Impl(a) => a.span,
+            Self::Use(u) => u.span,
         }
     }
 }
 
+/// An item in HIR, containing its owner definition ID and kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
     pub owner_id: OwnerDefId,
@@ -598,6 +774,7 @@ pub struct Item {
 }
 
 impl Item {
+    /// Create a new `Item` with the specified kind and a placeholder owner ID.
     #[inline]
     #[must_use]
     pub const fn new(kind: ItemKind) -> Self {
@@ -607,37 +784,71 @@ impl Item {
         }
     }
 
+    /// Get the identifier of the item, if it has one.
     #[inline]
     #[must_use]
     pub fn ident(&self) -> Option<String> {
         self.kind.ident()
     }
 
+    /// Get the source span of the item, for error reporting.
     #[inline]
     #[must_use]
-    pub const fn span(&self) -> Option<SourceSpan> {
+    pub const fn span(&self) -> SourceSpan {
         self.kind.span()
     }
 }
 
+/// A block of statements in HIR.
+/// Holds a list of [`HirId`]s that make up the block and whether
+/// it is the root block of an item or not.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub id: HirId,
+    /// The list of `HirNode::Statement`s in the block.
     pub statements: Vec<HirId>,
+    /// Whether the block is the root block of an item (e.g. function body) or not.
     pub root_block: bool,
+    /// The full source span of the block.
     pub span: SourceSpan,
 }
 
 // Statement..
 
+/// The different kinds of statements in HIR.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementKind {
+    /// A `let` statement.
+    /// I.e. A variable declaration/initialization.
+    /// # Example
+    /// ```ignore
+    /// let mut x: i32 = 5;
+    /// ```
     Let(LetStatement),
+    /// An item definition within a block.
+    /// # Example
+    /// ```ignore
+    /// fn outer_func() {
+    ///     // This is the item referenced by this statement type.
+    ///     fn inner_func() { ... }
+    /// }
+    /// ```
     Item(OwnerDefId),
+    /// An expression statement.
+    /// # Example
+    /// ```ignore
+    /// 3 + 3
+    /// ```
     Expr(HirId),
+    /// A semi-colon terminated expression statement.
+    /// # Example
+    /// ```ignore
+    /// 3 + 3;
+    /// ```
     Semi(HirId),
 }
 
+/// A statement in HIR, containing its kind and source span.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
     pub id: HirId,
@@ -645,28 +856,58 @@ pub struct Statement {
     pub span: SourceSpan,
 }
 
+/// A `let` statement in HIR, containing the identifier, mutability, type, and optional initial value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LetStatement {
+    /// The identifier of the variable being declared.
     pub ident: Ident,
+    /// Whether the variable is marked `mut` or not.
     pub mutable: Mutability,
+    /// The type of the variable.
+    /// This may be a defined type, or `ASTTy::Infer` if the type declaration is absent.
     pub ty: Type,
+    /// The optional initial value of the variable.
+    /// *   If `None`, the variable is uninitialized.
+    /// *   If `Some`, the [`HirId`] of the expression that initializes the variable.
     pub initial_value: Option<HirId>,
 }
 
 // Exprs..
 
+/// A field initialisation within a struct initialisation expression.
+/// # Example
+/// ```ignore
+/// let x = ExampleStruct {
+///     // This is what this struct field initialisation represents.
+///     value: 5,
+///     ...
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructFieldInit {
+    /// The identifier of the field being initialised.
     pub ident: Ident,
+    /// The [`HirId`] of the expression being assigned to the field.
     pub expr: HirId,
 }
 
+/// A struct initialisation expression in HIR, containing the type path and field initialisations.
+/// # Example
+/// ```ignore
+/// let x = ExampleStruct {
+///     value: 5,
+///     ...
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructInitialisation {
+    /// The path to the struct type being initialised.
     pub ty_path: RefPath,
+    /// The field initialisations within the struct initialisation.
     pub fields: Vec<StructFieldInit>,
 }
 
+/// The different kinds of expressions in HIR.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     /// Block(`HIRNode::Block`).
@@ -711,6 +952,7 @@ pub enum ExprKind {
     Range(HirId, HirId, bool),
 }
 
+/// An expression in HIR, containing its kind and source span.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expr {
     pub id: HirId,
@@ -718,15 +960,21 @@ pub struct Expr {
     pub span: SourceSpan,
 }
 
+/// The resolved ID of a reference path in HIR.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolvedID {
+    /// The path was resolved to a [`HirId`].
     Hir(HirId),
+    /// The path was resolved to a [`DefId`].
     Def(DefId),
+    /// The path was resolved to an [`OwnerDefId`].
     OwnerDef(OwnerDefId),
+    /// The path was resolved to a [`TypeID`].
     TypeDef(TypeID),
 }
 
 impl ResolvedID {
+    /// Get the `HirId` if this `ResolvedID` is of the `Hir` variant.
     #[inline]
     #[must_use]
     pub const fn hir_id(&self) -> Option<HirId> {
@@ -736,6 +984,7 @@ impl ResolvedID {
         }
     }
 
+    /// Get the `DefId` if this `ResolvedID` is of the `Def` variant.
     #[inline]
     #[must_use]
     pub const fn def_id(&self) -> Option<DefId> {
@@ -745,6 +994,7 @@ impl ResolvedID {
         }
     }
 
+    /// Get the `OwnerDefId` if this `ResolvedID` is of the `OwnerDef` variant.
     #[inline]
     #[must_use]
     pub const fn owner_def_id(&self) -> Option<OwnerDefId> {
@@ -754,6 +1004,7 @@ impl ResolvedID {
         }
     }
 
+    /// Get the `TypeID` if this `ResolvedID` is of the `TypeDef` variant.
     #[inline]
     #[must_use]
     pub const fn type_id(&self) -> Option<TypeID> {
@@ -800,13 +1051,17 @@ impl From<&OwnerDefId> for ResolvedID {
     }
 }
 
+/// A reference path in HIR, which can be either unresolved (AST path) or resolved (with a `ResolvedID`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefPath {
+    /// A path that has not yet been resolved.
     Unresolved(SpannedIdentPath),
+    /// A path that has been resolved to a specific ID.
     Resolved(SpannedIdentPath, ResolvedID),
 }
 
 impl RefPath {
+    /// Get the spanned identifier path of the path reference.
     #[inline]
     #[must_use]
     pub const fn spanned_ident_path(&self) -> &SpannedIdentPath {
@@ -815,6 +1070,7 @@ impl RefPath {
         }
     }
 
+    /// Get the identifier path of the path reference.
     #[inline]
     #[must_use]
     pub const fn ident_path(&self) -> &IdentPath {
@@ -823,6 +1079,7 @@ impl RefPath {
         }
     }
 
+    /// Get the [`SourceSpan`] of the path reference.
     #[inline]
     #[must_use]
     pub const fn span(&self) -> SourceSpan {
@@ -831,12 +1088,14 @@ impl RefPath {
         }
     }
 
+    /// Returns `true` if the path reference has been resolved.
     #[inline]
     #[must_use]
     pub const fn is_resolved(&self) -> bool {
         matches!(self, Self::Resolved(_, _))
     }
 
+    /// Get the resolved ID of the path reference, if it has been resolved.
     #[inline]
     #[must_use]
     pub const fn resolved_id(&self) -> Option<ResolvedID> {
@@ -846,21 +1105,25 @@ impl RefPath {
         }
     }
 
+    /// Resolve the path reference to the specified `ResolvedID`.
     #[inline]
     pub fn resolve_to(&mut self, id: ResolvedID) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), id);
     }
 
+    /// Resolve the path reference to the specified `HirId`.
     #[inline]
     pub fn resolve_to_hir_id(&mut self, id: HirId) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::Hir(id));
     }
 
+    /// Resolve the path reference to the specified `OwnerDefId`.
     #[inline]
     pub fn resolve_to_owner_id(&mut self, id: OwnerDefId) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::OwnerDef(id));
     }
 
+    /// Resolve the path reference to the specified `DefId`.
     #[inline]
     pub fn resolve_to_def_id(&mut self, id: DefId) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::Def(id));
