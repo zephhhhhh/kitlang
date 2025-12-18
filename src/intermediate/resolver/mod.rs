@@ -382,6 +382,10 @@ impl Namespace {
     }
 }
 
+/// # Errors
+/// This function will return an error if any part of the HIR cannot be lowered properly.
+/// The returned error will contain a diagnostic message indicating what can't be resolved,
+/// why it can't be resolved and where it occured.
 pub fn resolve_paths(hlir: &mut HLIR, meta_data: &mut ProgramMetaData) -> ResolveResult<()> {
     locals::resolve_scope_paths(hlir)?;
     associated_references::resolve_associated_references(hlir, meta_data)?;

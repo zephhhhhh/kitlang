@@ -4,7 +4,7 @@ use crate::ast::{BinaryOpKind, Mutability};
 
 use crate::intermediate::hir::errors::{LowerResult, lowering_err, push_lower_err};
 use crate::intermediate::hir::nodes::{
-    Block, Expr, ExprKind, Function, HIRNode, LetStatement, Parameter, RefPath, ResolvedID,
+    Block, Expr, ExprKind, Function, HirNode, LetStatement, Parameter, RefPath, ResolvedID,
     Statement, StatementKind, Type,
 };
 use crate::intermediate::hir::visitor::HLIRVisitor;
@@ -210,6 +210,7 @@ impl HIRToMIRFuncLowerer<'_> {
             .expect("MIR Lowering block builder mut doesn't exist.")
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn emit_block(&mut self) -> Option<BasicBlockId> {
         if let Some(mut block_builder) = self.block_stack.pop() {
             let block_id = BasicBlockId(self.body.blocks.len() as u32);
@@ -273,15 +274,20 @@ impl HIRToMIRFuncLowerer<'_> {
 }
 
 impl HIRToMIRFuncLowerer<'_> {
+    #[inline]
+    #[must_use]
     fn is_directive_set(&self) -> bool {
         self.builder()
             .is_some_and(|builder| builder.directive.is_some())
     }
 
+    #[inline]
     fn process_statement_expr(&mut self, _statement: &Statement, hlir: &HLIR, expr_id: HirId) {
         self.visit_expr_by_id(expr_id, hlir);
     }
 
+    #[inline]
+    #[must_use]
     fn get_mutability_of_local(&self, local_id: LocalId) -> Mutability {
         self.body
             .locals
@@ -289,6 +295,8 @@ impl HIRToMIRFuncLowerer<'_> {
             .map_or(Mutability::Immutable, |l| l.mutable)
     }
 
+    #[inline]
+    #[must_use]
     fn new_temp_local_with_mut(&mut self, mutable: Mutability) -> LocalId {
         if self.state.assign_target.is_some() {
             warn!("New local while assign target is active!");
@@ -300,15 +308,22 @@ impl HIRToMIRFuncLowerer<'_> {
         })
     }
 
+    #[inline]
+    #[must_use]
     fn new_temp_local(&mut self) -> LocalId {
         self.new_temp_local_with_mut(Mutability::Immutable)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    #[must_use]
     const fn last_local(&self) -> LocalId {
         let locals = self.body.locals.len() as u32;
         LocalId(locals.saturating_sub(1))
     }
 
+    #[inline]
+    #[must_use]
     fn last_target(&mut self) -> AssignTarget {
         if let Some(assign_target) = self.state.read_assign_target() {
             return assign_target;
@@ -319,6 +334,7 @@ impl HIRToMIRFuncLowerer<'_> {
         self.last_local().into()
     }
 
+    #[inline]
     fn handle_resolved_id(&mut self, resolved: ResolvedID, hlir: &HLIR) {
         match resolved {
             ResolvedID::Hir(hir_id) => {
@@ -343,6 +359,9 @@ impl HIRToMIRFuncLowerer<'_> {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    #[must_use]
     fn visit_expr_assigned(&mut self, expr_id: HirId, hlir: &HLIR) -> Option<AssignTarget> {
         let before_locals = self.body.locals.len();
         self.visit_expr_by_id(expr_id, hlir);
@@ -359,6 +378,8 @@ impl HIRToMIRFuncLowerer<'_> {
         }
     }
 
+    #[inline]
+    #[must_use]
     fn visit_expr_expect_owner(&mut self, expr_id: HirId, hlir: &HLIR) -> Option<OwnerDefId> {
         self.state.owner_target = None;
         self.visit_expr_by_id(expr_id, hlir);
@@ -367,6 +388,8 @@ impl HIRToMIRFuncLowerer<'_> {
 }
 
 impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
+    // This *has* to have too many lines..
+    #[allow(clippy::too_many_lines)]
     fn visit_expr(&mut self, expr: &Expr, hlir: &HLIR) {
         match &expr.kind {
             ExprKind::Block(hir_id) => self.visit_block_by_id(*hir_id, hlir),
@@ -553,7 +576,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 let for_result_local = self.new_temp_local();
                 let binding_local = self.new_temp_local();
                 let (inclusive, max_expr_id) = {
-                    let Some(HIRNode::Expr(iterable_expr)) = hlir.get_hir_node(*iterable_id) else {
+                    let Some(HirNode::Expr(iterable_expr)) = hlir.get_hir_node(*iterable_id) else {
                         push_lower_err!(self, hlir, *iterable_id, "Failed to get iterable expr.");
                         return;
                     };
@@ -1179,7 +1202,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
 }
 
 pub fn is_non_expr_expr(hlir: &HLIR, expr_id: HirId) -> bool {
-    let Some(HIRNode::Expr(e)) = hlir.get_hir_node(expr_id) else {
+    let Some(HirNode::Expr(e)) = hlir.get_hir_node(expr_id) else {
         return false;
     };
     matches!(

@@ -40,6 +40,7 @@ impl SpannedErrorLine {
     }
 
     /// The index of the last character in this line in the global source code string.
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub const fn end_of_line_index(&self) -> u32 {
@@ -75,6 +76,7 @@ impl SpannedErrorLine {
 
     /// Adds a comment to this line, that underlines all the characters that are within the span of
     /// the provided error span.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn highlight_from_span(&mut self, span: SourceSpan, highlight: &str, error: bool) {
         if self.end_of_line_index() < span.start {
             return;
@@ -387,6 +389,7 @@ fn get_segments_from_source(source_string: &str, span: SourceSpan) -> (&str, &st
 /// This finds all lines that the provided [`SourceSpan`] touches.
 /// Along with filling out meta-data about the line such as it's line number and where the line
 /// starts within the provided `source_string`.
+#[allow(clippy::cast_possible_truncation)]
 #[must_use]
 fn get_lines(source_string: &str, span: SourceSpan) -> Vec<SpannedErrorLine> {
     const LINE_LOOP_SAFETY: usize = 10000;

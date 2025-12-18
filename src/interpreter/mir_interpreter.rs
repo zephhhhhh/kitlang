@@ -199,6 +199,9 @@ impl Value {
         }
     }
 
+    /// Perform a binary operation between this value and another value.
+    /// # Panics
+    /// Panics if the values are either `Ref` or `ADT` variants as they are not yet implemented.
     #[must_use]
     pub fn perform_binary_op(&self, rhs: &Self, op: BinaryOpKind) -> Option<Self> {
         const fn perform_int_op(lhs: i64, rhs: i64, op: BinaryOpKind) -> Option<Value> {
@@ -411,6 +414,11 @@ impl ExecutionFrame {
         }
     }
 
+    /// Set the function arguments in the execution frame locals.
+    /// # Panics
+    /// Panics if there is not enough space in the locals for the function arguments.
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
     pub fn set_arguments(&mut self, values: &[Value]) {
         assert!(
             values.len().saturating_add(1) <= self.locals.len(),
@@ -437,6 +445,11 @@ impl ExecutionFrame {
             .field_mut(field_index)
     }
 
+    /// # Panics
+    /// This function will panic if:
+    /// - The `LocalId` doesn't exist
+    /// - The field index doesn't exist
+    /// - The value at the `LocalId` is not an `ADT`
     #[inline]
     #[must_use]
     pub fn field_access_expect(&self, id: LocalId, field_index: usize) -> &Value {
@@ -444,6 +457,11 @@ impl ExecutionFrame {
             .expect("Field access doesn't exist.")
     }
 
+    /// # Panics
+    /// This function will panic if:
+    /// - The `LocalId` doesn't exist
+    /// - The field index doesn't exist
+    /// - The value at the `LocalId` is not an `ADT`
     #[inline]
     #[must_use]
     pub fn field_access_expect_mut(&mut self, id: LocalId, field_index: usize) -> &mut Value {
@@ -463,6 +481,8 @@ impl ExecutionFrame {
         self.locals.get_mut(id.0 as usize)
     }
 
+    /// # Panics
+    /// Panics if the `LocalId` doesn't exist.
     #[inline]
     #[must_use]
     pub fn local_expect(&self, id: LocalId) -> &Value {
@@ -471,6 +491,8 @@ impl ExecutionFrame {
             .expect("Local doesn't exist.")
     }
 
+    /// # Panics
+    /// Panics if the `LocalId` doesn't exist.
     #[inline]
     #[must_use]
     pub fn local_expect_mut(&mut self, id: LocalId) -> &mut Value {
@@ -499,12 +521,16 @@ impl ExecutionFrame {
         }
     }
 
+    /// # Panics
+    /// Panics if the `AssignTarget` doesn't exist.
     #[inline]
     #[must_use]
     pub fn value_expect(&self, at: AssignTarget) -> &Value {
         self.value(at).expect("Value doesn't exist.")
     }
 
+    /// # Panics
+    /// Panics if the `AssignTarget` doesn't exist.
     #[inline]
     #[must_use]
     pub fn value_expect_mut(&mut self, at: AssignTarget) -> &mut Value {
@@ -613,6 +639,8 @@ impl InterpreterState {
         self.execution_frames.last_mut()
     }
 
+    /// # Panics
+    /// Panics if there are not any `ExecutionFrame`s.
     #[inline]
     #[must_use]
     pub fn execution_frame_expect(&self) -> &ExecutionFrame {
@@ -621,6 +649,8 @@ impl InterpreterState {
             .expect("No execution frames exist.")
     }
 
+    /// # Panics
+    /// Panics if there are not any `ExecutionFrame`s.
     #[inline]
     #[must_use]
     pub fn execution_frame_expect_mut(&mut self) -> &mut ExecutionFrame {
@@ -649,6 +679,7 @@ impl InterpreterState {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn execute_kit_function(
         &mut self,
         program: &ProgramType,
@@ -783,7 +814,7 @@ impl InterpreterState {
     #[inline]
     #[must_use]
     pub fn perform_deref(&self, local: AssignTarget) -> &Value {
-        let frame = self.execution_frame().expect("Execution frame");
+        let frame = self.execution_frame_expect();
         let derefd = frame.perform_deref(local);
         frame.value_expect(derefd)
     }
@@ -791,7 +822,7 @@ impl InterpreterState {
     #[inline]
     #[must_use]
     pub fn perform_deref_mut(&mut self, local: AssignTarget) -> &mut Value {
-        let frame = self.execution_frame_mut().expect("Execution frame");
+        let frame = self.execution_frame_expect_mut();
         let derefd = frame.perform_deref(local);
         frame.value_expect_mut(derefd)
     }
@@ -805,6 +836,13 @@ impl InterpreterState {
         *local_mut = new_value;
     }
 
+    #[allow(
+        clippy::cast_lossless,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss,
+        clippy::cast_possible_wrap
+    )]
     #[must_use]
     pub fn perform_cast(&self, value: &Value, target_type: CastKind) -> Option<Value> {
         // TODO: Please just implement proper value storage. please
@@ -988,6 +1026,8 @@ fn internal_execute_mir(
 }
 
 /// Execute MIR with no default compiler intrinsics registered.
+/// # Errors
+/// Errors if the entry point could not be found or if execution fails.
 pub fn execute_mir_no_intrinsics(
     mir: MIR,
     meta_data: &crate::prelude::ProgramMetaData,
@@ -1010,6 +1050,8 @@ pub fn execute_mir_no_intrinsics(
 }
 
 /// Execute MIR with default compiler intrinsics registered.
+/// # Errors
+/// Errors if the entry point could not be found or if execution fails.
 pub fn execute_mir(
     mir: MIR,
     meta_data: &crate::prelude::ProgramMetaData,

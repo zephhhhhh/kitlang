@@ -21,6 +21,7 @@ pub type CodeCursorIndex = u32;
 
 impl<'a> CodeCursor<'a> {
     /// Construct a new code character iterator with a provided input string.
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub fn new(input: &'a str) -> Self {
@@ -47,6 +48,7 @@ impl<'a> CodeCursor<'a> {
     }
 
     /// The amount of characters remaining.
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub fn remaining(&self) -> CodeCursorIndex {
@@ -143,13 +145,15 @@ impl<'a> CodeCursor<'a> {
     /// reached.
     /// # Returns
     /// How many characters were consumed.
+    /// # Panics
+    /// Panics if `consume` fails during execution, I.e. if `eof` is reached unexpectedly.
     #[inline]
     pub fn consume_while(&mut self, mut predicate: impl FnMut(char) -> bool) -> CodeCursorIndex {
         let mut consumed: CodeCursorIndex = 0;
         while let Some(c) = self.peek_opt() {
             if predicate(c) {
                 self.consume()
-                    .expect("Consume should never fail in comsume_while.");
+                    .expect("Consume should never fail in consume_while.");
                 consumed = consumed.saturating_add(1);
             } else {
                 break;
@@ -178,6 +182,9 @@ impl<'a> CodeCursor<'a> {
         Some(consumed)
     }
 
+    /// # Panics
+    /// Panics if `consume` fails during execution, I.e. if `eof` is reached unexpectedly.
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub fn consume_until_sequence(&mut self, sequence: &[char]) -> Option<CodeCursorIndex> {
@@ -239,6 +246,7 @@ impl<'a> CodeCursor<'a> {
     /// # Returns
     /// The amount of characters consumed, or `None` if one of the expected chars was not found,
     /// or if `eof` was reached.
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     pub fn consume_expect(&mut self, expected_chars: &[char]) -> Option<CodeCursorIndex> {
         for c in expected_chars {
@@ -253,6 +261,7 @@ impl<'a> CodeCursor<'a> {
     /// # Returns
     /// The amount of characters consumed, or `None` if one of the expected chars was not equal,
     /// or if `eof` was reached.
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     pub fn consume_expect_str(&mut self, expected: &str) -> Option<CodeCursorIndex> {
         for c in expected.chars() {

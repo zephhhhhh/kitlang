@@ -374,6 +374,8 @@ impl KitTy {
         }
     }
 
+    // This is a false flag in my eyes, as most of the lines are just nested functions, so it isn't unreadable.
+    #[allow(clippy::too_many_lines)]
     /// Returns the result type of applying a binary operation between this type and another type.
     /// `Self` is the left-hand side type, and `other` is the right-hand side type.
     /// # Returns

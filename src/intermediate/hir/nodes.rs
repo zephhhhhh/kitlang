@@ -160,7 +160,7 @@ impl From<&crate::ast::Ty> for Type {
 }
 
 #[derive(Clone, PartialEq)]
-pub enum HIRNode {
+pub enum HirNode {
     Param(Parameter),
     Block(Block),
     Expr(Expr),
@@ -169,7 +169,7 @@ pub enum HIRNode {
     Path(RefPath),
 }
 
-impl HIRNode {
+impl HirNode {
     #[inline]
     #[must_use]
     pub const fn span(&self) -> SourceSpan {
@@ -184,7 +184,7 @@ impl HIRNode {
     }
 }
 
-impl Debug for HIRNode {
+impl Debug for HirNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Param(arg0) => arg0.fmt(f),
@@ -199,19 +199,19 @@ impl Debug for HIRNode {
 
 macro_rules! impl_hir_node_from {
     ($target:ty, $variant:ident) => {
-        impl<'a> From<&'a HIRNode> for Option<&'a $target> {
-            fn from(value: &'a HIRNode) -> Self {
+        impl<'a> From<&'a HirNode> for Option<&'a $target> {
+            fn from(value: &'a HirNode) -> Self {
                 match value {
-                    HIRNode::$variant(a) => Some(a),
+                    HirNode::$variant(a) => Some(a),
                     _ => None,
                 }
             }
         }
 
-        impl<'a> From<&'a mut HIRNode> for Option<&'a mut $target> {
-            fn from(value: &'a mut HIRNode) -> Self {
+        impl<'a> From<&'a mut HirNode> for Option<&'a mut $target> {
+            fn from(value: &'a mut HirNode) -> Self {
                 match value {
-                    HIRNode::$variant(a) => Some(a),
+                    HirNode::$variant(a) => Some(a),
                     _ => None,
                 }
             }
@@ -229,7 +229,7 @@ impl_hir_node_from!(RefPath, Path);
 #[derive(Debug, Clone, PartialEq)]
 pub struct OwningNode {
     pub kind: OwningNodeKind,
-    pub nodes: Vec<HIRNode>,
+    pub nodes: Vec<HirNode>,
 }
 
 impl OwningNode {
@@ -289,6 +289,7 @@ impl OwningNode {
 }
 
 impl OwningNode {
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub const fn local_count(&self) -> u32 {
@@ -311,7 +312,7 @@ impl OwningNode {
     }
 
     #[inline]
-    pub fn insert_hir_node(&mut self, hir_node: HIRNode) -> LocalDefId {
+    pub fn insert_hir_node(&mut self, hir_node: HirNode) -> LocalDefId {
         let new_id = self.next_local_id();
         self.nodes.push(hir_node);
         new_id
@@ -319,13 +320,13 @@ impl OwningNode {
 
     #[inline]
     #[must_use]
-    pub fn get_hir_node(&self, id: LocalDefId) -> Option<&HIRNode> {
+    pub fn get_hir_node(&self, id: LocalDefId) -> Option<&HirNode> {
         self.nodes.get(id.0 as usize)
     }
 
     #[inline]
     #[must_use]
-    pub fn get_hir_node_mut(&mut self, id: LocalDefId) -> Option<&mut HIRNode> {
+    pub fn get_hir_node_mut(&mut self, id: LocalDefId) -> Option<&mut HirNode> {
         self.nodes.get_mut(id.0 as usize)
     }
 }
@@ -474,11 +475,15 @@ pub struct Function {
     pub body: Option<FunctionBody>,
 }
 
+// We intentially ignore decl_span and full_span, as they just clutter the debug output.
+#[allow(clippy::missing_fields_in_debug)]
 impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Function")
             .field("ident", &self.ident.str())
+            .field("native", &self.native)
             .field("is_method", &self.is_method)
+            .field("is_global", &self.is_global)
             .field("sig", &self.sig)
             .field("vis", &self.vis)
             .field("body", &self.body)

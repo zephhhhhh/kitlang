@@ -260,7 +260,8 @@ impl AssignTarget {
     }
 
     /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Local` variant.
-    /// Panics otherwise.
+    /// # Panics
+    /// If the [`AssignTarget`] is not of the `Local` variant.
     #[inline]
     #[must_use]
     pub const fn local_expect(&self) -> LocalId {
@@ -279,7 +280,8 @@ impl AssignTarget {
     }
 
     /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Field` assignment variant.
-    /// Panics otherwise.
+    /// # Panics
+    /// If the [`AssignTarget`] is not of the `Field` assignment variant.
     #[inline]
     #[must_use]
     pub const fn field_access_expect(&self) -> (LocalId, usize) {
@@ -388,6 +390,7 @@ impl Body {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub fn new(params: &[LocalDefinition]) -> Self {
@@ -447,18 +450,21 @@ impl Body {
         Some(&mut self.block_mut(id)?.exit_directive.kind)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub const fn current_block_id(&mut self) -> BasicBlockId {
         BasicBlockId(self.blocks.len().saturating_sub(1) as u32)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub const fn next_block_id(&mut self) -> BasicBlockId {
         BasicBlockId(self.blocks.len() as u32)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub const fn next_local_id(&mut self) -> LocalId {
@@ -477,6 +483,7 @@ impl Body {
         self.push_local(def)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     pub fn push_local(&mut self, def: LocalDefinition) -> LocalId {
         let id = self.locals.len() as u32;
@@ -484,6 +491,7 @@ impl Body {
         LocalId(id)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     pub fn push_block(&mut self, block: BasicBlock) -> BasicBlockId {
         let id = self.blocks.len() as u32;
@@ -500,6 +508,9 @@ pub struct MIR {
 
 mod lowerer;
 
+/// # Errors
+/// This function will return an error if any part of the HIR cannot be lowered properly.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures.
 pub fn lower_hir_to_mir(
     hlir: &crate::intermediate::hir::HLIR,
     meta_data: &crate::intermediate::hir::ProgramMetaData,

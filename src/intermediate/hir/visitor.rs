@@ -1,5 +1,5 @@
 use crate::intermediate::hir::nodes::{
-    Block, Constant, Enum, Expr, ExprKind, Function, HIRNode, Impl, Item, ItemKind, LetStatement,
+    Block, Constant, Enum, Expr, ExprKind, Function, HirNode, Impl, Item, ItemKind, LetStatement,
     Module, OwningNode, Parameter, RefPath, Statement, StatementKind, Struct, UsePath,
 };
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
@@ -56,11 +56,11 @@ pub trait HLIRVisitor {
     fn super_function(&mut self, function: &Function, hlir: &HLIR) {
         if let Some(func_body) = &function.body {
             for param_id in &func_body.params {
-                if let Some(HIRNode::Param(param)) = hlir.get_hir_node(*param_id) {
+                if let Some(HirNode::Param(param)) = hlir.get_hir_node(*param_id) {
                     self.visit_function_param(param, hlir);
                 }
             }
-            if let Some(HIRNode::Block(func_block)) = hlir.get_hir_node(func_body.block) {
+            if let Some(HirNode::Block(func_block)) = hlir.get_hir_node(func_body.block) {
                 self.visit_block(func_block, hlir);
             }
         }
@@ -70,7 +70,7 @@ pub trait HLIRVisitor {
     fn super_struct(&mut self, _structure: &Struct, _hlir: &HLIR) {}
     fn super_block(&mut self, block: &Block, hlir: &HLIR) {
         for statement_id in &block.statements {
-            if let Some(HIRNode::Statement(statement)) = hlir.get_hir_node(*statement_id) {
+            if let Some(HirNode::Statement(statement)) = hlir.get_hir_node(*statement_id) {
                 self.visit_statement(statement, block, hlir);
             }
         }
@@ -86,7 +86,7 @@ pub trait HLIRVisitor {
                 }
             }
             StatementKind::Expr(hir_id) | StatementKind::Semi(hir_id) => {
-                if let Some(HIRNode::Expr(expr)) = hlir.get_hir_node(*hir_id) {
+                if let Some(HirNode::Expr(expr)) = hlir.get_hir_node(*hir_id) {
                     self.visit_expr(expr, hlir);
                 }
             }
@@ -104,7 +104,7 @@ pub trait HLIRVisitor {
         match &expr.kind {
             ExprKind::Path(ref_path) => self.visit_path(expr.id, ref_path, hlir),
             ExprKind::Block(hir_id) | ExprKind::Loop(hir_id) => {
-                if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id) {
+                if let Some(HirNode::Block(block)) = hlir.get_hir_node(*hir_id) {
                     self.visit_block(block, hlir);
                 }
             }
@@ -122,7 +122,7 @@ pub trait HLIRVisitor {
             }
             ExprKind::If(hir_id, hir_id1, hir_id2) => {
                 self.visit_expr_by_id(*hir_id, hlir);
-                if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id1) {
+                if let Some(HirNode::Block(block)) = hlir.get_hir_node(*hir_id1) {
                     self.visit_block(block, hlir);
                     if let Some(else_id) = hir_id2 {
                         self.visit_expr_by_id(*else_id, hlir);
@@ -131,7 +131,7 @@ pub trait HLIRVisitor {
             }
             ExprKind::While(hir_id, hir_id1) => {
                 self.visit_expr_by_id(*hir_id, hlir);
-                if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id1) {
+                if let Some(HirNode::Block(block)) = hlir.get_hir_node(*hir_id1) {
                     self.visit_block(block, hlir);
                 }
             }
@@ -160,12 +160,12 @@ pub trait HLIRVisitor {
     fn super_path(&mut self, _hir_id: HirId, _path: &RefPath, _hlir: &HLIR) {}
 
     fn visit_expr_by_id(&mut self, expr_id: HirId, hlir: &HLIR) {
-        if let Some(HIRNode::Expr(expr)) = hlir.get_hir_node(expr_id) {
+        if let Some(HirNode::Expr(expr)) = hlir.get_hir_node(expr_id) {
             self.visit_expr(expr, hlir);
         }
     }
     fn visit_block_by_id(&mut self, block_id: HirId, hlir: &HLIR) {
-        if let Some(HIRNode::Block(block)) = hlir.get_hir_node(block_id) {
+        if let Some(HirNode::Block(block)) = hlir.get_hir_node(block_id) {
             self.visit_block(block, hlir);
         }
     }
@@ -255,12 +255,12 @@ impl<'a> HLIRDisjointMut<'a> {
 impl HLIRDisjointMut<'_> {
     pub fn get_hir_node_mut_as<'a, F>(&mut self, id: HirId) -> Option<&'a mut F>
     where
-        Option<&'a mut F>: From<&'a mut HIRNode>,
+        Option<&'a mut F>: From<&'a mut HirNode>,
     {
         self.get_hir_node_mut(id).and_then(std::convert::Into::into)
     }
 
-    pub fn get_hir_node_mut(&mut self, id: HirId) -> Option<&'static mut HIRNode> {
+    pub fn get_hir_node_mut(&mut self, id: HirId) -> Option<&'static mut HirNode> {
         Some(self.hir_node_mut(id)?.value_mut())
     }
 
@@ -336,7 +336,7 @@ impl<T> Disjoint<T> {
     }
 }
 
-pub type DisjointHIRNode = Disjoint<HIRNode>;
+pub type DisjointHIRNode = Disjoint<HirNode>;
 pub type DisjointOwningNode = Disjoint<OwningNode>;
 pub type DisjointItem = Disjoint<Item>;
 
@@ -401,11 +401,11 @@ pub trait HLIRVisitorMut<'a> {
     fn super_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'a>) {
         if let Some(func_body) = &function.body {
             for param_id in &func_body.params {
-                if let Some(HIRNode::Param(param)) = hlir.get_hir_node_mut(*param_id) {
+                if let Some(HirNode::Param(param)) = hlir.get_hir_node_mut(*param_id) {
                     self.visit_function_param_mut(param, hlir);
                 }
             }
-            if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(func_body.block) {
+            if let Some(HirNode::Block(block)) = hlir.get_hir_node_mut(func_body.block) {
                 self.visit_block_mut(block, hlir);
             }
         }
@@ -414,7 +414,7 @@ pub trait HLIRVisitorMut<'a> {
     fn super_struct_mut(&mut self, _structure: &Struct, _hlir: &mut HLIRDisjointMut<'a>) {}
     fn super_block_mut(&mut self, block: &Block, hlir: &mut HLIRDisjointMut<'a>) {
         for statement_id in &block.statements {
-            if let Some(HIRNode::Statement(statement)) = hlir.get_hir_node_mut(*statement_id) {
+            if let Some(HirNode::Statement(statement)) = hlir.get_hir_node_mut(*statement_id) {
                 self.visit_statement_mut(statement, block, hlir);
             }
         }
@@ -435,7 +435,7 @@ pub trait HLIRVisitorMut<'a> {
                 }
             }
             StatementKind::Expr(hir_id) | StatementKind::Semi(hir_id) => {
-                if let Some(HIRNode::Expr(expr)) = hlir.get_hir_node_mut(*hir_id) {
+                if let Some(HirNode::Expr(expr)) = hlir.get_hir_node_mut(*hir_id) {
                     self.visit_expr_mut(expr, hlir);
                 }
             }
@@ -459,7 +459,7 @@ pub trait HLIRVisitorMut<'a> {
             ExprKind::Path(ref_path) => self.visit_path_mut(expr.id, ref_path, hlir),
             ExprKind::Block(hir_id) => {
                 if let Some(node) = hlir.hir_node_mut(*hir_id)
-                    && let HIRNode::Block(block) = node.value_mut()
+                    && let HirNode::Block(block) = node.value_mut()
                 {
                     self.visit_block_mut(block, hlir);
                 }
@@ -478,7 +478,7 @@ pub trait HLIRVisitorMut<'a> {
             }
             ExprKind::If(hir_id, hir_id1, hir_id2) => {
                 self.visit_expr_by_id_mut(*hir_id, hlir);
-                if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(*hir_id1) {
+                if let Some(HirNode::Block(block)) = hlir.get_hir_node_mut(*hir_id1) {
                     self.visit_block_mut(block, hlir);
                     if let Some(else_id) = hir_id2 {
                         self.visit_expr_by_id_mut(*else_id, hlir);
@@ -486,13 +486,13 @@ pub trait HLIRVisitorMut<'a> {
                 }
             }
             ExprKind::Loop(hir_id) => {
-                if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(*hir_id) {
+                if let Some(HirNode::Block(block)) = hlir.get_hir_node_mut(*hir_id) {
                     self.visit_block_mut(block, hlir);
                 }
             }
             ExprKind::While(hir_id, hir_id1) => {
                 self.visit_expr_by_id_mut(*hir_id, hlir);
-                if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(*hir_id1) {
+                if let Some(HirNode::Block(block)) = hlir.get_hir_node_mut(*hir_id1) {
                     self.visit_block_mut(block, hlir);
                 }
             }
@@ -522,12 +522,12 @@ pub trait HLIRVisitorMut<'a> {
     }
 
     fn visit_expr_by_id_mut(&mut self, expr_id: HirId, hlir: &mut HLIRDisjointMut<'a>) {
-        if let Some(HIRNode::Expr(expr)) = hlir.get_hir_node_mut(expr_id) {
+        if let Some(HirNode::Expr(expr)) = hlir.get_hir_node_mut(expr_id) {
             self.visit_expr_mut(expr, hlir);
         }
     }
     fn visit_block_by_id_mut(&mut self, block_id: HirId, hlir: &mut HLIRDisjointMut<'a>) {
-        if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(block_id) {
+        if let Some(HirNode::Block(block)) = hlir.get_hir_node_mut(block_id) {
             self.visit_block_mut(block, hlir);
         }
     }

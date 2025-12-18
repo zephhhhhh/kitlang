@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::ast::{IdentPath, SpannedIdentPath, Visibility};
 
 use crate::intermediate::hir::nodes::{
-    Constant, Enum, Function, HIRNode, Impl, Module, RefPath, ResolvedID, Struct, StructField,
+    Constant, Enum, Function, HirNode, Impl, Module, RefPath, ResolvedID, Struct, StructField,
     UsePath,
 };
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitor, HLIRVisitorMut};
@@ -512,8 +512,8 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
     }
 
     fn visit_struct(&mut self, structure: &Struct, hlir: &HLIR) {
-        fn get_field_info(node: Option<&HIRNode>) -> Option<StructField> {
-            if let HIRNode::Field(a) = node? {
+        fn get_field_info(node: Option<&HirNode>) -> Option<StructField> {
+            if let HirNode::Field(a) = node? {
                 Some(a.clone())
             } else {
                 None

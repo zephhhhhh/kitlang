@@ -1,29 +1,17 @@
-#![feature(iter_advance_by)]
-#![feature(debug_closure_helpers)]
-// Linting rules..
-#![warn(clippy::pedantic)]
-// Lint allows..
-// Docs.. Temporary..
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::missing_panics_doc)]
-#![allow(clippy::missing_fields_in_debug)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::too_long_first_doc_paragraph)]
-// Math casting..
-#![allow(
-    clippy::cast_lossless,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    clippy::cast_possible_wrap
-)]
-
 //! Kitlang is a language built for embedding/scripting purposes
 //!
 //! The language is inspired by rust and aims to be as similar to rust as possible with some
 //! creative liberties taken.
 //!
 //! The structure of the project is also inspired by `rust` and `rustc`.
+
+#![feature(iter_advance_by)]
+#![feature(debug_closure_helpers)]
+// Linting rules..
+#![warn(clippy::pedantic)]
+// Lint allows..
+// Docs.. Temporary..
+#![allow(clippy::too_long_first_doc_paragraph)]
 
 use thiserror::Error;
 
@@ -82,6 +70,13 @@ pub type KitlangResult<T> = Result<T, KitlangError>;
 
 /// Parse a given kitlang source code string into MIR representations.
 /// This function injects the standard library, if you do not want that, use `parse_source_string_to_mir_no_std` instead.
+/// # Errors
+/// This function will return an error if any part of the parsing or lowering process fails.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures, as well
+/// as which stage they originate from.
+///
+/// These errors can be formatted into user-friendly error messages using the `format_as_error_message`
+/// method on the `KitlangError` on the `Err` variant.
 pub fn parse_source_string_to_mir(
     source: &str,
 ) -> KitlangResult<(intermediate::hir::ProgramMetaData, intermediate::mir::MIR)> {
@@ -94,6 +89,13 @@ pub fn parse_source_string_to_mir(
 }
 
 /// Parse a given kitlang source code string into MIR representations.
+/// # Errors
+/// This function will return an error if any part of the parsing or lowering process fails.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures, as well
+/// as which stage they originate from.
+///
+/// These errors can be formatted into user-friendly error messages using the `format_as_error_message`
+/// method on the `KitlangError` on the `Err` variant.
 pub fn parse_source_string_to_mir_no_std(
     source: &str,
 ) -> KitlangResult<(intermediate::hir::ProgramMetaData, intermediate::mir::MIR)> {
@@ -125,6 +127,13 @@ pub fn inject_standard_library(source: &str) -> String {
 /// The standard library is injected into the program with this function, if you do not want this for some reason,
 /// use `execute_source_string_no_std` instead.
 /// If `time_execution` is `true`, the different stages of execution will be timed and printed
+/// # Errors
+/// This function will return an error if any part of the parsing, lowering or execution process fails.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures, as well
+/// as which stage they originate from.
+///
+/// These errors can be formatted into user-friendly error messages using the `format_as_error_message`
+/// method on the `KitlangError` on the `Err` variant.
 pub fn execute_source_string(
     source: &str,
     native_functions: crate::interpreter::mir_interpreter::RegisterNativeFns,
@@ -143,6 +152,13 @@ pub fn execute_source_string(
 
 /// Execute a given kitlang source code string with the MIR interpreter, using the provided native functions.
 /// If `time_execution` is `true`, the different stages of execution will be timed and printed.
+/// # Errors
+/// This function will return an error if any part of the parsing, lowering or execution process fails.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures, as well
+/// as which stage they originate from.
+///
+/// These errors can be formatted into user-friendly error messages using the `format_as_error_message`
+/// method on the `KitlangError` on the `Err` variant.
 pub fn execute_source_string_no_std(
     source: &str,
     native_functions: crate::interpreter::mir_interpreter::RegisterNativeFns,

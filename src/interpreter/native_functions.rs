@@ -61,6 +61,7 @@ pub trait ExtractValue {
 
 macro_rules! impl_extract {
     ($type:ty, $variant:ident, $convert:expr, $default:expr) => {
+        #[allow(clippy::cast_possible_truncation)]
         impl ExtractValue for $type {
             fn extract(value: &MIRValue) -> Self {
                 if let MIRValue::$variant(inner) = value {

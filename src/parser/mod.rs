@@ -40,6 +40,7 @@ impl<'a> TokenCursor<'a> {
 // Accessors..
 impl TokenCursor<'_> {
     /// Returns the total number tokens in the underlying [`TokenList`].
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub const fn len(&self) -> u32 {
@@ -561,6 +562,7 @@ impl Parser<'_, '_> {
     /// # Returns
     /// *   `Some(arr)` if the next `N` tokens from the specified offset are all [`Punctuation`] token kinds.
     /// *   `None` if any of the next `N` tokens from the specified offset are _not_ of kind [`Punctuation`].
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     fn get_punctuation_sequence<const N: usize>(&self, offset: u32) -> Option<[Punctuation; N]> {
         let mut result = [Punctuation::Tilde; N];
@@ -932,6 +934,10 @@ impl Parser<'_, '_> {
 /// Parse AST from a [`Token`] iterator.
 /// # Note
 /// This function will collect the iterator into a [`Vec<Token>`].
+/// # Errors
+/// This function will return an error if any part of parsing the token stream fails.
+/// The returned error will contain information about where in the source code the error occurred,
+/// and a message about the nature of the error.
 pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>) -> PResult<ASTRoot> {
     // TODO: Probably try a method to not collect the iterator in the future, this is easier for
     // now though.
@@ -948,6 +954,10 @@ pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>) -> PResult<ASTRoot
 /// This function will collect the iterator into a [`Vec<Token>`].
 ///
 /// This function also strips all comments and documentation from the code.
+/// # Errors
+/// This function will return an error if any part of parsing the token stream fails.
+/// The returned error will contain information about where in the source code the error occurred,
+/// and a message about the nature of the error.
 #[inline]
 pub fn parse_from_source(source: &str) -> PResult<ASTRoot> {
     let token_iter = tokenise_stripped(source);

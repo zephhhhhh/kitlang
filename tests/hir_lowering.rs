@@ -3,7 +3,7 @@ use kitlang::{
     intermediate::{
         hir::{
             HLIR, HirId, LocalDefId, OwnerDefId,
-            nodes::{Expr, ExprKind, HIRNode, OwningNode, StatementKind, Type},
+            nodes::{Expr, ExprKind, HirNode, OwningNode, StatementKind, Type},
         },
         types::{KitFloat, KitInt, KitTy},
     },
@@ -83,28 +83,28 @@ fn get_main_function(hlir: &HLIR) -> &OwningNode {
     hlir.owning_node(OwnerDefId(1))
         .expect("No main function found.")
 }
-fn get_hir_node(hlir: &HLIR, hir_id: HirId) -> &HIRNode {
+fn get_hir_node(hlir: &HLIR, hir_id: HirId) -> &HirNode {
     hlir.get_hir_node(hir_id).expect("Expected node to exist.")
 }
-fn get_hir_node_from(hlir: &HLIR, owner_id: OwnerDefId, node_id: u32) -> &HIRNode {
+fn get_hir_node_from(hlir: &HLIR, owner_id: OwnerDefId, node_id: u32) -> &HirNode {
     let hir_id = HirId {
         owner: owner_id,
         id: LocalDefId(node_id),
     };
     get_hir_node(hlir, hir_id)
 }
-fn get_nth_statement(hlir: &HLIR, index: usize) -> &HIRNode {
+fn get_nth_statement(hlir: &HLIR, index: usize) -> &HirNode {
     let main_fn = get_main_function(hlir);
     let func = main_fn.hir_function_ref().expect("Should be a function");
     let body = func.body.as_ref().expect("Function should have a body");
     let block = get_hir_node(hlir, body.block);
 
-    expect_match!(block, HIRNode::Block(block) => {
+    expect_match!(block, HirNode::Block(block) => {
         let first_stmt_id = block.statements[index];
         get_hir_node(hlir, first_stmt_id)
     }, "Expected block HIR node")
 }
-fn get_first_statement(hlir: &HLIR) -> &HIRNode {
+fn get_first_statement(hlir: &HLIR) -> &HirNode {
     get_nth_statement(hlir, 0)
 }
 fn get_nth_expr(hlir: &HLIR, index: usize) -> &Expr {
@@ -113,7 +113,7 @@ fn get_nth_expr(hlir: &HLIR, index: usize) -> &Expr {
 }
 fn get_expr(hlir: &HLIR, hir_id: HirId) -> &Expr {
     let node = get_hir_node(hlir, hir_id);
-    expect_match!(node, HIRNode::Expr(expr) => expr, "Expected expression HIR node")
+    expect_match!(node, HirNode::Expr(expr) => expr, "Expected expression HIR node")
 }
 fn get_first_expr(hlir: &HLIR) -> &Expr {
     let stmt = get_first_statement(hlir);
@@ -288,7 +288,7 @@ fn lower_if_expression() {
         
         let cond_node = get_hir_node(&hlir, *cond_id);
         
-        expect_match!(cond_node, HIRNode::Expr(cond_expr) => {
+        expect_match!(cond_node, HirNode::Expr(cond_expr) => {
             expect_literal!(cond_expr, Literal::Boolean(true));
         }, "Expected condition to be an expression");
 
@@ -307,7 +307,7 @@ fn lower_if_else_expression() {
 
     expect_match!(&expr.kind, ExprKind::If(cond_id, then_id, else_opt) => {
         let cond_node = get_hir_node(&hlir, *cond_id);
-        expect_match!(cond_node, HIRNode::Expr(cond_expr) => {
+        expect_match!(cond_node, HirNode::Expr(cond_expr) => {
             expect_literal!(cond_expr, Literal::Boolean(false));
         }, "Expected condition to be an expression");
 
@@ -333,7 +333,7 @@ fn lower_while_loop() {
     expect_match!(&expr.kind, ExprKind::While(cond_id, block_id) => {
         let cond_node = get_hir_node(&hlir, *cond_id);
         
-        expect_match!(cond_node, HIRNode::Expr(cond_expr) => {
+        expect_match!(cond_node, HirNode::Expr(cond_expr) => {
             expect_literal!(cond_expr, Literal::Boolean(true));
         }, "Expected condition to be an expression");
 
@@ -353,7 +353,7 @@ fn lower_function_call() {
     expect_match!(&expr.kind, ExprKind::Call(target_id, args) => {
         assert_eq!(args.len(), 0, "Expected no arguments");
         
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_path!(target_expr, "test");
         }, "Expected target to be an expression");
     }, "Expected call expression");
@@ -367,7 +367,7 @@ fn lower_function_call_with_args() {
     expect_match!(&expr.kind, ExprKind::Call(target_id, args) => {
         assert_eq!(args.len(), 2, "Expected 2 arguments");
 
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_path!(target_expr, "test");
         }, "Expected target to be an expression");
 
@@ -382,7 +382,7 @@ fn lower_method_call() {
     let expr = get_first_expr(&hlir);
 
     expect_match!(&expr.kind, ExprKind::MethodCall(target_id, method_name, args) => {
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_path!(target_expr, "obj");
         }, "Expected target to be an expression");
 
@@ -397,7 +397,7 @@ fn lower_method_call_with_args() {
     let expr = get_first_expr(&hlir);
 
     expect_match!(&expr.kind, ExprKind::MethodCall(target_id, method_name, args) => {
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_path!(target_expr, "obj");
         }, "Expected target to be an expression");
 
@@ -415,7 +415,7 @@ fn lower_field_access() {
     let expr = get_first_expr(&hlir);
 
     expect_match!(&expr.kind, ExprKind::FieldAccess(target_id, field_name) => {
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_path!(target_expr, "obj");
         }, "Expected target to be an expression");
 
@@ -429,11 +429,11 @@ fn lower_index_expression() {
     let expr = get_first_expr(&hlir);
 
     expect_match!(&expr.kind, ExprKind::Index(target_id, index_id) => {
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_path!(target_expr, "arr");
         }, "Expected target to be an expression");
 
-        expect_match!(get_hir_node(&hlir, *index_id), HIRNode::Expr(index_expr) => {
+        expect_match!(get_hir_node(&hlir, *index_id), HirNode::Expr(index_expr) => {
             expect_literal!(index_expr, Literal::Integer(0));
         }, "Expected index to be an expression");
     }, "Expected index expression");
@@ -445,11 +445,11 @@ fn lower_assignment() {
     let expr = get_first_expr(&hlir);
 
     expect_match!(&expr.kind, ExprKind::Assign(target_id, value_id) => {
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_path!(target_expr, "x");
         }, "Expected target to be an expression");
 
-        expect_match!(get_hir_node(&hlir, *value_id), HIRNode::Expr(value_expr) => {
+        expect_match!(get_hir_node(&hlir, *value_id), HirNode::Expr(value_expr) => {
             expect_literal!(value_expr, Literal::Integer(5));
         }, "Expected value to be an expression");
     }, "Expected assignment expression");
@@ -463,7 +463,7 @@ fn lower_return_statement() {
     expect_match!(&expr.kind, ExprKind::Return(Some(ret_id)) => {
         let ret_node = get_hir_node(&hlir, *ret_id);
         
-        expect_match!(ret_node, HIRNode::Expr(ret_expr) => {
+        expect_match!(ret_node, HirNode::Expr(ret_expr) => {
             expect_literal!(ret_expr, Literal::Integer(11));
         }, "Expected return value to be an expression");
     }, "Expected return expression");
@@ -498,13 +498,13 @@ fn lower_let_statement() {
     let hlir = wrap_and_parse!(hir, "let x = 13;");
     let stmt = get_first_statement(&hlir);
 
-    expect_match!(stmt, HIRNode::Statement(stmt) => {
+    expect_match!(stmt, HirNode::Statement(stmt) => {
         expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
             assert_eq!(let_stmt.ident.str(), "x");
             assert_eq!(let_stmt.mutable, Mutability::Immutable);
             assert!(let_stmt.initial_value.is_some());
 
-            expect_match!(get_hir_node(&hlir, let_stmt.initial_value.unwrap()), HIRNode::Expr(expr) => {
+            expect_match!(get_hir_node(&hlir, let_stmt.initial_value.unwrap()), HirNode::Expr(expr) => {
                 expect_literal!(expr, Literal::Integer(13));
             }, "Expected initial value to be an expression");
         }, "Expected let statement");
@@ -516,13 +516,13 @@ fn lower_let_statement_mutable() {
     let hlir = wrap_and_parse!(hir, "let mut y = 10;");
     let stmt = get_first_statement(&hlir);
 
-    expect_match!(stmt, HIRNode::Statement(stmt) => {
+    expect_match!(stmt, HirNode::Statement(stmt) => {
         expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
             assert_eq!(let_stmt.ident.str(), "y");
             assert_eq!(let_stmt.mutable, Mutability::Mutable);
             assert!(let_stmt.initial_value.is_some());
 
-            expect_match!(get_hir_node(&hlir, let_stmt.initial_value.unwrap()), HIRNode::Expr(expr) => {
+            expect_match!(get_hir_node(&hlir, let_stmt.initial_value.unwrap()), HirNode::Expr(expr) => {
                 expect_literal!(expr, Literal::Integer(10));
             }, "Expected initial value to be an expression");
         }, "Expected let statement");
@@ -534,7 +534,7 @@ fn lower_let_statement_with_type() {
     let hlir = wrap_and_parse!(hir, "let z: i32 = 5;");
     let stmt = get_first_statement(&hlir);
 
-    expect_match!(stmt, HIRNode::Statement(stmt) => {
+    expect_match!(stmt, HirNode::Statement(stmt) => {
         expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
             assert_eq!(let_stmt.ident.str(), "z");
             let Type::Resolved(a) = &let_stmt.ty else {
@@ -613,12 +613,12 @@ fn lower_struct_declaration() {
     assert_eq!(struct_def.ident.str(), "Point");
     assert_eq!(struct_def.fields.len(), 2);
 
-    expect_match!(get_hir_node(&hlir, struct_def.fields[0]), HIRNode::Field(field_info) => {
+    expect_match!(get_hir_node(&hlir, struct_def.fields[0]), HirNode::Field(field_info) => {
         assert_eq!(field_info.ident.str(), "x");
         assert_eq!(field_info.ty, Type::Resolved(KitTy::Int(KitInt::I32)));
     }, "Expected named field id");
 
-    expect_match!(get_hir_node(&hlir, struct_def.fields[1]), HIRNode::Field(field_info) => {
+    expect_match!(get_hir_node(&hlir, struct_def.fields[1]), HirNode::Field(field_info) => {
         assert_eq!(field_info.ident.str(), "y");
         assert_eq!(field_info.ty, Type::Resolved(KitTy::Int(KitInt::I32)));
     }, "Expected named field id");
@@ -811,11 +811,11 @@ fn lower_chained_method_calls() {
         assert_eq!(args.len(), 1);
         expect_literal!(get_expr(&hlir, args[0]), Literal::Integer(1));
 
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_match!(&target_expr.kind, ExprKind::MethodCall(inner_target_id, inner_method_name, _inner_args) => {
                 assert_eq!(inner_method_name.str(), "method1");
 
-                expect_match!(get_hir_node(&hlir, *inner_target_id), HIRNode::Expr(inner_target_expr) => {
+                expect_match!(get_hir_node(&hlir, *inner_target_id), HirNode::Expr(inner_target_expr) => {
                     expect_path!(inner_target_expr, "obj");
                 }, "Expected target of method1 to be an expression");
             }, "Expected method1 call expression");
@@ -831,11 +831,11 @@ fn lower_chained_field_access() {
     // Outer field access should be field2
     expect_match!(&expr.kind, ExprKind::FieldAccess(target_id, field_name) => {
         assert_eq!(field_name.str(), "field2");
-        expect_match!(get_hir_node(&hlir, *target_id), HIRNode::Expr(target_expr) => {
+        expect_match!(get_hir_node(&hlir, *target_id), HirNode::Expr(target_expr) => {
             expect_match!(&target_expr.kind, ExprKind::FieldAccess(inner_target_id, inner_field_name) => {
                 assert_eq!(inner_field_name.str(), "field1");
 
-                expect_match!(get_hir_node(&hlir, *inner_target_id), HIRNode::Expr(inner_target_expr) => {
+                expect_match!(get_hir_node(&hlir, *inner_target_id), HirNode::Expr(inner_target_expr) => {
                     expect_path!(inner_target_expr, "obj");
                 }, "Expected target of field1 to be an expression");
             }, "Expected field1 access expression");
@@ -892,22 +892,22 @@ fn lower_multiple_statements() {
     let body = func.body.as_ref().expect("Function should have a body");
     let body = get_hir_node(&hlir, body.block);
 
-    expect_match!(body, HIRNode::Block(block) => {
+    expect_match!(body, HirNode::Block(block) => {
         assert_eq!(block.statements.len(), 3, "Expected three statements");
 
-        expect_match!(get_hir_node(&hlir, block.statements[0]), HIRNode::Statement(stmt) => {
+        expect_match!(get_hir_node(&hlir, block.statements[0]), HirNode::Statement(stmt) => {
             expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
                 assert_eq!(let_stmt.ident.str(), "x");
-                expect_match!(get_hir_node(&hlir, let_stmt.initial_value.expect("Expected initial value")), HIRNode::Expr(expr) => {
+                expect_match!(get_hir_node(&hlir, let_stmt.initial_value.expect("Expected initial value")), HirNode::Expr(expr) => {
                     expect_literal!(expr, Literal::Integer(1));
                 }, "Expected initial value to be an expression");
             }, "Expected let statement");
         }, "Expected first statement to be a let statement");
 
-        expect_match!(get_hir_node(&hlir, block.statements[1]), HIRNode::Statement(stmt) => {
+        expect_match!(get_hir_node(&hlir, block.statements[1]), HirNode::Statement(stmt) => {
             expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
                 assert_eq!(let_stmt.ident.str(), "y");
-                expect_match!(get_hir_node(&hlir, let_stmt.initial_value.expect("Expected initial value")), HIRNode::Expr(expr) => {
+                expect_match!(get_hir_node(&hlir, let_stmt.initial_value.expect("Expected initial value")), HirNode::Expr(expr) => {
                     expect_literal!(expr, Literal::Integer(2));
                 }, "Expected initial value to be an expression");
             }, "Expected let statement");

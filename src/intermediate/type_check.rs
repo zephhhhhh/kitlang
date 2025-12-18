@@ -8,7 +8,7 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::hir::nodes::{
-    Block, Expr, ExprKind, HIRNode, RefPath, ResolvedID, Statement, StatementKind, Type,
+    Block, Expr, ExprKind, HirNode, RefPath, ResolvedID, Statement, StatementKind, Type,
 };
 use crate::intermediate::types::{KitFloat, KitInt, KitTy};
 
@@ -41,7 +41,7 @@ fn statement_mut_by_id(
         TypeCheckFail::new(SourceSpan::null_span(), "Failed to get statement node.")
     })?;
 
-    if let HIRNode::Statement(statement) = node {
+    if let HirNode::Statement(statement) = node {
         Ok(statement)
     } else {
         Err(type_fail!(
@@ -141,7 +141,7 @@ impl TypeChecker<'_> {
                 id
             ));
         };
-        if let HIRNode::Expr(expr) = node {
+        if let HirNode::Expr(expr) = node {
             let ExprKind::Path(ref_path) = &expr.kind else {
                 return Err(type_fail!(
                     hlir,
@@ -266,10 +266,10 @@ impl TypeChecker<'_> {
             ));
         };
         match node {
-            HIRNode::Param(parameter) => {
+            HirNode::Param(parameter) => {
                 Self::get_type_of_function_param(parameter.fn_id, id, id.id.0, hlir)
             }
-            HIRNode::Statement(statement) => match &statement.kind {
+            HirNode::Statement(statement) => match &statement.kind {
                 StatementKind::Let(let_statement) => Ok(let_statement.ty.clone()),
                 StatementKind::Item(_owner_def_id) => Err(type_fail!(
                     hlir,
@@ -305,7 +305,7 @@ impl TypeChecker<'_> {
             .get_hir_node_mut(id)
             .ok_or_else(|| type_fail!(no_span, "Failed to get expr node."))?;
 
-        if let HIRNode::Expr(expr) = node {
+        if let HirNode::Expr(expr) = node {
             let expr_ty = self.eval_expr_type(expr, hlir)?;
             self.meta.type_map.insert(id, expr_ty.clone());
             Ok(expr_ty)
@@ -319,6 +319,8 @@ impl TypeChecker<'_> {
         }
     }
 
+    // This *has* to have too many lines..
+    #[allow(clippy::too_many_lines)]
     fn eval_expr_type(&mut self, expr: &Expr, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
         match &expr.kind {
             ExprKind::Block(block_id) => self.eval_block_type_by_id(*block_id, hlir),
@@ -847,7 +849,7 @@ impl TypeChecker<'_> {
             .get_hir_node_mut(id)
             .ok_or_else(|| type_fail!(hlir, id, "Failed to get block node."))?;
 
-        if let HIRNode::Block(block) = node {
+        if let HirNode::Block(block) = node {
             self.eval_block_type(block, hlir)
         } else {
             Err(type_fail!(
@@ -866,12 +868,12 @@ impl TypeChecker<'_> {
             .ok_or_else(|| type_fail!(hlir, id, "Failed to get statement node."))?;
 
         match node {
-            HIRNode::Statement(statement) => Ok(
+            HirNode::Statement(statement) => Ok(
                 matches!(statement.kind, StatementKind::Expr(expr_id) | StatementKind::Semi(expr_id) if {
                     let expr_node = hlir
                         .get_hir_node_mut(expr_id)
                         .ok_or_else(|| type_fail!(hlir, id, "Failed to get expr node."))?;
-                    if let HIRNode::Expr(expr) = expr_node {
+                    if let HirNode::Expr(expr) = expr_node {
                         matches!(expr.kind, ExprKind::Return(..))
                     } else {
                         false
@@ -981,6 +983,12 @@ impl TypeCheckFail {
 /// This function will run the type checker stage on the resolved HIR output.
 /// This will validate that all type rules are followed, as well as fill in any types that must be
 /// inferred from context.
+/// # Errors
+/// This function will return an error if any part of the HIR fails to pass type checking.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures
+/// or incompatibilities as well as where in the source code they occurred.
+/// This function can return multiple diagnostics messages/errors at once, to provide a more comprehensive
+/// overview of all type checking issues in the HIR.
 pub fn run_type_checker(hlir: &mut HLIR, meta: &mut ProgramMetaData) -> LowerResult<()> {
     let mut checker = TypeChecker::new(meta, true);
 

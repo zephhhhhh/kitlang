@@ -888,6 +888,8 @@ impl Item {
     }
 }
 
+// We intentially ignore span, as it just clutters the debug output.
+#[allow(clippy::missing_fields_in_debug)]
 impl Debug for Item {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Item")
@@ -1356,6 +1358,7 @@ impl Local {
         Box::new(Self::new(ident, ty, kind, mutable))
     }
 
+    #[allow(clippy::missing_errors_doc)]
     #[inline]
     pub fn fmt_with_name(&self, f: &mut std::fmt::Formatter<'_>, name: &str) -> std::fmt::Result {
         let info = format!(
@@ -1518,12 +1521,16 @@ impl Function {
     }
 }
 
+// We intentially ignore decl_span, as it just clutters the debug output.
+#[allow(clippy::missing_fields_in_debug)]
 impl Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Function")
             .field("ident", &self.ident.str())
             .field("sig", &self.sig)
             .field("method", &self.is_method)
+            .field("native", &self.native)
+            .field("global", &self.is_global)
             .field("body", &self.body)
             .finish()
     }
@@ -1551,6 +1558,8 @@ impl StructField {
     }
 }
 
+// We intentially ignore span, as it just clutters the debug output.
+#[allow(clippy::missing_fields_in_debug)]
 impl Debug for StructField {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StructField")
@@ -1723,7 +1732,7 @@ impl Debug for Module {
 
 /// An `Implementation` block [`Item`] in the AST, contains for which [`Ty`] the `impl` block is
 /// for, as well as a list of all [`Item`]'s contained within.
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Impl {
     pub target_path: SpannedIdentPath,
     pub lang_item: bool,
@@ -1749,15 +1758,6 @@ impl Impl {
         items: Vec<Item>,
     ) -> Box<Self> {
         Box::new(Self::new(target_path, lang_item, items))
-    }
-}
-
-impl Debug for Impl {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Impl")
-            .field("target_ident", &self.target_path)
-            .field("items", &self.items)
-            .finish()
     }
 }
 
@@ -1824,6 +1824,8 @@ impl FieldInitialisation {
     }
 }
 
+// We intentially ignore span, as it just clutters the debug output.
+#[allow(clippy::missing_fields_in_debug)]
 impl Debug for FieldInitialisation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FieldInitialisation")
@@ -1880,6 +1882,8 @@ impl UseImport {
     }
 }
 
+// We intentially ignore span, as it just clutters the debug output.
+#[allow(clippy::missing_fields_in_debug)]
 impl Debug for UseImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UseImport")

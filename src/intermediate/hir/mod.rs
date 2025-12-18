@@ -3,7 +3,7 @@ use ::std::fmt::Debug;
 use crate::ast::{ASTRoot, IdentPath, SourceSpan};
 
 use crate::intermediate::hir::errors::LowerResult;
-use crate::intermediate::hir::nodes::{HIRNode, Item, OwningNode, OwningNodeKind, Type};
+use crate::intermediate::hir::nodes::{HirNode, Item, OwningNode, OwningNodeKind, Type};
 use crate::intermediate::resolver::{ADTTypeInfo, Namespace, TypeRegistry, resolve_paths};
 use crate::intermediate::type_check::{TypeMap, run_type_checker};
 
@@ -154,6 +154,7 @@ pub struct HLIR {
 }
 
 impl HLIR {
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
     pub const fn owner_node_count(&self) -> u32 {
@@ -189,12 +190,18 @@ impl HLIR {
         self.owner_nodes.get_mut(id.0 as usize)
     }
 
+    /// Get a reference to the owning node without checking for existence.
+    /// # Panics
+    /// Panics if the node does not exist.
     #[inline]
     #[must_use]
     pub fn owning_node_unchecked(&self, id: OwnerDefId) -> &OwningNode {
         self.owner_nodes.get(id.0 as usize).expect("Node exists.")
     }
 
+    /// Get a mutable reference to the owning node without checking for existence.
+    /// # Panics
+    /// Panics if the node does not exist.
     #[inline]
     #[must_use]
     pub fn owning_node_mut_unchecked(&mut self, id: OwnerDefId) -> &mut OwningNode {
@@ -242,30 +249,38 @@ impl HLIR {
 }
 
 impl HLIR {
+    /// Get a reference to the [`HirNode`] with a specified [`HirId`].
     #[inline]
     #[must_use]
-    pub fn get_hir_node(&self, hir_id: HirId) -> Option<&HIRNode> {
+    pub fn get_hir_node(&self, hir_id: HirId) -> Option<&HirNode> {
         self.owning_node(hir_id.owner)?.get_hir_node(hir_id.id)
     }
 
+    /// Get a reference to the [`HirNode`] with a specified [`HirId`] without checking for existence.
+    /// # Panics
+    /// Panics if the node does not exist.
     #[inline]
     #[must_use]
-    pub fn get_hir_node_unchecked(&self, hir_id: HirId) -> &HIRNode {
+    pub fn get_hir_node_unchecked(&self, hir_id: HirId) -> &HirNode {
         self.owning_node_unchecked(hir_id.owner)
             .get_hir_node(hir_id.id)
             .expect("HIRNode exists.")
     }
 
+    /// Get a mutable reference to the [`HirNode`] with a specified [`HirId`].
     #[inline]
     #[must_use]
-    pub fn get_hir_node_mut(&mut self, hir_id: HirId) -> Option<&mut HIRNode> {
+    pub fn get_hir_node_mut(&mut self, hir_id: HirId) -> Option<&mut HirNode> {
         self.owning_node_mut(hir_id.owner)?
             .get_hir_node_mut(hir_id.id)
     }
 
+    /// Get a mutable reference to the [`HirNode`] with a specified [`HirId`] without checking for existence.
+    /// # Panics
+    /// Panics if the node does not exist.
     #[inline]
     #[must_use]
-    pub fn get_hir_node_mut_unchecked(&mut self, hir_id: HirId) -> &mut HIRNode {
+    pub fn get_hir_node_mut_unchecked(&mut self, hir_id: HirId) -> &mut HirNode {
         self.owning_node_mut_unchecked(hir_id.owner)
             .get_hir_node_mut(hir_id.id)
             .expect("HIRNode exists.")
@@ -282,7 +297,7 @@ impl HLIR {
     pub fn insert_hir_node(
         &mut self,
         owner_id: impl Into<OwnerDefId>,
-        hir_node: HIRNode,
+        hir_node: HirNode,
     ) -> Option<HirId> {
         let owner = owner_id.into();
         let local_id = self.owning_node_mut(owner)?.insert_hir_node(hir_node);
@@ -427,7 +442,7 @@ impl ProgramMetaData {
 /// The source span if found, otherwise a null span.
 pub(crate) fn get_span_by_id(hlir: &HLIR, hir_id: HirId) -> SourceSpan {
     hlir.get_hir_node(hir_id)
-        .map_or_else(SourceSpan::null_span, nodes::HIRNode::span)
+        .map_or_else(SourceSpan::null_span, nodes::HirNode::span)
 }
 
 // Outward facing API..
@@ -435,6 +450,10 @@ pub(crate) fn get_span_by_id(hlir: &HLIR, hir_id: HirId) -> SourceSpan {
 /// Lower the output of the parser stage to HIR.
 /// # Note
 /// This function does not do any later processing.
+/// # Errors
+/// This function will return an error if any part of the AST cannot be lowered properly.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures,
+/// as well as which stage of lowering it occurred in.
 pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
     lowerer::lower_ast_to_hir(ast)
 }
@@ -443,6 +462,10 @@ pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
 /// # Note
 /// Unlike `lower_ast_to_hir`, this function does do all HIR processing.
 /// (Type checking, resolution, etc).
+/// # Errors
+/// This function will return an error if any part of the AST cannot be lowered properly.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures,
+/// as well as which stage of lowering it occurred in.
 pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData, HLIR)> {
     let mut hlir = lower_ast_to_hir(ast)?;
     let mut meta_data = ProgramMetaData {

@@ -35,7 +35,7 @@ use crate::ast::{self, SourceSpan, SpannedIdent, Visibility};
 
 use crate::intermediate::hir::errors::{LowerResult, lowering_err};
 use crate::intermediate::hir::nodes::{
-    Block, Constant, Enum, Expr, ExprKind, Function, FunctionBody, FunctionSig, HIRNode, Impl,
+    Block, Constant, Enum, Expr, ExprKind, Function, FunctionBody, FunctionSig, HirNode, Impl,
     Item, ItemKind, LetStatement, Module, ModuleIdent, ModuleSpan, OwningNode, OwningNodeKind,
     Parameter, RefPath, Statement, StatementKind, Struct, StructField, StructFieldInit,
     StructInitialisation, Type, UsePath,
@@ -220,7 +220,7 @@ impl HLIRLowerer<'_> {
             let param_id = self.hlir.next_hir_id_on(fn_node_id);
             self.hlir.insert_hir_node(
                 fn_node_id,
-                HIRNode::Param(Parameter {
+                HirNode::Param(Parameter {
                     id: param_id,
                     fn_id: fn_node_id,
                     ident: param.ident.clone(),
@@ -280,7 +280,7 @@ impl HLIRLowerer<'_> {
                 .hlir
                 .insert_hir_node(
                     struct_node_id,
-                    HIRNode::Field(StructField {
+                    HirNode::Field(StructField {
                         id: self.hlir.next_hir_id_on(struct_node_id),
                         ident: s.ident.clone(),
                         span: s.span,
@@ -441,7 +441,7 @@ impl HLIRLowerer<'_> {
         let block_id = self.hlir.next_hir_id_on(owner_node);
         self.hlir.insert_hir_node(
             owner_node,
-            HIRNode::Block(Block {
+            HirNode::Block(Block {
                 id: block_id,
                 statements: vec![],
                 root_block,
@@ -461,7 +461,7 @@ impl HLIRLowerer<'_> {
             }
         }
 
-        if let HIRNode::Block(block) = self.hlir.get_hir_node_mut_unchecked(block_id) {
+        if let HirNode::Block(block) = self.hlir.get_hir_node_mut_unchecked(block_id) {
             block.statements = statement_node_ids;
         } else {
             Err(lowering_err!(
@@ -474,6 +474,7 @@ impl HLIRLowerer<'_> {
         Ok(block_id)
     }
 
+    // TODO: This is just awful.
     fn lower_for_loop(
         &mut self,
         binding: &SpannedIdent,
@@ -484,7 +485,7 @@ impl HLIRLowerer<'_> {
         let enclosing_block_id = self.hlir.next_hir_id_on(owner_node);
         self.hlir.insert_hir_node(
             owner_node,
-            HIRNode::Block(Block {
+            HirNode::Block(Block {
                 id: enclosing_block_id,
                 statements: vec![],
                 root_block: false,
@@ -493,7 +494,7 @@ impl HLIRLowerer<'_> {
         );
 
         let iterable_expr_id = self.lower_expression(iterable_expr, owner_node)?;
-        let Some(HIRNode::Expr(iterable_expr)) = self.hlir.get_hir_node(iterable_expr_id) else {
+        let Some(HirNode::Expr(iterable_expr)) = self.hlir.get_hir_node(iterable_expr_id) else {
             return Err(lowering_err!(
                 on_span,
                 iterable_expr.span,
@@ -526,7 +527,7 @@ impl HLIRLowerer<'_> {
             };
             let Some(bid) = self
                 .hlir
-                .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
+                .insert_hir_node(owner_node, HirNode::Statement(hir_statement))
             else {
                 return Err(lowering_err!(
                     on_span,
@@ -547,7 +548,7 @@ impl HLIRLowerer<'_> {
         };
         let Some(loop_block_expr_id) = self
             .hlir
-            .insert_hir_node(owner_node, HIRNode::Expr(block_expr))
+            .insert_hir_node(owner_node, HirNode::Expr(block_expr))
         else {
             return Err(lowering_err!(
                 on_span,
@@ -564,7 +565,7 @@ impl HLIRLowerer<'_> {
             };
             let Some(bid) = self
                 .hlir
-                .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
+                .insert_hir_node(owner_node, HirNode::Statement(hir_statement))
             else {
                 return Err(lowering_err!(
                     on_span,
@@ -575,7 +576,7 @@ impl HLIRLowerer<'_> {
             bid
         };
 
-        if let HIRNode::Block(block) = self.hlir.get_hir_node_mut_unchecked(enclosing_block_id) {
+        if let HirNode::Block(block) = self.hlir.get_hir_node_mut_unchecked(enclosing_block_id) {
             block.statements = vec![binding_id, loop_block_id];
         } else {
             Err(lowering_err!(
@@ -593,6 +594,8 @@ impl HLIRLowerer<'_> {
         ))
     }
 
+    // This *has* to have too many lines..
+    #[allow(clippy::too_many_lines)]
     /// Lowers an expression to HIR.
     fn lower_expression(
         &mut self,
@@ -714,7 +717,7 @@ impl HLIRLowerer<'_> {
         // FIXME: Probably error if it can't be lowered.
         Ok(self
             .hlir
-            .insert_hir_node(owner_node, HIRNode::Expr(hir_expr))
+            .insert_hir_node(owner_node, HirNode::Expr(hir_expr))
             .unwrap_or(HirId::PLACEHOLDER_ID))
     }
 
@@ -744,7 +747,7 @@ impl HLIRLowerer<'_> {
                     span: statement.span,
                 };
                 self.hlir
-                    .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
+                    .insert_hir_node(owner_node, HirNode::Statement(hir_statement))
             }
             ast::StatementKind::Item(item) => {
                 let item_id = self.lower_ast_item(item, owner_node)?;
@@ -754,12 +757,12 @@ impl HLIRLowerer<'_> {
                     span: statement.span,
                 };
                 self.hlir
-                    .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
+                    .insert_hir_node(owner_node, HirNode::Statement(hir_statement))
             }
             ast::StatementKind::Expr(expression) => {
                 let expr_id = self.lower_expression(expression, owner_node)?;
                 let is_control_flow =
-                    if let Some(HIRNode::Expr(e)) = self.hlir.get_hir_node(expr_id) {
+                    if let Some(HirNode::Expr(e)) = self.hlir.get_hir_node(expr_id) {
                         matches!(&e.kind, ExprKind::If(_, _, _) | ExprKind::While(_, _))
                     } else {
                         false
@@ -774,7 +777,7 @@ impl HLIRLowerer<'_> {
                     span: statement.span,
                 };
                 self.hlir
-                    .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
+                    .insert_hir_node(owner_node, HirNode::Statement(hir_statement))
             }
             ast::StatementKind::Semi(expression) => {
                 let expr_id = self.lower_expression(expression, owner_node)?;
@@ -784,7 +787,7 @@ impl HLIRLowerer<'_> {
                     span: statement.span,
                 };
                 self.hlir
-                    .insert_hir_node(owner_node, HIRNode::Statement(hir_statement))
+                    .insert_hir_node(owner_node, HirNode::Statement(hir_statement))
             }
             ast::StatementKind::Empty => None,
         };
@@ -806,6 +809,10 @@ impl HLIRLowerer<'_> {
 ///
 /// - `Ok(HLIR)`: The successfully lowered HIR on success
 /// - `Err(LoweringError)`: An error describing what went wrong during lowering.
+/// # Errors
+/// This function will return an error if any part of the AST cannot be lowered properly.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures,
+/// as well as which stage of lowering it occurred in.
 pub fn lower_ast_to_hir(ast: &ast::ASTRoot) -> LowerResult<HLIR> {
     let mut hir = HLIR::default();
 
