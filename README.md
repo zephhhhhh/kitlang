@@ -12,8 +12,8 @@ A statically-typed, Rust-inspired programming language designed for embedding as
 
 - **Rust-like Syntax**: Familiar syntax for developers with Rust experience.
 - **Static Type System**: Strong type checking with type inference support.
-- **Safety**: Ownership-inspired semantics and compile-time safety checks.
 - **Flexible**: Separation of data and code, does not force object-orientation.
+- **Embeddable**: Provides an easy API for binding functions for interoperability between Kitlang and a host environment.
 
 ## Example Kitlang Code
 
@@ -37,7 +37,7 @@ pub fn main() {
 
     let distance_squared = coord_1.distance_sqr(coord_2);
 
-    println("Distance squared: " + f32_to_string(distance_squared));
+    println("Distance squared: " + distance_squared.to_string());
 }
 ```
 
