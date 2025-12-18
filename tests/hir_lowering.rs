@@ -37,11 +37,11 @@ macro_rules! expect_path {
 }
 macro_rules! expect_any_expr_stmt {
     ($hlir:expr, $node:expr) => {
-        expect_match!($node, HIRNode::Statement(stmt) => {
+        expect_match!($node, HirNode::Statement(stmt) => {
             match &stmt.kind {
                 StatementKind::Semi(expr_id) | StatementKind::Expr(expr_id) => {
                     let expr_node = get_hir_node($hlir, *expr_id);
-                    expect_match!(expr_node, HIRNode::Expr(expr) => expr, "Expected expression HIR node")
+                    expect_match!(expr_node, HirNode::Expr(expr) => expr, "Expected expression HIR node")
                 },
                 _ => panic!("Statement is not an expression or semi-expression statement"),
             }
@@ -50,15 +50,15 @@ macro_rules! expect_any_expr_stmt {
 }
 macro_rules! expect_block {
     (id, $hlir:expr, $block_id:expr) => {
-        expect_match!(get_hir_node(&$hlir, $block_id), HIRNode::Block(block) => block, "Expected node to be HIRNode::Block")
+        expect_match!(get_hir_node(&$hlir, $block_id), HirNode::Block(block) => block, "Expected node to be HirNode::Block")
     };
     (expr_id, $hlir:expr, $expr_id:expr) => {
-        expect_match!(get_hir_node(&$hlir, $expr_id), HIRNode::Expr(e) => match &e.kind {
+        expect_match!(get_hir_node(&$hlir, $expr_id), HirNode::Expr(e) => match &e.kind {
             ExprKind::Block(block_id) => {
-                expect_match!(get_hir_node(&$hlir, *block_id), HIRNode::Block(b) => b, "Expected block id in block expression to be a block.")
+                expect_match!(get_hir_node(&$hlir, *block_id), HirNode::Block(b) => b, "Expected block id in block expression to be a block.")
             },
             _ => panic!("Expected block expression"),
-        }, "HIRNode to be an expression")
+        }, "HirNode to be an expression")
     };
 }
 macro_rules! wrap_and_parse_expr {
