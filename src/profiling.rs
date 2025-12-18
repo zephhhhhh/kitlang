@@ -4,7 +4,7 @@ use std::time::Instant;
 #[cfg(feature = "webasm")]
 use web_time::Instant;
 
-use log::*;
+use log::debug;
 
 use humanize_duration::{Truncate, prelude::*};
 

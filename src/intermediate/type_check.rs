@@ -256,7 +256,7 @@ impl TypeChecker<'_> {
         self.validate_return_value(expr_id, return_type, hlir)
     }
 
-    fn eval_non_expr_hir_id(&self, id: HirId, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
+    fn eval_non_expr_hir_id(id: HirId, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
         let Some(node) = hlir.get_hir_node_mut(id) else {
             return Err(type_fail!(
                 hlir,
@@ -473,7 +473,7 @@ impl TypeChecker<'_> {
                 match expr_ty {
                     Type::Resolved(t) => {
                         let Some(method_def) =
-                            self.meta.find_ty_method_owner_def(expr_ty, ident.str())
+                            self.meta.find_ty_method_owner_def(&expr_ty, ident.str())
                         else {
                             return Err(type_fail!(
                                 hlir,
@@ -628,7 +628,7 @@ impl TypeChecker<'_> {
             ExprKind::Path(ref_path) => {
                 if let Some(resolved_id) = ref_path.resolved_id() {
                     match resolved_id {
-                        ResolvedID::Hir(hir_id) => self.eval_non_expr_hir_id(hir_id, hlir),
+                        ResolvedID::Hir(hir_id) => Self::eval_non_expr_hir_id(hir_id, hlir),
                         ResolvedID::Def(_def_id) => {
                             Err(type_fail!(hlir, expr.id, "Def resolution not implemented."))
                         }
@@ -657,15 +657,15 @@ impl TypeChecker<'_> {
                     self.validate_return_value_by_id(*return_expr_id, hlir)
                 } else {
                     let expected_return = self.current_expected_return().expect("Not in function?");
-                    if !expected_return.is_unit() {
+                    if expected_return.is_unit() {
+                        Ok(Type::unit())
+                    } else {
                         Err(type_fail!(
                             hlir,
                             expr.id,
                             "Return with no value, when function expected to return: {}",
                             self.type_name(expected_return)
                         ))
-                    } else {
-                        Ok(Type::unit())
                     }
                 }
             }
@@ -747,7 +747,7 @@ impl TypeChecker<'_> {
 
                 Ok(Type::unit())
             }
-            unk => Err(type_fail!(
+            unk @ ExprKind::Index(..) => Err(type_fail!(
                 hlir,
                 expr.id,
                 "Error unknown expression type: {:?}",
@@ -860,11 +860,7 @@ impl TypeChecker<'_> {
     }
 
     #[inline]
-    fn is_id_return_statement(
-        &self,
-        id: HirId,
-        hlir: &mut HLIRDisjointMut<'_>,
-    ) -> TypeResult<bool> {
+    fn is_id_return_statement(id: HirId, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<bool> {
         let node = hlir
             .get_hir_node_mut(id)
             .ok_or_else(|| type_fail!(hlir, id, "Failed to get statement node."))?;
@@ -899,12 +895,11 @@ impl TypeChecker<'_> {
                 Ok(final_ty) => {
                     if i.saturating_add(1) == statement_count {
                         // Validate..
-                        let is_return_stmt = self.is_id_return_statement(*statement_id, hlir)?;
+                        let is_return_stmt = Self::is_id_return_statement(*statement_id, hlir)?;
                         if block.root_block && !is_return_stmt {
                             return self.validate_return_value(*statement_id, final_ty, hlir);
-                        } else {
-                            return Ok(final_ty);
                         }
+                        return Ok(final_ty);
                     }
                 }
                 Err(e) => self.errors.push(e),
@@ -991,12 +986,12 @@ pub fn run_type_checker(hlir: &mut HLIR, meta: &mut ProgramMetaData) -> LowerRes
 
     checker.walk_mut(hlir);
 
-    if !checker.errors.is_empty() {
+    if checker.errors.is_empty() {
+        Ok(())
+    } else {
         Err(LoweringError::new(
             LoweringErrorKind::TypeCheckFail(checker.errors),
             SourceSpan::null_span(),
         ))
-    } else {
-        Ok(())
     }
 }

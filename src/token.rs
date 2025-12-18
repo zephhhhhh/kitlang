@@ -282,10 +282,9 @@ impl TokenKind {
     #[must_use]
     pub const fn is_significant(&self) -> bool {
         match self {
-            Self::Ident(_) => true,
             Self::Keyword(keyword) => keyword.is_significant(),
             Self::Punctuation(punctuation) => !matches!(punctuation, Punctuation::Ampersand),
-            Self::StringLiteral(_) | Self::Literal(_) | Self::Eof => true,
+            Self::Ident(_) | Self::StringLiteral(_) | Self::Literal(_) | Self::Eof => true,
             _ => false,
         }
     }

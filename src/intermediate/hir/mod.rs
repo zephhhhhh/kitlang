@@ -275,7 +275,7 @@ impl HLIR {
     #[must_use]
     pub fn next_hir_id_on(&self, owner_id: impl Into<OwnerDefId>) -> HirId {
         self.owning_node(owner_id.into())
-            .map_or(HirId::PLACEHOLDER_ID, |owner_node| owner_node.next_hir_id())
+            .map_or(HirId::PLACEHOLDER_ID, nodes::OwningNode::next_hir_id)
     }
 
     #[inline]
@@ -381,13 +381,13 @@ impl ProgramMetaData {
 
     #[inline]
     #[must_use]
-    pub fn find_ty_method_owner_def(&self, ty: Type, method_ident: &str) -> Option<OwnerDefId> {
+    pub fn find_ty_method_owner_def(&self, ty: &Type, method_ident: &str) -> Option<OwnerDefId> {
         let Type::Resolved(resolved_ty) = ty else {
             return None;
         };
         match resolved_ty {
             KitTy::Abstract(adt_id) => {
-                let adt = self.type_registry.get_from_type_id(adt_id)?;
+                let adt = self.type_registry.get_from_type_id(*adt_id)?;
                 self.find_method_owner_def(&adt.defined_in, adt.type_ident.str(), method_ident)
             }
             t => self.find_method_owner_def(
@@ -427,8 +427,7 @@ impl ProgramMetaData {
 /// The source span if found, otherwise a null span.
 pub(crate) fn get_span_by_id(hlir: &HLIR, hir_id: HirId) -> SourceSpan {
     hlir.get_hir_node(hir_id)
-        .map(|node| node.span())
-        .unwrap_or_else(SourceSpan::null_span)
+        .map_or_else(SourceSpan::null_span, nodes::HIRNode::span)
 }
 
 // Outward facing API..

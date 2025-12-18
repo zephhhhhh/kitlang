@@ -123,12 +123,12 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     }
 
     fn visit_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'_>) {
-        if module.owner_id != OwnerDefId::ROOT_NODE {
+        if module.owner_id == OwnerDefId::ROOT_NODE {
+            self.super_module_mut(module, hlir);
+        } else {
             self.push_to_current_path(module.ident.ident().str());
             self.super_module_mut(module, hlir);
             self.pop_from_current_path();
-        } else {
-            self.super_module_mut(module, hlir);
         }
     }
 

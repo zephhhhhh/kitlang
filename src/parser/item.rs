@@ -69,16 +69,16 @@ impl Parser<'_, '_> {
                         ParseErrorKind::SelfMustBeFirstArgument,
                         arg.span,
                     ));
-                } else {
-                    is_method = true;
                 }
+                is_method = true;
             }
         }
 
         let return_type_token = self.peek_at(0)?;
         let func_return_type = match return_type_token.kind {
-            TokenKind::Punctuation(Punctuation::OpenBrace)
-            | TokenKind::Punctuation(Punctuation::SemiColon) => FunctionReturnTy::Default,
+            TokenKind::Punctuation(Punctuation::OpenBrace | Punctuation::SemiColon) => {
+                FunctionReturnTy::Default
+            }
             TokenKind::Punctuation(Punctuation::Minus) => {
                 self.cursor.advance();
                 self.expect_kind(Punctuation::GreaterThan)?;
@@ -282,8 +282,10 @@ impl Parser<'_, '_> {
         // Parse module body..
         self.expect_kind(Punctuation::OpenBrace)?;
 
-        let items =
-            self.parse_block_like_no_delimiter(Punctuation::CloseBrace, |s| s.parse_impl_item())?;
+        let items = self.parse_block_like_no_delimiter(
+            Punctuation::CloseBrace,
+            super::Parser::parse_impl_item,
+        )?;
 
         Ok(Item::new(
             ItemKind::Impl(Impl::new_boxed(target, false, items)),
@@ -366,8 +368,10 @@ impl Parser<'_, '_> {
         // Parse module body..
         self.expect_kind(Punctuation::OpenBrace)?;
 
-        let items =
-            self.parse_block_like_no_delimiter(Punctuation::CloseBrace, |s| s.parse_mod_item())?;
+        let items = self.parse_block_like_no_delimiter(
+            Punctuation::CloseBrace,
+            super::Parser::parse_mod_item,
+        )?;
 
         Ok(Item::new(
             ItemKind::Mod(Module::new_boxed(

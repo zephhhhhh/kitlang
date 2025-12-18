@@ -819,12 +819,9 @@ impl Ty {
     pub fn get_type_ident(&self) -> Option<String> {
         match self {
             Self::Unit(_) => Some("()".to_string()),
-            Self::Infer => None,
-            Self::This(_) => None,
-            Self::Ref(ty, _, _) => ty.get_type_ident(),
             Self::Type(t) => Some(t.to_string()),
-            Self::Array(ty, _) => ty.get_type_ident(),
-            Self::Tuple(_, _) => None, // TODO: ?
+            Self::Ref(ty, _, _) | Self::Array(ty, _) => ty.get_type_ident(),
+            Self::Infer | Self::This(..) | Self::Tuple(..) => None, // TODO: Tuple?
         }
     }
 
@@ -833,13 +830,13 @@ impl Ty {
     #[must_use]
     pub const fn get_span(&self) -> Option<SourceSpan> {
         match self {
-            Self::Unit(s) => Some(*s),
             Self::Infer => None,
-            Self::This(s) => Some(*s),
-            Self::Ref(_, _, s) => Some(*s),
             Self::Type(t) => Some(t.span),
-            Self::Array(_, s) => Some(*s),
-            Self::Tuple(_, s) => Some(*s), // TODO: ?
+            Self::Unit(s)
+            | Self::This(s)
+            | Self::Ref(_, _, s)
+            | Self::Array(_, s)
+            | Self::Tuple(_, s) => Some(*s), // TODO: ?
         }
     }
 }
@@ -903,7 +900,8 @@ impl Debug for Item {
 /// Describes the "order" or "precedence" of each type of expression.
 /// This is implemented as an enum with an ordering derive, so that the enum can be compared with
 /// itself to determine which of the expressions has higher precendence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
 pub enum ExpressionOrder {
     /// `return`, `break`, etc..
     Jump,
@@ -1149,7 +1147,6 @@ impl ExpressionKind {
     pub const fn get_association(&self) -> ExpressionAssociation {
         match self {
             Self::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_association(),
-            Self::UnaryOp(_, _) => ExpressionAssociation::None,
             Self::Assign(_, _) => ExpressionAssociation::Right,
             _ => ExpressionAssociation::None,
         }
@@ -1311,10 +1308,10 @@ pub enum Literal {
 impl Debug for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::String(arg0) => write!(f, "String(\"{}\")", arg0),
-            Self::Float(arg0) => write!(f, "Float({})", arg0),
-            Self::Integer(arg0) => write!(f, "Integer({})", arg0),
-            Self::Boolean(arg0) => write!(f, "Boolean({})", arg0),
+            Self::String(arg0) => write!(f, "String(\"{arg0}\")"),
+            Self::Float(arg0) => write!(f, "Float({arg0})"),
+            Self::Integer(arg0) => write!(f, "Integer({arg0})"),
+            Self::Boolean(arg0) => write!(f, "Boolean({arg0})"),
         }
     }
 }
@@ -1366,7 +1363,7 @@ impl Local {
             self.ident, self.ty, self.mutable
         );
         f.debug_struct(name)
-            .field_with("info", |a| write!(a, "{}", info))
+            .field_with("info", |a| write!(a, "{info}"))
             .field("kind", &self.kind)
             .finish()
     }

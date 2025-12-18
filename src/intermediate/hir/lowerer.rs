@@ -128,11 +128,11 @@ impl HLIRLowerer<'_> {
             ast::ItemKind::Mod(module) => {
                 self.lower_module(module, item.span, parent_node, item.vis)
             }
-            ast::ItemKind::Enum(e) => self.lower_enum(e, item.span, parent_node, item.vis),
-            ast::ItemKind::Struct(s) => self.lower_struct(s, item.span, parent_node, item.vis),
+            ast::ItemKind::Enum(e) => Ok(self.lower_enum(e, item.span, parent_node, item.vis)),
+            ast::ItemKind::Struct(s) => Ok(self.lower_struct(s, item.span, parent_node, item.vis)),
             ast::ItemKind::Impl(im) => self.lower_impl(im, item.span, parent_node),
             ast::ItemKind::Use(useimport) => {
-                self.lower_use(useimport, item.span, parent_node, item.vis)
+                Ok(self.lower_use(useimport, item.span, parent_node, item.vis))
             }
         }
     }
@@ -260,7 +260,7 @@ impl HLIRLowerer<'_> {
         span: SourceSpan,
         owner_node: OwnerDefId,
         vis: Visibility,
-    ) -> LowerResult<OwnerDefId> {
+    ) -> OwnerDefId {
         let struct_node_id = self.hlir.next_owner_id();
         let struct_item = Item::new(ItemKind::Struct(Struct {
             owner_id: struct_node_id,
@@ -298,7 +298,7 @@ impl HLIRLowerer<'_> {
             .expect("Is a struct.")
             .fields = field_ids;
 
-        Ok(struct_node_id)
+        struct_node_id
     }
 
     // FIXME: This isn't implemented properly.
@@ -308,7 +308,7 @@ impl HLIRLowerer<'_> {
         span: SourceSpan,
         owner_node: OwnerDefId,
         vis: Visibility,
-    ) -> LowerResult<OwnerDefId> {
+    ) -> OwnerDefId {
         let enum_node_id = self.hlir.next_owner_id();
         let enum_item = Item::new(ItemKind::Enum(Enum {
             owner_id: enum_node_id,
@@ -321,7 +321,7 @@ impl HLIRLowerer<'_> {
             owner_node,
         );
 
-        Ok(enum_node_id)
+        enum_node_id
     }
 
     /// Lowers a constant definition to HIR.
@@ -410,7 +410,7 @@ impl HLIRLowerer<'_> {
         span: SourceSpan,
         owner_node: OwnerDefId,
         vis: Visibility,
-    ) -> LowerResult<OwnerDefId> {
+    ) -> OwnerDefId {
         let use_node_id = self.hlir.next_owner_id();
         let use_item = Item::new(ItemKind::Use(UsePath {
             owner_id: use_node_id,
@@ -424,7 +424,7 @@ impl HLIRLowerer<'_> {
             owner_node,
         );
 
-        Ok(use_node_id)
+        use_node_id
     }
 
     /// Lowers a block expression to HIR.

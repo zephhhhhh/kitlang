@@ -350,8 +350,8 @@ impl Parser<'_, '_> {
 
     /// Parses a `&` and `&mut`
     pub fn parse_ref_and_refmut(&mut self) -> PResult<RefType> {
-        if self.check_kind_advance(Punctuation::Ampersand) {
-            if self.check_kind_advance(Keyword::Mut) {
+        if self.check_kind_advance_err(Punctuation::Ampersand)? {
+            if self.check_kind_advance_err(Keyword::Mut)? {
                 Ok(RefType::RefMut)
             } else {
                 Ok(RefType::Ref)
@@ -404,7 +404,7 @@ impl Parser<'_, '_> {
                 unit_path,
                 self.finish_span(unit_span_start),
             ));
-        };
+        }
 
         self.parse_spanned_path()
     }
@@ -413,16 +413,18 @@ impl Parser<'_, '_> {
     /// otherwise `Ok(Visibility::Private)`, If there are no tokens, return `Err`.
     pub fn parse_visibility(&mut self) -> PResult<Visibility> {
         Ok(Visibility::from_is_public(
-            self.check_kind_advance(Keyword::Pub),
+            self.check_kind_advance_err(Keyword::Pub)?,
         ))
     }
 
     /// Checks if the current keyword is `mut`, if it is, consume it and return `Ok(Mutability::Mutable)`,
     /// otherwise `Ok(Mutability::Immutable)`, If there are no tokens, return `Err`.
     pub fn parse_mutability(&mut self) -> PResult<Mutability> {
-        Ok(Mutability::from_is_mutable(
-            self.check_kind_advance(Keyword::Mut),
-        ))
+        let mutable = matches!(self.peek()?.kind, TokenKind::Keyword(Keyword::Mut));
+        if mutable {
+            self.cursor.advance();
+        }
+        Ok(Mutability::from_is_mutable(mutable))
     }
 
     /// Parse the 'root' AST, starting from the beginning of the file.
@@ -464,6 +466,27 @@ impl Parser<'_, '_> {
     /// Peek at the specified `offset`, return `true` if the [`TokenKind`] of the [`Token`] matches the
     /// `expected_kind`
     #[inline]
+    #[allow(dead_code)]
+    fn check_kind_at_err<T: Into<TokenKind>>(
+        &self,
+        offset: u32,
+        expected_kind: T,
+    ) -> PResult<bool> {
+        let expected = expected_kind.into();
+        Ok(self.peek_at(offset)?.kind == expected)
+    }
+
+    /// Peek at the current token, return `true` if the [`TokenKind`] of the [`Token`] matches the
+    /// `expected_kind`
+    #[inline]
+    fn check_kind_err<T: Into<TokenKind>>(&self, expected_kind: T) -> PResult<bool> {
+        let expected = expected_kind.into();
+        Ok(self.peek()?.kind == expected)
+    }
+
+    /// Peek at the specified `offset`, return `true` if the [`TokenKind`] of the [`Token`] matches the
+    /// `expected_kind`
+    #[inline]
     fn check_kind_at<T: Into<TokenKind>>(&self, offset: u32, expected_kind: T) -> bool {
         let expected = expected_kind.into();
         self.cursor
@@ -480,6 +503,18 @@ impl Parser<'_, '_> {
             true
         } else {
             false
+        }
+    }
+
+    /// Peek at the current token, return `true` and advance the cursor if the [`TokenKind`] of the [`Token`]
+    /// matches the `expected_kind`
+    #[inline]
+    fn check_kind_advance_err<T: Into<TokenKind>>(&mut self, expected_kind: T) -> PResult<bool> {
+        if self.check_kind_err(expected_kind)? {
+            self.cursor.advance();
+            Ok(true)
+        } else {
+            Ok(false)
         }
     }
 
@@ -640,7 +675,7 @@ impl Parser<'_, '_> {
     /// # Returns
     /// *   `Ok(())` if the token is valid,
     /// *   `Err(ParseError)` if the token is invalid.
-    fn check_token_invalid(&self, token: &Token) -> PResult<()> {
+    fn check_token_invalid(token: &Token) -> PResult<()> {
         match &token.kind {
             TokenKind::InvalidIdent(ident) => Err(ParseError::new(
                 ParseErrorKind::InvalidIdentifier(ident.clone()),
@@ -681,7 +716,7 @@ impl Parser<'_, '_> {
         let remaining = self.cursor.remaining().saturating_sub(offset);
         for o in 0..remaining {
             if let Some(t) = self.cursor.peek_at(offset + o) {
-                self.check_token_invalid(t)?;
+                Self::check_token_invalid(t)?;
                 if t.kind.is_significant() {
                     return Ok(Some((offset + o, t)));
                 }

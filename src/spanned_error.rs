@@ -1,9 +1,11 @@
+use std::fmt::Write;
 use std::ops::Range;
 
 use crate::ast::SourceSpan;
 
-use log::*;
+use log::error;
 
+#[allow(clippy::wildcard_imports)]
 #[cfg(feature = "colour")]
 use inline_colorization::*;
 
@@ -108,7 +110,7 @@ impl SpannedErrorLine {
             #[cfg(feature = "colour")]
             {
                 let highlight = if error { color_red } else { highlight_color };
-                highlight_str += &format!("{highlight}{}{color_reset}", actual_str_bit);
+                let _ = write!(highlight_str, "{highlight}{actual_str_bit}{color_reset}");
             }
             #[cfg(not(feature = "colour"))]
             {
@@ -180,7 +182,7 @@ impl SpannedErrorBuilder {
         if self.error_span.is_null_span() {
             return self;
         }
-        for line in self.lines.iter_mut() {
+        for line in &mut self.lines {
             line.highlight_from_span(self.error_span, "^", self.hard_error);
         }
         self
@@ -288,12 +290,14 @@ impl SpannedErrorBuilder {
                 .saturating_add(1);
             #[cfg(feature = "colour")]
             {
-                final_output +=
-                    &format!("{prefix_color}  --> {color_reset}{file_name}{line}:{char_index}\n");
+                let _ = writeln!(
+                    final_output,
+                    "{prefix_color}  --> {color_reset}{file_name}{line}:{char_index}"
+                );
             }
             #[cfg(not(feature = "colour"))]
             {
-                final_output += &format!("  --> {file_name}{line}:{char_index}\n");
+                let _ = writeln!(final_output, "  --> {file_name}{line}:{char_index}");
             }
         }
 
@@ -388,10 +392,7 @@ fn get_lines(source_string: &str, span: SourceSpan) -> Vec<SpannedErrorLine> {
     const LINE_LOOP_SAFETY: usize = 10000;
 
     let (raw_before, raw_error, raw_after) = get_segments_from_source(source_string, span);
-    let previous_newline_index = raw_before
-        .rfind('\n')
-        .map(|i| i.saturating_add(1))
-        .unwrap_or(0);
+    let previous_newline_index = raw_before.rfind('\n').map_or(0, |i| i.saturating_add(1));
     let start_line_number = count_new_lines(raw_before).saturating_add(1);
 
     let mut next_newline_index = raw_after.find('\n').unwrap_or(source_string.len());

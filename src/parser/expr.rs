@@ -9,7 +9,8 @@ use crate::parser::errors::{PResult, ParseError, ParseErrorKind};
 
 use crate::token::{Keyword, LiteralKind, Punctuation, TokenKind};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u16)]
 enum ExpressionOrderBound {
     Included(ExpressionOrder),
     Excluded(ExpressionOrder),
@@ -144,7 +145,7 @@ impl Parser<'_, '_> {
                 Keyword::Break => self.parse_break(),
                 _ => {
                     return Err(ParseError::new(
-                        ParseErrorKind::UnimplementedFeature(format!("Keyword: {:?}", kw)),
+                        ParseErrorKind::UnimplementedFeature(format!("Keyword: {kw:?}")),
                         token,
                     ));
                 }
@@ -167,9 +168,9 @@ impl Parser<'_, '_> {
             }
             TokenKind::Punctuation(Punctuation::OpenBrace) => self.parse_block_as_expression(),
             TokenKind::Punctuation(Punctuation::OpenParen) => self.parse_parens_expr(),
-            TokenKind::Punctuation(Punctuation::Bang)
-            | TokenKind::Punctuation(Punctuation::Minus)
-            | TokenKind::Punctuation(Punctuation::Star) => self.parse_unary_op(),
+            TokenKind::Punctuation(Punctuation::Bang | Punctuation::Minus | Punctuation::Star) => {
+                self.parse_unary_op()
+            }
             _ => Err(ParseError::new(
                 ParseErrorKind::InvalidExpressionAtom(token.kind.clone()),
                 token,

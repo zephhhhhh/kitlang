@@ -16,7 +16,7 @@ use crate::intermediate::resolver::errors::{
 };
 use crate::intermediate::resolver::{ADTStructField, ADTTypeInfo, Namespace, NamespaceKind};
 
-use log::*;
+use log::debug;
 
 /// Builds and maintains the namespace scope tree by walking the HIR, and
 /// resolves associated references. I.e. paths from types, modules, etc.
@@ -152,7 +152,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
     fn resolve_uses_in_namespace(
         root_namespace: &Namespace,
         namespace: &mut Namespace,
-        current_path: IdentPath,
+        current_path: &IdentPath,
         // so bad...
         errors: &mut Vec<ResolverError>,
     ) {
@@ -165,11 +165,11 @@ impl<'a> AssociatedReferenceMapper<'a> {
             let mut next_path = current_path.clone();
             next_path.push(&ident);
             if let NamespaceKind::Use(use_path) = &item_namespace.kind {
-                let target_path = use_path.rebase_from_path(&current_path);
+                let target_path = use_path.rebase_from_path(current_path);
 
                 if let Some(target_namespace) = root_namespace.find_definition(&target_path) {
                     let mut cloned = target_namespace.clone();
-                    cloned.ident = item_namespace.ident.clone();
+                    cloned.ident.clone_from(&item_namespace.ident);
                     cloned.vis = item_namespace.vis;
                     cloned.local = item_namespace.local;
                     cloned.id = target_namespace.id;
@@ -178,7 +178,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
                     Self::resolve_uses_in_namespace(
                         root_namespace,
                         item_namespace,
-                        next_path,
+                        &next_path,
                         errors,
                     );
                 } else {
@@ -190,7 +190,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
                     ));
                 }
             } else {
-                Self::resolve_uses_in_namespace(root_namespace, item_namespace, next_path, errors);
+                Self::resolve_uses_in_namespace(root_namespace, item_namespace, &next_path, errors);
             }
         }
     }
@@ -218,7 +218,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         Self::resolve_uses_in_namespace(
             &root_namespace_clone,
             &mut self.meta.namespace,
-            IdentPath::new_empty(true),
+            &IdentPath::new_empty(true),
             &mut resolve_use_errors,
         );
 
@@ -255,12 +255,11 @@ impl<'a> AssociatedReferenceMapper<'a> {
     }
 
     #[inline]
-    fn find_last_enclosing_path(&self, path: &IdentPath) -> Option<IdentPath> {
+    fn find_last_enclosing_path(&self, path: &IdentPath) -> IdentPath {
         if path.is_empty() {
-            return Some(IdentPath::new_empty(true));
+            return IdentPath::new_empty(true);
         }
-
-        Some(self.meta.namespace.find_previous_enclosing_scope(path))
+        self.meta.namespace.find_previous_enclosing_scope(path)
     }
 
     #[inline]
@@ -289,9 +288,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
             return false;
         };
         if target_namespace.local {
-            let Some(enclosing_path) = self.find_last_enclosing_path(target_path) else {
-                return false;
-            };
+            let enclosing_path = self.find_last_enclosing_path(target_path);
             if !base_path.is_subpath_of(&enclosing_path) {
                 return false;
             }
@@ -315,56 +312,52 @@ impl<'a> AssociatedReferenceMapper<'a> {
                 return Err(ResolutionFailure::Inaccessible);
             }
 
-            if let Some(prev_base_path) = self.find_last_enclosing_path(base_path) {
-                let segment_match = p.matching_segment_count(&prev_base_path);
-                let matched_base_path = prev_base_path.subpath(0, segment_match);
+            let prev_base_path = self.find_last_enclosing_path(base_path);
 
-                if segment_match >= p.len() {
-                    // Fully matched, no need to check further.
-                    return Ok(def);
-                }
+            let segment_match = p.matching_segment_count(&prev_base_path);
+            let matched_base_path = prev_base_path.subpath(0, segment_match);
 
-                let local_check = matched_base_path.extend(&p.segments()[segment_match]);
-                if !self.validate_local_access(&local_check, &matched_base_path) {
-                    debug!("{p} Failed local access check");
+            if segment_match >= p.len() {
+                // Fully matched, no need to check further.
+                return Ok(def);
+            }
+
+            let local_check = matched_base_path.extend(&p.segments()[segment_match]);
+            if !self.validate_local_access(&local_check, &matched_base_path) {
+                debug!("{p} Failed local access check");
+                debug!(
+                    "Checked path: `{local_check}` from `{matched_base_path}`  ->  `{ident_path}`"
+                );
+                debug!("Base path: `{base_path}`");
+                return Err(ResolutionFailure::Inaccessible);
+            }
+
+            let inside_func = self
+                .get_namespace(&local_check)
+                .is_some_and(|ns| ns.kind == NamespaceKind::Function);
+
+            if segment_match.saturating_add(1) >= p.len() {
+                // Fully matched, no need to check further.
+                return Ok(def);
+            }
+
+            let len_to_check = p.len().saturating_sub(segment_match);
+
+            for i in 1..len_to_check {
+                let to_check = prev_base_path.extend_path(&IdentPath::from_segments_slice(
+                    &p.segments()[segment_match..=segment_match + i],
+                    true,
+                ));
+
+                let visible = self.get_namespace(&to_check).is_some_and(|n| {
+                    n.vis == Visibility::Public
+                        || (n.kind == NamespaceKind::Function && inside_func)
+                });
+                if !visible {
                     debug!(
-                        "Checked path: `{}` from `{}`  ->  `{}`",
-                        local_check, matched_base_path, ident_path
+                        "{p} Failed check at: `{to_check}` from `{base_path}`  ->  `{ident_path}`"
                     );
-                    debug!("Base path: `{}`", base_path);
                     return Err(ResolutionFailure::Inaccessible);
-                }
-
-                let inside_func = self
-                    .get_namespace(&local_check)
-                    .is_some_and(|ns| ns.kind == NamespaceKind::Function);
-
-                if segment_match.saturating_add(1) >= p.len() {
-                    // Fully matched, no need to check further.
-                    return Ok(def);
-                }
-
-                let len_to_check = p.len().saturating_sub(segment_match);
-
-                for i in 1..len_to_check {
-                    let to_check = prev_base_path.extend_path(&IdentPath::from_segments_slice(
-                        &p.segments()[segment_match..=segment_match + i],
-                        true,
-                    ));
-
-                    let visible = self
-                        .get_namespace(&to_check)
-                        .map(|n| {
-                            n.vis == Visibility::Public
-                                || (n.kind == NamespaceKind::Function && inside_func)
-                        })
-                        .unwrap_or_default();
-                    if !visible {
-                        debug!(
-                            "{p} Failed check at: `{to_check}` from `{base_path}`  ->  `{ident_path}`"
-                        );
-                        return Err(ResolutionFailure::Inaccessible);
-                    }
                 }
             }
 
@@ -637,12 +630,12 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
     }
 
     fn visit_impl(&mut self, impl_info: &Impl, hlir: &HLIR) {
-        if !self.stage1_complete {
-            let impl_path = impl_info.self_ty.rebase_from_path(self.current_path());
-            self.impl_path_lut.push((impl_info.owner_id, impl_path));
-        } else {
+        if self.stage1_complete {
             // Do the resolve.
             self.super_impl(impl_info, hlir);
+        } else {
+            let impl_path = impl_info.self_ty.rebase_from_path(self.current_path());
+            self.impl_path_lut.push((impl_info.owner_id, impl_path));
         }
     }
 
@@ -677,12 +670,12 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
 
 impl HLIRVisitorMut<'_> for AssociatedReferenceMapper<'_> {
     fn visit_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'_>) {
-        if module.owner_id != OwnerDefId::ROOT_NODE {
+        if module.owner_id == OwnerDefId::ROOT_NODE {
+            self.super_module_mut(module, hlir);
+        } else {
             self.push_to_current_path(module.ident.ident().str());
             self.super_module_mut(module, hlir);
             self.pop_from_current_path();
-        } else {
-            self.super_module_mut(module, hlir);
         }
     }
 

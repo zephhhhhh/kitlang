@@ -19,7 +19,7 @@ use kitlang_macros::kitlang_native_fn;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use log::*;
+use log::{debug, error, warn};
 
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -33,9 +33,9 @@ impl Program {
     #[must_use]
     pub const fn new(mir: MIR, registry: TypeRegistry, namespace: Namespace) -> Self {
         Self {
-            mir,
-            registry,
             namespace,
+            registry,
+            mir,
         }
     }
 }
@@ -51,7 +51,7 @@ pub enum ADTValueKind {
 impl std::fmt::Display for ADTValueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Struct(values) => write!(f, "{:?}", values),
+            Self::Struct(values) => write!(f, "{values:?}"),
         }
     }
 }
@@ -98,7 +98,7 @@ impl Value {
             Self::Float(f) => f.to_string(),
             Self::String(s) => s.clone(),
             Self::Boolean(b) => b.to_string(),
-            Self::Ref(at) => format!("{:?}", at),
+            Self::Ref(at) => format!("{at:?}"),
             Self::ADT(kind) => kind.to_string(),
         }
     }
@@ -180,24 +180,19 @@ impl Value {
                 UnaryOpKind::Negate => Some(Self::Integer(-i)),
             },
             Self::UnsignedInteger(i) => match op {
-                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(Self::UnsignedInteger(!i)),
-                UnaryOpKind::Negate => None,
+                UnaryOpKind::Dereference | UnaryOpKind::Negate => None,
             },
             Self::Float(f) => match op {
-                UnaryOpKind::Dereference => None,
-                UnaryOpKind::Not => None,
+                UnaryOpKind::Dereference | UnaryOpKind::Not => None,
                 UnaryOpKind::Negate => Some(Self::Float(-f)),
             },
             Self::String(_s) => match op {
-                UnaryOpKind::Dereference => None,
-                UnaryOpKind::Not => None,
-                UnaryOpKind::Negate => None,
+                UnaryOpKind::Dereference | UnaryOpKind::Not | UnaryOpKind::Negate => None,
             },
             Self::Boolean(b) => match op {
-                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(Self::Boolean(!b)),
-                UnaryOpKind::Negate => None,
+                UnaryOpKind::Dereference | UnaryOpKind::Negate => None,
             },
             Self::Ref(_) => todo!(),
             Self::ADT(_) => todo!(),
@@ -206,10 +201,6 @@ impl Value {
 
     #[must_use]
     pub fn perform_binary_op(&self, rhs: &Self, op: BinaryOpKind) -> Option<Self> {
-        if !self.are_matching_types(rhs) {
-            return None;
-        }
-
         const fn perform_int_op(lhs: i64, rhs: i64, op: BinaryOpKind) -> Option<Value> {
             match op {
                 BinaryOpKind::Add => Some(Value::Integer(lhs + rhs)),
@@ -254,6 +245,7 @@ impl Value {
             }
         }
 
+        #[allow(clippy::float_cmp)]
         fn perform_float_op(lhs: f64, rhs: f64, op: BinaryOpKind) -> Option<Value> {
             match op {
                 BinaryOpKind::Add => Some(Value::Float(lhs + rhs)),
@@ -293,12 +285,16 @@ impl Value {
                 BinaryOpKind::BitwiseXOR => Some(Value::Boolean(lhs ^ rhs)),
                 BinaryOpKind::Equal => Some(Value::Boolean(lhs == rhs)),
                 BinaryOpKind::NotEqual => Some(Value::Boolean(lhs != rhs)),
-                BinaryOpKind::LessThan => Some(Value::Boolean(!lhs & rhs)),
-                BinaryOpKind::GreaterThan => Some(Value::Boolean(lhs & !rhs)),
+                BinaryOpKind::LessThan => Some(Value::Boolean(!lhs && rhs)),
+                BinaryOpKind::GreaterThan => Some(Value::Boolean(lhs && !rhs)),
                 BinaryOpKind::LessThanOrEqual => Some(Value::Boolean(lhs <= rhs)),
                 BinaryOpKind::GreaterThanOrEqual => Some(Value::Boolean(lhs >= rhs)),
                 _ => None,
             }
+        }
+
+        if !self.are_matching_types(rhs) {
+            return None;
         }
 
         match self {
@@ -396,7 +392,7 @@ impl From<String> for Value {
 }
 
 impl From<()> for Value {
-    fn from(_: ()) -> Self {
+    fn from((): ()) -> Self {
         Self::Unit
     }
 }
@@ -416,9 +412,10 @@ impl ExecutionFrame {
     }
 
     pub fn set_arguments(&mut self, values: &[Value]) {
-        if values.len().saturating_add(1) > self.locals.len() {
-            panic!("Not enough space in locals for function arguments!");
-        }
+        assert!(
+            values.len().saturating_add(1) <= self.locals.len(),
+            "Not enough space in locals for function arguments!"
+        );
         for (i, value) in values.iter().enumerate() {
             *self
                 .local_mut(LocalId((i as u32).saturating_add(1)))
@@ -579,7 +576,7 @@ impl InterpreterState {
     pub fn call_native_function(&mut self, name: &str, args: &[Value]) -> Option<Value> {
         self.native_functions.get_mut(name).map_or_else(
             || {
-                error!("Failed to find native function: {}", name);
+                error!("Failed to find native function: {name}");
                 None
             },
             |f| f(args),
@@ -646,7 +643,7 @@ impl InterpreterState {
         } else if let Some(native_function_name) = program.mir.native_function_links.get(&id) {
             self.call_native_function(native_function_name, args)
         } else {
-            error!("Unknown function reference: {:?}", id);
+            error!("Unknown function reference: {id:?}");
 
             None
         }
@@ -680,7 +677,7 @@ impl InterpreterState {
 
             match &current_block.exit_directive.kind {
                 BlockExitKind::Goto(basic_block_id) => {
-                    current_block = body.block(*basic_block_id)?
+                    current_block = body.block(*basic_block_id)?;
                 }
                 BlockExitKind::Branch(operand, true_block, false_block) => {
                     let condition = match operand {
@@ -695,7 +692,7 @@ impl InterpreterState {
                         },
                         Operand::Literal(Literal::Boolean(b)) => *b,
                         _ => {
-                            error!("Invalid branch operand type! {:?}", operand);
+                            error!("Invalid branch operand type! {operand:?}");
                             return None;
                         }
                     };
@@ -709,9 +706,8 @@ impl InterpreterState {
                         .iter()
                         .map(|o| match o {
                             Operand::Copy(local) => self.perform_deref(*local).clone(),
-                            Operand::Unit => Value::Unit,
                             Operand::Literal(literal) => literal.into(),
-                            Operand::Const => Value::Unit,
+                            Operand::Unit | Operand::Const => Value::Unit,
                         })
                         .collect();
 
@@ -733,17 +729,17 @@ impl InterpreterState {
 
     #[inline]
     #[must_use]
-    fn eval_operand(&self, operand: &Operand) -> Option<Value> {
+    fn eval_operand(&self, operand: &Operand) -> Value {
         match operand {
             Operand::Copy(local) => {
                 // FIXME: Don't assume deref.
-                Some(self.perform_deref(*local).clone())
+                self.perform_deref(*local).clone()
             }
-            Operand::Unit => Some(Value::Unit),
-            Operand::Literal(literal) => Some(literal.into()),
+            Operand::Unit => Value::Unit,
+            Operand::Literal(literal) => literal.into(),
             Operand::Const => {
                 error!("Warning: Const not implemented! Continuing...");
-                Some(Value::Unit)
+                Value::Unit
             }
         }
     }
@@ -752,19 +748,19 @@ impl InterpreterState {
     #[must_use]
     fn eval_rvalue(&self, rvalue: &RValue) -> Option<Value> {
         match rvalue {
-            RValue::Unchanged(operand) => self.eval_operand(operand),
+            RValue::Unchanged(operand) => Some(self.eval_operand(operand)),
             RValue::BinaryOp(binary_op_kind, (lhs, rhs)) => {
-                let lhs_value = self.eval_operand(lhs)?;
-                let rhs_value = self.eval_operand(rhs)?;
+                let lhs_value = self.eval_operand(lhs);
+                let rhs_value = self.eval_operand(rhs);
 
                 lhs_value.perform_binary_op(&rhs_value, *binary_op_kind)
             }
             RValue::UnaryOp(unary_op_kind, operand) => {
-                let rhs_value = self.eval_operand(operand)?;
+                let rhs_value = self.eval_operand(operand);
                 rhs_value.perform_unary_op(*unary_op_kind)
             }
             RValue::Increment(operand) => {
-                let rhs_value = self.eval_operand(operand)?;
+                let rhs_value = self.eval_operand(operand);
                 rhs_value.perform_increment()
             }
             RValue::Ref(assign_target) => Some(Value::Ref(*assign_target)),
@@ -773,19 +769,13 @@ impl InterpreterState {
                     let adt_values = operands
                         .iter()
                         .map(|o| self.eval_operand(o))
-                        .collect::<Option<Vec<_>>>();
-                    adt_values.map_or_else(
-                        || {
-                            error!("Failed to evaluate all field values!");
-                            None
-                        },
-                        |values| Some(Value::ADT(ADTValueKind::Struct(values))),
-                    )
+                        .collect::<Vec<_>>();
+                    Some(Value::ADT(ADTValueKind::Struct(adt_values)))
                 }
             },
             RValue::Cast(operand, cast_kind) => {
-                let value = self.eval_operand(operand)?;
-                self.perform_cast(value, *cast_kind)
+                let value = self.eval_operand(operand);
+                self.perform_cast(&value, *cast_kind)
             }
         }
     }
@@ -810,19 +800,16 @@ impl InterpreterState {
     pub fn perform_assignment(&mut self, target: AssignTarget, new_value: Value) {
         let local_mut = self.perform_deref_mut(target);
         if !local_mut.are_matching_types(&new_value) && !local_mut.is_unit() {
-            warn!(
-                "Non matching types {:?}: {:?} => {:?}",
-                target, local_mut, new_value
-            );
+            warn!("Non matching types {target:?}: {local_mut:?} => {new_value:?}");
         }
         *local_mut = new_value;
     }
 
     #[must_use]
-    pub fn perform_cast(&self, value: Value, target_type: CastKind) -> Option<Value> {
+    pub fn perform_cast(&self, value: &Value, target_type: CastKind) -> Option<Value> {
         // TODO: Please just implement proper value storage. please
         match target_type {
-            CastKind::Int(target_int_size) => match value {
+            CastKind::Int(target_int_size) => match *value {
                 Value::UnsignedInteger(v) => Some(Value::Integer(match target_int_size {
                     KitInt::I8 => v as i8 as i64,
                     KitInt::I16 => v as i16 as i64,
@@ -849,7 +836,7 @@ impl InterpreterState {
                 })),
                 _ => None,
             },
-            CastKind::UInt(target_uint_size) => match value {
+            CastKind::UInt(target_uint_size) => match *value {
                 Value::UnsignedInteger(v) => Some(Value::UnsignedInteger(match target_uint_size {
                     KitUInt::U8 => v as u8 as u64,
                     KitUInt::U16 => v as u16 as u64,
@@ -876,20 +863,17 @@ impl InterpreterState {
                 })),
                 _ => None,
             },
-            CastKind::Float(target_float_size) => match value {
+            CastKind::Float(target_float_size) => match *value {
                 Value::UnsignedInteger(v) => Some(Value::Float(match target_float_size {
-                    KitFloat::F16 => v as f32 as f64,
-                    KitFloat::F32 => v as f32 as f64,
+                    KitFloat::F16 | KitFloat::F32 => v as f32 as f64,
                     KitFloat::F64 | KitFloat::F128 => v as f64,
                 })),
                 Value::Integer(v) => Some(Value::Float(match target_float_size {
-                    KitFloat::F16 => v as f32 as f64,
-                    KitFloat::F32 => v as f32 as f64,
+                    KitFloat::F16 | KitFloat::F32 => v as f32 as f64,
                     KitFloat::F64 | KitFloat::F128 => v as f64,
                 })),
                 Value::Float(v) => Some(Value::Float(match target_float_size {
-                    KitFloat::F16 => v as f32 as f64,
-                    KitFloat::F32 => v as f32 as f64,
+                    KitFloat::F16 | KitFloat::F32 => v as f32 as f64,
                     KitFloat::F64 | KitFloat::F128 => v,
                 })),
                 _ => None,
@@ -904,7 +888,7 @@ impl InterpreterState {
                 if let Some(new_value) = self.eval_rvalue(rvalue) {
                     self.perform_assignment(*target, new_value);
                 } else {
-                    error!("Failed to evaluate Rvalue: {:?}", rvalue);
+                    error!("Failed to evaluate Rvalue: {rvalue:?}");
                 }
             }
         }
@@ -1094,10 +1078,10 @@ fn to_lower(s: String) -> String {
 #[cfg(not(feature = "webasm"))]
 #[kitlang_native_fn]
 fn print(s: String) {
-    print!("{}", s);
+    print!("{s}");
 }
 #[cfg(not(feature = "webasm"))]
 #[kitlang_native_fn]
 fn println(s: String) {
-    println!("{}", s);
+    println!("{s}");
 }

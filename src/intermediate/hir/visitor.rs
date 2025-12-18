@@ -78,7 +78,7 @@ pub trait HLIRVisitor {
     fn super_statement(&mut self, statement: &Statement, _parent_block: &Block, hlir: &HLIR) {
         match &statement.kind {
             StatementKind::Let(let_statement) => {
-                self.visit_let_statement(statement.id, let_statement, hlir)
+                self.visit_let_statement(statement.id, let_statement, hlir);
             }
             StatementKind::Item(owner_def_id) => {
                 if let Some(item) = hlir.owning_node_item(*owner_def_id) {
@@ -103,16 +103,23 @@ pub trait HLIRVisitor {
     fn super_expr(&mut self, expr: &Expr, hlir: &HLIR) {
         match &expr.kind {
             ExprKind::Path(ref_path) => self.visit_path(expr.id, ref_path, hlir),
-            ExprKind::Block(hir_id) => {
+            ExprKind::Block(hir_id) | ExprKind::Loop(hir_id) => {
                 if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id) {
                     self.visit_block(block, hlir);
                 }
             }
-            ExprKind::BinaryOp(_, hir_id, hir_id1) => {
+            ExprKind::BinaryOp(_, hir_id, hir_id1)
+            | ExprKind::Assign(hir_id, hir_id1)
+            | ExprKind::Index(hir_id, hir_id1) => {
                 self.visit_expr_by_id(*hir_id, hlir);
                 self.visit_expr_by_id(*hir_id1, hlir);
             }
-            ExprKind::UnaryOp(_, hir_id) => self.visit_expr_by_id(*hir_id, hlir),
+            ExprKind::UnaryOp(_, hir_id)
+            | ExprKind::FieldAccess(hir_id, _)
+            | ExprKind::Return(Some(hir_id))
+            | ExprKind::Cast(hir_id, _) => {
+                self.visit_expr_by_id(*hir_id, hlir);
+            }
             ExprKind::If(hir_id, hir_id1, hir_id2) => {
                 self.visit_expr_by_id(*hir_id, hlir);
                 if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id1) {
@@ -122,48 +129,22 @@ pub trait HLIRVisitor {
                     }
                 }
             }
-            ExprKind::Loop(hir_id) => {
-                if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id) {
-                    self.visit_block(block, hlir);
-                }
-            }
             ExprKind::While(hir_id, hir_id1) => {
                 self.visit_expr_by_id(*hir_id, hlir);
                 if let Some(HIRNode::Block(block)) = hlir.get_hir_node(*hir_id1) {
                     self.visit_block(block, hlir);
                 }
             }
-            ExprKind::Assign(hir_id, hir_id1) => {
-                self.visit_expr_by_id(*hir_id, hlir);
-                self.visit_expr_by_id(*hir_id1, hlir);
-            }
-            ExprKind::Call(hir_id, hir_ids) => {
+            ExprKind::Call(hir_id, hir_ids) | ExprKind::MethodCall(hir_id, _, hir_ids) => {
                 self.visit_expr_by_id(*hir_id, hlir);
                 for param_id in hir_ids {
                     self.visit_expr_by_id(*param_id, hlir);
                 }
             }
-            ExprKind::MethodCall(hir_id, _, hir_ids) => {
-                self.visit_expr_by_id(*hir_id, hlir);
-                for param_id in hir_ids {
-                    self.visit_expr_by_id(*param_id, hlir);
-                }
-            }
-            ExprKind::Index(hir_id, hir_id1) => {
-                self.visit_expr_by_id(*hir_id, hlir);
-                self.visit_expr_by_id(*hir_id1, hlir);
-            }
-            ExprKind::FieldAccess(hir_id, _) => self.visit_expr_by_id(*hir_id, hlir),
             ExprKind::StructInit(struct_initialisation) => {
                 for field in &struct_initialisation.fields {
                     self.visit_expr_by_id(field.expr, hlir);
                 }
-            }
-            ExprKind::Return(Some(hir_id)) => {
-                self.visit_expr_by_id(*hir_id, hlir);
-            }
-            ExprKind::Cast(hir_id, _) => {
-                self.visit_expr_by_id(*hir_id, hlir);
             }
             ExprKind::Range(min_id, max_id, _) => {
                 self.visit_expr_by_id(*min_id, hlir);
@@ -190,10 +171,10 @@ pub trait HLIRVisitor {
     }
 
     fn visit_path(&mut self, hir_id: HirId, path: &RefPath, hlir: &HLIR) {
-        self.super_path(hir_id, path, hlir)
+        self.super_path(hir_id, path, hlir);
     }
     fn visit_expr(&mut self, expr: &Expr, hlir: &HLIR) {
-        self.super_expr(expr, hlir)
+        self.super_expr(expr, hlir);
     }
     fn visit_constant(&mut self, constant: &Constant, hlir: &HLIR) {
         self.super_constant(constant, hlir);
@@ -202,40 +183,40 @@ pub trait HLIRVisitor {
         self.super_let_statement(id, let_statement, hlir);
     }
     fn visit_statement(&mut self, statement: &Statement, parent_block: &Block, hlir: &HLIR) {
-        self.super_statement(statement, parent_block, hlir)
+        self.super_statement(statement, parent_block, hlir);
     }
     fn visit_block(&mut self, block: &Block, hlir: &HLIR) {
-        self.super_block(block, hlir)
+        self.super_block(block, hlir);
     }
     fn visit_struct(&mut self, structure: &Struct, hlir: &HLIR) {
-        self.super_struct(structure, hlir)
+        self.super_struct(structure, hlir);
     }
     fn visit_enum(&mut self, enumeration: &Enum, hlir: &HLIR) {
-        self.super_enum(enumeration, hlir)
+        self.super_enum(enumeration, hlir);
     }
     fn visit_function_param(&mut self, parameter: &Parameter, hlir: &HLIR) {
-        self.super_function_param(parameter, hlir)
+        self.super_function_param(parameter, hlir);
     }
     fn visit_function(&mut self, function: &Function, hlir: &HLIR) {
-        self.super_function(function, hlir)
+        self.super_function(function, hlir);
     }
     fn visit_impl(&mut self, impl_info: &Impl, hlir: &HLIR) {
-        self.super_impl(impl_info, hlir)
+        self.super_impl(impl_info, hlir);
     }
     fn visit_use(&mut self, use_info: &UsePath, hlir: &HLIR) {
-        self.super_use(use_info, hlir)
+        self.super_use(use_info, hlir);
     }
     fn visit_item(&mut self, item: &Item, hlir: &HLIR) {
-        self.super_item(item, hlir)
+        self.super_item(item, hlir);
     }
     fn visit_impl_item(&mut self, item: &Item, hlir: &HLIR) {
-        self.super_impl_item(item, hlir)
+        self.super_impl_item(item, hlir);
     }
     fn visit_module(&mut self, module: &Module, hlir: &HLIR) {
-        self.super_module(module, hlir)
+        self.super_module(module, hlir);
     }
     fn visit_root(&mut self, hlir: &HLIR) {
-        self.super_root(hlir)
+        self.super_root(hlir);
     }
 }
 
@@ -276,7 +257,7 @@ impl HLIRDisjointMut<'_> {
     where
         Option<&'a mut F>: From<&'a mut HIRNode>,
     {
-        self.get_hir_node_mut(id).and_then(|node| node.into())
+        self.get_hir_node_mut(id).and_then(std::convert::Into::into)
     }
 
     pub fn get_hir_node_mut(&mut self, id: HirId) -> Option<&'static mut HIRNode> {
@@ -401,7 +382,7 @@ pub trait HLIRVisitorMut<'a> {
         }
     }
     fn super_impl_item_mut(&mut self, item: &mut Item, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_item_mut(item, hlir)
+        self.super_item_mut(item, hlir);
     }
     fn super_use_mut(&mut self, _use_info: &mut UsePath, _hlir: &mut HLIRDisjointMut<'a>) {}
     fn super_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'a>) {
@@ -446,7 +427,7 @@ pub trait HLIRVisitorMut<'a> {
     ) {
         match &mut statement.kind {
             StatementKind::Let(let_statement) => {
-                self.visit_let_statement_mut(statement.id, let_statement, hlir)
+                self.visit_let_statement_mut(statement.id, let_statement, hlir);
             }
             StatementKind::Item(owner_def_id) => {
                 if let Some(item) = hlir.owning_node_item_mut(*owner_def_id) {
@@ -483,11 +464,18 @@ pub trait HLIRVisitorMut<'a> {
                     self.visit_block_mut(block, hlir);
                 }
             }
-            ExprKind::BinaryOp(_, hir_id, hir_id1) => {
+            ExprKind::BinaryOp(_, hir_id, hir_id1)
+            | ExprKind::Assign(hir_id, hir_id1)
+            | ExprKind::Index(hir_id, hir_id1) => {
                 self.visit_expr_by_id_mut(*hir_id, hlir);
                 self.visit_expr_by_id_mut(*hir_id1, hlir);
             }
-            ExprKind::UnaryOp(_, hir_id) => self.visit_expr_by_id_mut(*hir_id, hlir),
+            ExprKind::UnaryOp(_, hir_id)
+            | ExprKind::FieldAccess(hir_id, _)
+            | ExprKind::Return(Some(hir_id))
+            | ExprKind::Cast(hir_id, _) => {
+                self.visit_expr_by_id_mut(*hir_id, hlir);
+            }
             ExprKind::If(hir_id, hir_id1, hir_id2) => {
                 self.visit_expr_by_id_mut(*hir_id, hlir);
                 if let Some(HIRNode::Block(block)) = hlir.get_hir_node_mut(*hir_id1) {
@@ -508,37 +496,16 @@ pub trait HLIRVisitorMut<'a> {
                     self.visit_block_mut(block, hlir);
                 }
             }
-            ExprKind::Assign(hir_id, hir_id1) => {
-                self.visit_expr_by_id_mut(*hir_id, hlir);
-                self.visit_expr_by_id_mut(*hir_id1, hlir);
-            }
-            ExprKind::Call(hir_id, hir_ids) => {
+            ExprKind::Call(hir_id, hir_ids) | ExprKind::MethodCall(hir_id, _, hir_ids) => {
                 self.visit_expr_by_id_mut(*hir_id, hlir);
                 for param_id in hir_ids {
                     self.visit_expr_by_id_mut(*param_id, hlir);
                 }
             }
-            ExprKind::MethodCall(hir_id, _, hir_ids) => {
-                self.visit_expr_by_id_mut(*hir_id, hlir);
-                for param_id in hir_ids {
-                    self.visit_expr_by_id_mut(*param_id, hlir);
-                }
-            }
-            ExprKind::Index(hir_id, hir_id1) => {
-                self.visit_expr_by_id_mut(*hir_id, hlir);
-                self.visit_expr_by_id_mut(*hir_id1, hlir);
-            }
-            ExprKind::FieldAccess(hir_id, _) => self.visit_expr_by_id_mut(*hir_id, hlir),
             ExprKind::StructInit(struct_initialisation) => {
                 for field in &struct_initialisation.fields {
                     self.visit_expr_by_id_mut(field.expr, hlir);
                 }
-            }
-            ExprKind::Return(Some(hir_id)) => {
-                self.visit_expr_by_id_mut(*hir_id, hlir);
-            }
-            ExprKind::Cast(hir_id, _) => {
-                self.visit_expr_by_id_mut(*hir_id, hlir);
             }
             ExprKind::Range(min_id, max_id, _) => {
                 self.visit_expr_by_id_mut(*min_id, hlir);
@@ -571,10 +538,10 @@ pub trait HLIRVisitorMut<'a> {
         path: &mut RefPath,
         hlir: &mut HLIRDisjointMut<'a>,
     ) {
-        self.super_path_mut(hir_id, path, hlir)
+        self.super_path_mut(hir_id, path, hlir);
     }
     fn visit_expr_mut(&mut self, expr: &mut Expr, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_expr_mut(expr, hlir)
+        self.super_expr_mut(expr, hlir);
     }
     fn visit_constant_mut(&mut self, constant: &mut Constant, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_constant_mut(constant, hlir);
@@ -593,48 +560,48 @@ pub trait HLIRVisitorMut<'a> {
         parent_block: &Block,
         hlir: &mut HLIRDisjointMut<'a>,
     ) {
-        self.super_statement_mut(statement, parent_block, hlir)
+        self.super_statement_mut(statement, parent_block, hlir);
     }
     fn visit_block_mut(&mut self, block: &mut Block, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_block_mut(block, hlir)
+        self.super_block_mut(block, hlir);
     }
     fn visit_struct_mut(&mut self, structure: &mut Struct, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_struct_mut(structure, hlir)
+        self.super_struct_mut(structure, hlir);
     }
     fn visit_enum_mut(&mut self, enumeration: &mut Enum, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_enum_mut(enumeration, hlir)
+        self.super_enum_mut(enumeration, hlir);
     }
     fn visit_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_function_mut(function, hlir)
+        self.super_function_mut(function, hlir);
     }
     fn visit_function_param_mut(
         &mut self,
         parameter: &mut Parameter,
         hlir: &mut HLIRDisjointMut<'a>,
     ) {
-        self.super_function_param_mut(parameter, hlir)
+        self.super_function_param_mut(parameter, hlir);
     }
     fn visit_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_impl_mut(impl_info, hlir)
+        self.super_impl_mut(impl_info, hlir);
     }
     fn visit_use_mut(&mut self, use_info: &mut UsePath, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_use_mut(use_info, hlir)
+        self.super_use_mut(use_info, hlir);
     }
     fn visit_item_mut(&mut self, item: &mut Item, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_item_mut(item, hlir)
+        self.super_item_mut(item, hlir);
     }
     fn visit_impl_item_mut(&mut self, item: &mut Item, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_impl_item_mut(item, hlir)
+        self.super_impl_item_mut(item, hlir);
     }
     fn visit_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_module_mut(module, hlir)
+        self.super_module_mut(module, hlir);
     }
     fn visit_root_mut(&mut self, hlir: &mut HLIRDisjointMut<'a>) {
-        self.super_root_mut(hlir)
+        self.super_root_mut(hlir);
     }
 
     fn walk_mut(&mut self, hlir: &'a mut HLIR) {
         let mut disjoint_hlir = HLIRDisjointMut::new(hlir);
-        self.visit_root_mut(&mut disjoint_hlir)
+        self.visit_root_mut(&mut disjoint_hlir);
     }
 }

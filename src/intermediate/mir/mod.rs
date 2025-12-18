@@ -112,7 +112,7 @@ pub enum Operand {
 impl Debug for Operand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Copy(arg0) => write!(f, "Copy({:?})", arg0),
+            Self::Copy(arg0) => write!(f, "Copy({arg0:?})"),
             Self::Unit => write!(f, "Unit"),
             Self::Literal(arg0) => arg0.fmt(f),
             Self::Const => write!(f, "Const"),
@@ -164,21 +164,21 @@ impl Debug for RValue {
             Self::BinaryOp(arg0, arg1) => {
                 write!(f, "BinaryOp({:?}, ({:?}, {:?}))", arg0, arg1.0, arg1.1)
             }
-            Self::UnaryOp(arg0, arg1) => write!(f, "UnaryOp({:?}, {:?})", arg0, arg1),
-            Self::Increment(arg0) => write!(f, "Increment({:?})", arg0),
+            Self::UnaryOp(arg0, arg1) => write!(f, "UnaryOp({arg0:?}, {arg1:?})"),
+            Self::Increment(arg0) => write!(f, "Increment({arg0:?})"),
             Self::ADT(kind, operands) => {
-                write!(f, "ADT({:?}, ", kind)?;
+                write!(f, "ADT({kind:?}, ")?;
                 for (i, operand) in operands.iter().enumerate() {
                     if i == 0 {
-                        write!(f, "{:?}", operand)?;
+                        write!(f, "{operand:?}")?;
                     } else {
-                        write!(f, ", {:?}", operand)?;
+                        write!(f, ", {operand:?}")?;
                     }
                 }
                 write!(f, ")")
             }
             Self::Cast(operand, target_type) => {
-                write!(f, "Cast({:?} as {:?})", operand, target_type)
+                write!(f, "Cast({operand:?} as {target_type:?})")
             }
         }
     }
@@ -255,7 +255,7 @@ impl AssignTarget {
     pub const fn local(&self) -> Option<LocalId> {
         match self {
             Self::Local(local_id) => Some(*local_id),
-            _ => None,
+            Self::Field(..) => None,
         }
     }
 
@@ -274,7 +274,7 @@ impl AssignTarget {
     pub const fn field_access(&self) -> Option<(LocalId, usize)> {
         match self {
             Self::Field(local_id, field_index) => Some((*local_id, *field_index)),
-            _ => None,
+            Self::Local(_) => None,
         }
     }
 
@@ -302,7 +302,7 @@ pub enum StatementKind {
 impl Debug for StatementKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Assign(arg0, arg1) => write!(f, "Assign{{ {:?} = {:?} }}", arg0, arg1),
+            Self::Assign(arg0, arg1) => write!(f, "Assign{{ {arg0:?} = {arg1:?} }}"),
         }
     }
 }
@@ -329,7 +329,7 @@ pub enum BlockExitKind {
 impl Debug for BlockExitKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Goto(arg0) => write!(f, "Goto({:?})", arg0),
+            Self::Goto(arg0) => write!(f, "Goto({arg0:?})"),
             Self::Branch(arg0, arg1, arg2) => f
                 .debug_tuple("Branch")
                 .field(arg0)
@@ -339,8 +339,7 @@ impl Debug for BlockExitKind {
             Self::Return => write!(f, "Return"),
             Self::Call(assign_to, def_id, args, next_block) => write!(
                 f,
-                "Call({:?}, {:?} -> {:?}) = {:?}",
-                def_id, args, next_block, assign_to
+                "Call({def_id:?}, {args:?} -> {next_block:?}) = {assign_to:?}"
             ),
         }
     }

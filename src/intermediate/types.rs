@@ -3,7 +3,7 @@ use crate::{
     intermediate::resolver::TypeID,
 };
 
-use log::*;
+use log::{error, warn};
 
 /// Represents the integer types in Kitlang.
 /// This is not a value in itself, but rather a type representation.
@@ -11,15 +11,15 @@ use log::*;
 pub enum KitInt {
     /// Represents the size of a pointer on the target architecture.
     ISize,
-    /// Byte (8 bits).
+    /// `Byte` (8 bits).
     I8,
-    /// Word (16 bits).
+    /// `Word` (16 bits).
     I16,
-    /// DWord (32 bits).
+    /// `DWord` (32 bits).
     I32,
-    /// QWord (64 bits).
+    /// `QWord` (64 bits).
     I64,
-    /// OWord (128 bits).
+    /// `OWord` (128 bits).
     I128,
 }
 
@@ -44,11 +44,10 @@ impl KitInt {
     pub const fn bit_width(&self) -> u64 {
         match *self {
             // For now we will just use the size of a I64 on all targets.
-            Self::ISize => 64,
             Self::I8 => 8,
             Self::I16 => 16,
             Self::I32 => 32,
-            Self::I64 => 64,
+            Self::ISize | Self::I64 => 64,
             Self::I128 => 128,
         }
     }
@@ -203,7 +202,7 @@ impl KitFloat {
 /// It can represent primitive types, as well as user-defined types.
 ///
 /// Primitive types are represented directly, while user-defined types are represented
-/// by their TypeID.
+/// by their `TypeID`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitTy {
     /// Unit type
@@ -220,13 +219,13 @@ pub enum KitTy {
     Char,
     /// String type
     String,
-    /// User-defined / abstract types, denoted by their TypeID.
+    /// User-defined / abstract types, denoted by their `TypeID`.
     Abstract(TypeID),
     // TODO: Array, Tuple..
 }
 
 impl KitTy {
-    /// Tries to convert an AST type to a KitTy.
+    /// Tries to convert an AST type to a `KitTy`.
     /// Returns None if the type is not a primitive type.
     #[inline]
     #[must_use]
@@ -238,7 +237,7 @@ impl KitTy {
             }
             ASTTy::Infer | ASTTy::This(_) => None,
             a => {
-                error!("KitTy conversion not implemented for: {:?}", a);
+                error!("KitTy conversion not implemented for: {a:?}");
                 None
             }
         }
@@ -351,35 +350,23 @@ impl KitTy {
     #[must_use]
     pub fn unary_op_result_type(&self, op_kind: UnaryOpKind) -> Option<Self> {
         match self {
-            Self::Unit => None,
             Self::Int(kit_int) => match op_kind {
                 UnaryOpKind::Dereference => None,
-                UnaryOpKind::Not => Some(Self::Int(*kit_int)),
-                UnaryOpKind::Negate => Some(Self::Int(*kit_int)),
+                UnaryOpKind::Not | UnaryOpKind::Negate => Some(Self::Int(*kit_int)),
             },
             Self::UInt(kit_uint) => match op_kind {
-                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(Self::UInt(*kit_uint)),
-                UnaryOpKind::Negate => None,
+                UnaryOpKind::Dereference | UnaryOpKind::Negate => None,
             },
             Self::Float(kit_float) => match op_kind {
-                UnaryOpKind::Dereference => None,
-                UnaryOpKind::Not => None,
+                UnaryOpKind::Dereference | UnaryOpKind::Not => None,
                 UnaryOpKind::Negate => Some(Self::Float(*kit_float)),
             },
             Self::Boolean => match op_kind {
-                UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not => Some(Self::Boolean),
-                UnaryOpKind::Negate => None,
+                UnaryOpKind::Dereference | UnaryOpKind::Negate => None,
             },
-            Self::Char => match op_kind {
-                UnaryOpKind::Dereference => None,
-                _ => None,
-            },
-            Self::String => match op_kind {
-                UnaryOpKind::Dereference => None,
-                _ => None,
-            },
+            Self::Unit | Self::Char | Self::String => None,
             Self::Abstract(_) => {
                 warn!("Tried to do abstract result type for unary.");
                 None
@@ -390,7 +377,7 @@ impl KitTy {
     /// Returns the result type of applying a binary operation between this type and another type.
     /// `Self` is the left-hand side type, and `other` is the right-hand side type.
     /// # Returns
-    /// An [`Option`] containing the resulting KitTy if the operation is valid, or `None` if it is not.
+    /// An [`Option`] containing the resulting `KitTy` if the operation is valid, or `None` if it is not.
     #[must_use]
     pub fn binary_op_result_type(&self, other: &Self, op_kind: BinaryOpKind) -> Option<Self> {
         const fn unit_result_type(other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
@@ -408,7 +395,7 @@ impl KitTy {
             }
         }
 
-        fn int_result_type(lhs: &KitInt, other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
+        fn int_result_type(lhs: KitInt, other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
             match other {
                 KitTy::Int(rhs_int) => match op_kind {
                     BinaryOpKind::Add
@@ -419,13 +406,13 @@ impl KitTy {
                     BinaryOpKind::BitwiseXOR
                     | BinaryOpKind::BitwiseAND
                     | BinaryOpKind::BitwiseOR => {
-                        if lhs == rhs_int {
-                            Some(KitTy::Int(*lhs))
+                        if lhs == *rhs_int {
+                            Some(KitTy::Int(lhs))
                         } else {
                             None
                         }
                     }
-                    BinaryOpKind::ShiftLeft | BinaryOpKind::ShiftRight => Some(KitTy::Int(*lhs)),
+                    BinaryOpKind::ShiftLeft | BinaryOpKind::ShiftRight => Some(KitTy::Int(lhs)),
                     BinaryOpKind::And | BinaryOpKind::Or => None,
                     BinaryOpKind::NotEqual
                     | BinaryOpKind::Equal
@@ -438,7 +425,7 @@ impl KitTy {
             }
         }
 
-        fn uint_result_type(lhs: &KitUInt, other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
+        fn uint_result_type(lhs: KitUInt, other: &KitTy, op_kind: BinaryOpKind) -> Option<KitTy> {
             match other {
                 KitTy::UInt(rhs_uint) => match op_kind {
                     BinaryOpKind::Add
@@ -449,13 +436,13 @@ impl KitTy {
                     BinaryOpKind::BitwiseXOR
                     | BinaryOpKind::BitwiseAND
                     | BinaryOpKind::BitwiseOR => {
-                        if lhs == rhs_uint {
-                            Some(KitTy::UInt(*lhs))
+                        if lhs == *rhs_uint {
+                            Some(KitTy::UInt(lhs))
                         } else {
                             None
                         }
                     }
-                    BinaryOpKind::ShiftLeft | BinaryOpKind::ShiftRight => Some(KitTy::UInt(*lhs)),
+                    BinaryOpKind::ShiftLeft | BinaryOpKind::ShiftRight => Some(KitTy::UInt(lhs)),
                     BinaryOpKind::And | BinaryOpKind::Or => None,
                     BinaryOpKind::NotEqual
                     | BinaryOpKind::Equal
@@ -469,7 +456,7 @@ impl KitTy {
         }
 
         const fn float_result_type(
-            lhs: &KitFloat,
+            lhs: KitFloat,
             other: &KitTy,
             op_kind: BinaryOpKind,
         ) -> Option<KitTy> {
@@ -480,17 +467,19 @@ impl KitTy {
                     | BinaryOpKind::Mul
                     | BinaryOpKind::Div
                     | BinaryOpKind::Mod => Some(KitTy::Float(lhs.largest_width(rhs_float))),
-                    BinaryOpKind::BitwiseXOR
-                    | BinaryOpKind::BitwiseAND
-                    | BinaryOpKind::BitwiseOR => None,
-                    BinaryOpKind::ShiftLeft | BinaryOpKind::ShiftRight => None,
-                    BinaryOpKind::Or | BinaryOpKind::And => None,
                     BinaryOpKind::NotEqual
                     | BinaryOpKind::Equal
                     | BinaryOpKind::LessThan
                     | BinaryOpKind::LessThanOrEqual
                     | BinaryOpKind::GreaterThan
                     | BinaryOpKind::GreaterThanOrEqual => Some(KitTy::Boolean),
+                    BinaryOpKind::BitwiseXOR
+                    | BinaryOpKind::BitwiseAND
+                    | BinaryOpKind::BitwiseOR
+                    | BinaryOpKind::ShiftLeft
+                    | BinaryOpKind::ShiftRight
+                    | BinaryOpKind::Or
+                    | BinaryOpKind::And => None,
                 },
                 _ => None,
             }
@@ -537,9 +526,9 @@ impl KitTy {
 
         match self {
             Self::Unit => unit_result_type(other, op_kind),
-            Self::Int(kit_int) => int_result_type(kit_int, other, op_kind),
-            Self::UInt(kit_uint) => uint_result_type(kit_uint, other, op_kind),
-            Self::Float(kit_float) => float_result_type(kit_float, other, op_kind),
+            Self::Int(kit_int) => int_result_type(*kit_int, other, op_kind),
+            Self::UInt(kit_uint) => uint_result_type(*kit_uint, other, op_kind),
+            Self::Float(kit_float) => float_result_type(*kit_float, other, op_kind),
             Self::Boolean => boolean_result_type(other, op_kind),
             Self::Char => char_result_type(other, op_kind),
             Self::String => string_result_type(other, op_kind),
@@ -552,7 +541,7 @@ impl KitTy {
 
     /// Returns the resulting type after casting to the target type, if the cast is valid.
     /// # Returns
-    /// An [`Option`] containing the resulting KitTy if the cast is valid, or `None` if it is not.
+    /// An [`Option`] containing the resulting `KitTy` if the cast is valid, or `None` if it is not.
     #[must_use]
     pub fn cast_result_type(&self, target: &Self) -> Option<Self> {
         if self == target {
@@ -560,18 +549,12 @@ impl KitTy {
         }
         match (self, target) {
             // Allow casting between same kinds..
-            (Self::Int(_), Self::Int(_))
-            | (Self::UInt(_), Self::UInt(_))
-            | (Self::Float(_), Self::Float(_)) => Some(*target),
             // Allow casting between int/uint/float..
-            (Self::Int(_), Self::UInt(_))
-            | (Self::Int(_), Self::Float(_))
-            | (Self::UInt(_), Self::Int(_))
-            | (Self::UInt(_), Self::Float(_))
-            | (Self::Float(_), Self::Int(_))
-            | (Self::Float(_), Self::UInt(_)) => Some(*target),
-            (Self::Boolean, Self::UInt(_)) => Some(*target),
-            (Self::Boolean, Self::Int(_)) => Some(*target),
+            (
+                Self::Int(_) | Self::UInt(_) | Self::Float(_) | Self::Boolean,
+                Self::Int(_) | Self::UInt(_),
+            )
+            | (Self::Float(_) | Self::Int(_) | Self::UInt(_), Self::Float(_)) => Some(*target),
             // Disallow other casts for now..
             _ => None,
         }

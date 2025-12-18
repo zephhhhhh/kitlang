@@ -127,7 +127,7 @@ impl ScopeResolver {
 
     #[inline]
     pub fn push_child_scope(&mut self, scope_ident: Option<String>) {
-        self.push_scope(self.current_scope().child_scope(scope_ident))
+        self.push_scope(self.current_scope().child_scope(scope_ident));
     }
 
     #[inline]

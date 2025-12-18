@@ -1,11 +1,22 @@
 #![feature(iter_advance_by)]
 #![feature(debug_closure_helpers)]
-
 // Linting rules..
-
-#![warn(clippy::must_use_candidate)]
-#![warn(clippy::return_self_not_must_use)]
+#![warn(clippy::pedantic)]
+// Lint allows..
+// Docs.. Temporary..
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::missing_fields_in_debug)]
+#![allow(clippy::too_many_lines)]
 #![allow(clippy::too_long_first_doc_paragraph)]
+// Math casting..
+#![allow(
+    clippy::cast_lossless,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap
+)]
 
 //! Kitlang is a language built for embedding/scripting purposes
 //!

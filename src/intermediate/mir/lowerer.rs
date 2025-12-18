@@ -22,7 +22,7 @@ use crate::intermediate::types::KitTy;
 
 use super::AssignTarget;
 
-use log::*;
+use log::{debug, warn};
 
 #[derive(Debug, Default)]
 struct HIRToMIRBlockBuilder {
@@ -185,7 +185,7 @@ impl HIRToMIRFuncLowerer<'_> {
     fn create_block_builder(&mut self) {
         self.block_stack.push(HIRToMIRBlockBuilder::default());
         if Self::DEBUG_BLOCK_CREATION {
-            debug!("Created block.")
+            debug!("Created block.");
         }
     }
 
@@ -216,12 +216,12 @@ impl HIRToMIRFuncLowerer<'_> {
             if block_builder.directive.is_none() {
                 block_builder.set_exit_kind(BlockExitKind::Goto(block_id.next()));
                 if Self::DEBUG_BLOCK_CREATION {
-                    debug!("Set default exit kind.")
+                    debug!("Set default exit kind.");
                 }
             }
             if let Some(basic_block) = block_builder.build() {
                 if Self::DEBUG_BLOCK_CREATION {
-                    debug!("Successfully built block: {:?}", block_id);
+                    debug!("Successfully built block: {block_id:?}");
                 }
                 return Some(self.body.push_block(basic_block));
             }
@@ -286,8 +286,7 @@ impl HIRToMIRFuncLowerer<'_> {
         self.body
             .locals
             .get(local_id.0 as usize)
-            .map(|l| l.mutable)
-            .unwrap_or(Mutability::Immutable)
+            .map_or(Mutability::Immutable, |l| l.mutable)
     }
 
     fn new_temp_local_with_mut(&mut self, mutable: Mutability) -> LocalId {
@@ -323,14 +322,14 @@ impl HIRToMIRFuncLowerer<'_> {
     fn handle_resolved_id(&mut self, resolved: ResolvedID, hlir: &HLIR) {
         match resolved {
             ResolvedID::Hir(hir_id) => {
-                if let Some(resolved_local) = self.lut.get(&hir_id).cloned() {
+                if let Some(resolved_local) = self.lut.get(&hir_id).copied() {
                     if self.state.parse_assign_target {
-                        self.state.assign_target = Some(resolved_local.into())
+                        self.state.assign_target = Some(resolved_local.into());
                     } else {
                         // let local = self.new_temp_local();
                         // self.builder_mut_expect()
                         //     .push_assign(local, RValue::Ref(resolved_local));
-                        debug!("Resolved local: {:?} -> {:?}", resolved_local, hir_id);
+                        debug!("Resolved local: {resolved_local:?} -> {hir_id:?}");
                     }
                 } else {
                     push_lower_err!(self, hlir, hir_id, "Failed to resolve local variable.");
@@ -822,7 +821,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
 
                 let Some(method_def) = self
                     .program_meta_data
-                    .find_ty_method_owner_def(obj_ty.clone(), ident.str())
+                    .find_ty_method_owner_def(obj_ty, ident.str())
                 else {
                     push_lower_err!(
                         self,
@@ -1146,7 +1145,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         RValue::Unchanged(Operand::Copy(last_local)),
                     ));
                 } else {
-                    self.state.last_block_target = Some(self.last_target())
+                    self.state.last_block_target = Some(self.last_target());
                 }
             }
             StatementKind::Semi(hir_id) => {

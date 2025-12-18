@@ -24,8 +24,7 @@ impl OwningNodeKind {
     #[must_use]
     pub fn ident(&self) -> Option<String> {
         match self {
-            Self::Item(item) => item.ident(),
-            Self::ImplItem(item) => item.ident(),
+            Self::Item(item) | Self::ImplItem(item) => item.ident(),
         }
     }
 
@@ -33,16 +32,14 @@ impl OwningNodeKind {
     #[must_use]
     pub const fn owner_id(&self) -> OwnerDefId {
         match self {
-            Self::Item(item) => item.owner_id,
-            Self::ImplItem(item) => item.owner_id,
+            Self::Item(item) | Self::ImplItem(item) => item.owner_id,
         }
     }
 
     #[inline]
     pub const fn set_owner_id(&mut self, owner_id: OwnerDefId) {
         match self {
-            Self::Item(item) => item.owner_id = owner_id,
-            Self::ImplItem(item) => item.owner_id = owner_id,
+            Self::Item(item) | Self::ImplItem(item) => item.owner_id = owner_id,
         }
     }
 
@@ -110,7 +107,7 @@ impl Type {
     pub const fn resolved(&self) -> Option<&KitTy> {
         match self {
             Self::Resolved(kit_ty) => Some(kit_ty),
-            _ => None,
+            Self::Unresolved(_) => None,
         }
     }
 }
@@ -126,12 +123,12 @@ impl Type {
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unresolved(ty) => write!(f, "Unresolved({:?})", ty),
+            Self::Unresolved(ty) => write!(f, "Unresolved({ty:?})"),
             Self::Resolved(kit_ty) => {
                 if let Some(ty_str) = kit_ty.to_type_str() {
-                    write!(f, "{}", ty_str)
+                    write!(f, "{ty_str}")
                 } else {
-                    write!(f, "{:?}", kit_ty)
+                    write!(f, "{kit_ty:?}")
                 }
             }
         }
@@ -669,29 +666,29 @@ pub struct StructInitialisation {
 pub enum ExprKind {
     /// Block(`HIRNode::Block`).
     Block(HirId),
-    /// Literal(Literal)
+    /// Literal(`Literal`)
     Literal(Literal),
-    /// Binary Operation(Kind, lhs: `HIRNode::Expr`, rhs: `HIRNode::Expr`)
+    /// Binary Operation(`kind`, lhs: `HIRNode::Expr`, rhs: `HIRNode::Expr`)
     BinaryOp(BinaryOpKind, HirId, HirId),
-    /// Unary Operation(Kind, `HIRNode::Expr`)
+    /// Unary Operation(`kind`, `HIRNode::Expr`)
     UnaryOp(UnaryOpKind, HirId),
-    /// If(condition: `HIRNode::Expr`, true_block: `HIRNode::Block`, else: `HIRNode::Expr`)
+    /// If(`condition`: `HIRNode::Expr`, `true_block`: `HIRNode::Block`, `else`: `HIRNode::Expr`)
     If(HirId, HirId, Option<HirId>),
     /// Infinite loop, with block: `HIRNode::Block`
     Loop(HirId),
-    /// For loop, with (enclosing_block, binding, iterable: `HIRNode::Expr`, loop_block: `HIRNode::Block`)
+    /// For loop, with (`enclosing_block`, `binding`, `iterable`: `HIRNode::Expr`, `loop_block`: `HIRNode::Block`)
     For(HirId, HirId, HirId, HirId),
-    /// While(condition: `HIRNode::Expr`, block: `HIRNode::Block`)
+    /// While(`condition`: `HIRNode::Expr`, `block`: `HIRNode::Block`)
     While(HirId, HirId),
-    /// Assign(target: `HIRNode::Expr`, value: `HIRNode::Expr`)
+    /// Assign(`target`: `HIRNode::Expr`, `value`: `HIRNode::Expr`)
     Assign(HirId, HirId),
-    /// Call(target: `HIRNode::Expr`, args: `Vec<HIRNode::Expr>`)
+    /// Call(`target`: `HIRNode::Expr`, `args`: `Vec<HIRNode::Expr>`)
     Call(HirId, Vec<HirId>),
-    /// Method Call(target: `HIRNode::Expr`, method_name: Ident, args: `Vec<HIRNode::Expr>`)
+    /// Method Call(`target`: `HIRNode::Expr`, `method_name`: Ident, `args`: `Vec<HIRNode::Expr>`)
     MethodCall(HirId, Ident, Vec<HirId>),
-    /// Index(target: `HIRNode::Expr`, index: `HIRNode::Expr`)
+    /// Index(`target`: `HIRNode::Expr`, `index`: `HIRNode::Expr`)
     Index(HirId, HirId),
-    /// Field Access(target: `HIRNode::Expr`, field_name: Ident)
+    /// Field Access(`target`: `HIRNode::Expr`, `field_name`: Ident)
     FieldAccess(HirId, Ident),
     /// Struct Initialisation
     StructInit(StructInitialisation),
@@ -701,11 +698,11 @@ pub enum ExprKind {
     Continue,
     /// Break from loop
     Break,
-    /// Return from function(Option<HIRNode::Expr>)
+    /// Return from function(`Option<HIRNode::Expr>`)
     Return(Option<HirId>),
     /// Cast an expression from one type to another.
     Cast(HirId, Type),
-    /// Range expression, start, end, (inclusive: bool)
+    /// Range expression, start, end, (`inclusive`: `bool`)
     Range(HirId, HirId, bool),
 }
 
@@ -809,8 +806,7 @@ impl RefPath {
     #[must_use]
     pub const fn spanned_ident_path(&self) -> &SpannedIdentPath {
         match self {
-            Self::Unresolved(ident_path) => ident_path,
-            Self::Resolved(ident_path, _) => ident_path,
+            Self::Unresolved(ident_path) | Self::Resolved(ident_path, _) => ident_path,
         }
     }
 
@@ -818,8 +814,7 @@ impl RefPath {
     #[must_use]
     pub const fn ident_path(&self) -> &IdentPath {
         match self {
-            Self::Unresolved(ident_path) => &ident_path.path,
-            Self::Resolved(ident_path, _) => &ident_path.path,
+            Self::Unresolved(ident_path) | Self::Resolved(ident_path, _) => &ident_path.path,
         }
     }
 
@@ -827,8 +822,7 @@ impl RefPath {
     #[must_use]
     pub const fn span(&self) -> SourceSpan {
         match self {
-            Self::Unresolved(ident_path) => ident_path.span,
-            Self::Resolved(ident_path, _) => ident_path.span,
+            Self::Unresolved(ident_path) | Self::Resolved(ident_path, _) => ident_path.span,
         }
     }
 

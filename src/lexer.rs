@@ -346,7 +346,7 @@ impl<'a> Lexer<'a> {
                     _ => self.block_comment(),
                 }
             }
-            c if unicode_xid::UnicodeXID::is_xid_start(c) => self.identifier(),
+            c if unicode_xid::UnicodeXID::is_xid_start(c) => Some(self.identifier()),
             c if c.is_numeric() => self.numeric_literal(),
             c if Punctuation::is_punctuation(c) => self.punctuation(),
             '"' => self.string_literal(),
@@ -480,7 +480,7 @@ impl Lexer<'_> {
     /// Parses an identifier from the cursor.
     #[inline]
     #[must_use]
-    fn identifier(&mut self) -> Option<Token> {
+    fn identifier(&mut self) -> Token {
         let pos = self.cursor.position();
         let end_pos = pos
             + self
@@ -493,7 +493,7 @@ impl Lexer<'_> {
             TokenKind::Keyword,
         );
 
-        Some(Token::new(kind, pos, end_pos))
+        Token::new(kind, pos, end_pos)
     }
 
     /// Parses a numeric literal from the cursor.

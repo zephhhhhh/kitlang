@@ -88,13 +88,13 @@ impl Display for ResolverError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.error_kind {
             ResolverErrorKind::ResolverErrors(ref errors) => {
-                write!(f, "Resolver Errors: {:#?}", errors)
+                write!(f, "Resolver Errors: {errors:#?}")
             }
             ResolverErrorKind::Diagnostic(ref msg) => {
-                write!(f, "Diagnostic: {}", msg)
+                write!(f, "Diagnostic: {msg}")
             }
             ResolverErrorKind::UnresolvedReferences(ref refs) => {
-                write!(f, "Unresolved References: {:#?}", refs)
+                write!(f, "Unresolved References: {refs:#?}")
             }
         }
     }
@@ -144,11 +144,10 @@ impl ResolutionFailure {
     pub fn error_message_for(&self, target_ident: &str) -> String {
         match self {
             Self::NotFound => {
-                format!("The referenced item '{}' was not found.", target_ident)
+                format!("The referenced item '{target_ident}' was not found.")
             }
             Self::Inaccessible => format!(
-                "The referenced item '{}' is not accessible from the current scope.",
-                target_ident
+                "The referenced item '{target_ident}' is not accessible from the current scope."
             ),
         }
     }
