@@ -524,17 +524,11 @@ impl HLIRLowerer<'_> {
                 }),
                 span: binding.span,
             };
-            let Some(bid) = self
-                .hlir
+            self.hlir
                 .insert_hir_node(owner_node, HirNode::Statement(hir_statement))
-            else {
-                return Err(lowering_err!(
-                    on_span,
-                    binding.span,
-                    "Failed to create for-loop binding."
-                ));
-            };
-            bid
+                .ok_or_else(|| {
+                    lowering_err!(on_span, binding.span, "Failed to create for-loop binding.")
+                })?
         };
 
         let loop_block_real_id = self.lower_block(block, false, owner_node)?;
