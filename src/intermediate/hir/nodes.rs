@@ -20,6 +20,8 @@ pub enum OwningNodeKind {
 }
 
 impl OwningNodeKind {
+    #[inline]
+    #[must_use]
     pub fn ident(&self) -> Option<String> {
         match self {
             Self::Item(item) => item.ident(),
@@ -27,6 +29,8 @@ impl OwningNodeKind {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn owner_id(&self) -> OwnerDefId {
         match self {
             Self::Item(item) => item.owner_id,
@@ -34,6 +38,7 @@ impl OwningNodeKind {
         }
     }
 
+    #[inline]
     pub const fn set_owner_id(&mut self, owner_id: OwnerDefId) {
         match self {
             Self::Item(item) => item.owner_id = owner_id,
@@ -41,18 +46,24 @@ impl OwningNodeKind {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn item(&self) -> Option<&Item> {
         match self {
             Self::Item(item) | Self::ImplItem(item) => Some(item),
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn item_mut(&mut self) -> Option<&mut Item> {
         match self {
             Self::Item(item) | Self::ImplItem(item) => Some(item),
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn span(&self) -> Option<SourceSpan> {
         match self {
             Self::Item(item) | Self::ImplItem(item) => item.span(),
@@ -67,10 +78,14 @@ pub enum Type {
 }
 
 impl Type {
+    #[inline]
+    #[must_use]
     pub const fn unit() -> Self {
         Self::Resolved(KitTy::Unit)
     }
 
+    #[inline]
+    #[must_use]
     pub fn is_unit(&self) -> bool {
         let Some(resolved) = self.resolved() else {
             return false;
@@ -78,14 +93,20 @@ impl Type {
         *resolved == KitTy::Unit
     }
 
+    #[inline]
+    #[must_use]
     pub const fn is_resolved(&self) -> bool {
         matches!(self, Self::Resolved(_))
     }
 
+    #[inline]
+    #[must_use]
     pub const fn is_infer(&self) -> bool {
         matches!(self, Self::Unresolved(ASTTy::Infer))
     }
 
+    #[inline]
+    #[must_use]
     pub const fn resolved(&self) -> Option<&KitTy> {
         match self {
             Self::Resolved(kit_ty) => Some(kit_ty),
@@ -95,6 +116,8 @@ impl Type {
 }
 
 impl Type {
+    #[inline]
+    #[must_use]
     pub fn from_ast_ty(ty: &ASTTy) -> Self {
         KitTy::try_from_ast_ty(ty).map_or_else(|| Self::Unresolved(ty.clone()), Self::Resolved)
     }
@@ -150,6 +173,8 @@ pub enum HIRNode {
 }
 
 impl HIRNode {
+    #[inline]
+    #[must_use]
     pub const fn span(&self) -> SourceSpan {
         match self {
             Self::Param(parameter) => parameter.span,
@@ -211,6 +236,8 @@ pub struct OwningNode {
 }
 
 impl OwningNode {
+    #[inline]
+    #[must_use]
     pub const fn new(kind: OwningNodeKind) -> Self {
         Self {
             kind,
@@ -218,6 +245,8 @@ impl OwningNode {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn from_item(item: Item, impl_item: bool) -> Self {
         Self::new(if impl_item {
             OwningNodeKind::ImplItem(item)
@@ -226,40 +255,57 @@ impl OwningNode {
         })
     }
 
+    #[inline]
     pub const fn set_owner_id(&mut self, owner_id: OwnerDefId) {
         self.kind.set_owner_id(owner_id);
     }
 
+    #[inline]
+    #[must_use]
     pub const fn owner_id(&self) -> OwnerDefId {
         self.kind.owner_id()
     }
 
+    #[inline]
+    #[must_use]
     pub fn ident(&self) -> Option<String> {
         self.kind.ident()
     }
 
+    #[inline]
+    #[must_use]
     pub const fn item(&self) -> Option<&Item> {
         self.kind.item()
     }
 
+    #[inline]
+    #[must_use]
     pub const fn item_mut(&mut self) -> Option<&mut Item> {
         self.kind.item_mut()
     }
 
+    #[inline]
+    #[must_use]
     pub const fn span(&self) -> Option<SourceSpan> {
         self.kind.span()
     }
 }
 
 impl OwningNode {
+    #[inline]
+    #[must_use]
     pub const fn local_count(&self) -> u32 {
         self.nodes.len() as u32
     }
 
+    #[inline]
+    #[must_use]
     pub const fn next_local_id(&self) -> LocalDefId {
         LocalDefId(self.local_count())
     }
 
+    #[inline]
+    #[must_use]
     pub const fn next_hir_id(&self) -> HirId {
         HirId {
             owner: self.owner_id(),
@@ -267,16 +313,21 @@ impl OwningNode {
         }
     }
 
+    #[inline]
     pub fn insert_hir_node(&mut self, hir_node: HIRNode) -> LocalDefId {
         let new_id = self.next_local_id();
         self.nodes.push(hir_node);
         new_id
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_hir_node(&self, id: LocalDefId) -> Option<&HIRNode> {
         self.nodes.get(id.0 as usize)
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_hir_node_mut(&mut self, id: LocalDefId) -> Option<&mut HIRNode> {
         self.nodes.get_mut(id.0 as usize)
     }
@@ -290,7 +341,7 @@ macro_rules! impl_item_kind_shorthand {
     ) => {
         paste! {
             impl OwningNode {
-                #[inline] pub const fn [<hir_ $item_name _mut>](&mut self) -> Option<&mut $return_ty> {
+                #[inline] #[must_use] pub const fn [<hir_ $item_name _mut>](&mut self) -> Option<&mut $return_ty> {
                     let item = match &mut self.kind {
                         OwningNodeKind::Item(item) => item,
                         OwningNodeKind::ImplItem(item) => item,
@@ -301,7 +352,7 @@ macro_rules! impl_item_kind_shorthand {
                     }
                 }
 
-                #[inline] pub const fn [<hir_ $item_name _ref>](&self) -> Option<&$return_ty> {
+                #[inline] #[must_use] pub const fn [<hir_ $item_name _ref>](&self) -> Option<&$return_ty> {
                     let item = match &self.kind {
                         OwningNodeKind::Item(item) => item,
                         OwningNodeKind::ImplItem(item) => item,
@@ -333,6 +384,8 @@ pub enum ModuleSpan {
 }
 
 impl ModuleSpan {
+    #[inline]
+    #[must_use]
     pub const fn span(&self) -> SourceSpan {
         match self {
             Self::Declaration(source_span) | Self::Implementation(source_span) => *source_span,
@@ -347,6 +400,8 @@ pub enum ModuleIdent {
 }
 
 impl ModuleIdent {
+    #[inline]
+    #[must_use]
     pub const fn ident(&self) -> &Ident {
         match self {
             Self::RawIdent(ident) => ident,
@@ -354,6 +409,8 @@ impl ModuleIdent {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn span(&self) -> SourceSpan {
         match self {
             Self::RawIdent(_) => SourceSpan::new(0, 0),
@@ -504,6 +561,8 @@ pub enum ItemKind {
 }
 
 impl ItemKind {
+    #[inline]
+    #[must_use]
     pub fn ident(&self) -> Option<String> {
         match self {
             Self::Module(md) => Some(md.ident.ident().string()),
@@ -515,6 +574,8 @@ impl ItemKind {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn span(&self) -> Option<SourceSpan> {
         match self {
             Self::Module(md) => Some(md.ident.span()),
@@ -535,6 +596,8 @@ pub struct Item {
 }
 
 impl Item {
+    #[inline]
+    #[must_use]
     pub const fn new(kind: ItemKind) -> Self {
         Self {
             owner_id: OwnerDefId::PLACEHOLDER_ID,
@@ -542,10 +605,14 @@ impl Item {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn ident(&self) -> Option<String> {
         self.kind.ident()
     }
 
+    #[inline]
+    #[must_use]
     pub const fn span(&self) -> Option<SourceSpan> {
         self.kind.span()
     }
@@ -658,6 +725,8 @@ pub enum ResolvedID {
 }
 
 impl ResolvedID {
+    #[inline]
+    #[must_use]
     pub const fn hir_id(&self) -> Option<HirId> {
         match self {
             Self::Hir(hir_id) => Some(*hir_id),
@@ -665,6 +734,8 @@ impl ResolvedID {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn def_id(&self) -> Option<DefId> {
         match self {
             Self::Def(def_id) => Some(*def_id),
@@ -672,6 +743,8 @@ impl ResolvedID {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn owner_def_id(&self) -> Option<OwnerDefId> {
         match self {
             Self::OwnerDef(owner_def_id) => Some(*owner_def_id),
@@ -679,6 +752,8 @@ impl ResolvedID {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn type_id(&self) -> Option<TypeID> {
         match self {
             Self::TypeDef(type_id) => Some(*type_id),
@@ -730,6 +805,8 @@ pub enum RefPath {
 }
 
 impl RefPath {
+    #[inline]
+    #[must_use]
     pub const fn spanned_ident_path(&self) -> &SpannedIdentPath {
         match self {
             Self::Unresolved(ident_path) => ident_path,
@@ -737,6 +814,8 @@ impl RefPath {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn ident_path(&self) -> &IdentPath {
         match self {
             Self::Unresolved(ident_path) => &ident_path.path,
@@ -744,6 +823,8 @@ impl RefPath {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn span(&self) -> SourceSpan {
         match self {
             Self::Unresolved(ident_path) => ident_path.span,
@@ -751,10 +832,14 @@ impl RefPath {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn is_resolved(&self) -> bool {
         matches!(self, Self::Resolved(_, _))
     }
 
+    #[inline]
+    #[must_use]
     pub const fn resolved_id(&self) -> Option<ResolvedID> {
         match self {
             Self::Unresolved(_) => None,
@@ -762,18 +847,22 @@ impl RefPath {
         }
     }
 
+    #[inline]
     pub fn resolve_to(&mut self, id: ResolvedID) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), id);
     }
 
+    #[inline]
     pub fn resolve_to_hir_id(&mut self, id: HirId) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::Hir(id));
     }
 
+    #[inline]
     pub fn resolve_to_owner_id(&mut self, id: OwnerDefId) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::OwnerDef(id));
     }
 
+    #[inline]
     pub fn resolve_to_def_id(&mut self, id: DefId) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::Def(id));
     }

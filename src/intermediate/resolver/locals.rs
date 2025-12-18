@@ -18,10 +18,14 @@ struct LocalScope {
 }
 
 impl LocalScope {
+    #[inline]
+    #[must_use]
     pub fn new(scope_ident: Option<String>) -> Self {
         Self::new_with_parent(scope_ident, None)
     }
 
+    #[inline]
+    #[must_use]
     pub fn new_with_parent(scope_ident: Option<String>, parent: Option<Box<Self>>) -> Self {
         Self {
             scope_ident,
@@ -30,15 +34,19 @@ impl LocalScope {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn child_scope(&self, scope_ident: Option<String>) -> Self {
         Self::new_with_parent(scope_ident, Some(Box::new(self.clone())))
     }
 
+    #[inline]
     #[allow(dead_code)]
     pub const fn is_root_scope(&self) -> bool {
         self.parent.is_none()
     }
 
+    #[inline]
     pub fn add_definition_unique(&mut self, name: &str, id: ResolvedID) -> bool {
         if self.definitions.contains_key(name) {
             return false;
@@ -48,11 +56,13 @@ impl LocalScope {
     }
 
     /// Add a new definition, redefining the value that was already there, if exists.
+    #[inline]
     pub fn add_definition_overwrite(&mut self, name: &str, id: ResolvedID) -> bool {
         self.definitions.insert(name.to_string(), id).is_some()
     }
 
     #[allow(dead_code)]
+    #[inline]
     pub fn add_definition_result(&mut self, name: &str, id: ResolvedID) -> ResolveResult<()> {
         if self.add_definition_unique(name, id) {
             Ok(())
@@ -65,6 +75,8 @@ impl LocalScope {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_definition(&self, name: &str) -> Option<ResolvedID> {
         self.definitions.get(name).map_or_else(
             || {
@@ -83,6 +95,8 @@ struct ScopeResolver {
 }
 
 impl ScopeResolver {
+    #[inline]
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             scope: Vec::new(),
@@ -90,26 +104,33 @@ impl ScopeResolver {
         }
     }
 
+    #[inline]
     pub fn push_scope(&mut self, local_scope: LocalScope) {
         self.scope.push(local_scope);
     }
 
+    #[inline]
     pub fn pop_scope(&mut self) {
         self.scope.pop();
     }
 
+    #[inline]
     pub fn current_scope(&self) -> &LocalScope {
         self.scope.last().expect("Must have valid scope.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn current_scope_mut(&mut self) -> &mut LocalScope {
         self.scope.last_mut().expect("Must have valid scope.")
     }
 
+    #[inline]
     pub fn push_child_scope(&mut self, scope_ident: Option<String>) {
         self.push_scope(self.current_scope().child_scope(scope_ident))
     }
 
+    #[inline]
     pub fn resolve(&mut self, hlir: &mut HLIR) -> ResolveResult<()> {
         self.walk_mut(hlir);
 

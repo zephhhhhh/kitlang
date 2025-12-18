@@ -75,18 +75,23 @@ impl<'a> TypeChecker<'a> {
 }
 
 impl TypeChecker<'_> {
+    #[inline]
     pub fn push_current_return_type(&mut self, t: Type) {
         self.return_type_stack.push(t);
     }
 
+    #[inline]
     pub fn pop_current_return_type(&mut self) {
         self.return_type_stack.pop();
     }
 
+    #[inline]
     pub fn current_expected_return(&self) -> Option<Type> {
         self.return_type_stack.last().cloned()
     }
 
+    #[inline]
+    #[must_use]
     pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
         match ty.into() {
             Type::Unresolved(ty) => ty.get_type_ident(),
@@ -99,6 +104,8 @@ impl TypeChecker<'_> {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn type_name(&self, ty: impl Into<Type>) -> String {
         self.try_type_name(ty)
             .unwrap_or_else(|| String::from("UnknownType"))
@@ -106,6 +113,7 @@ impl TypeChecker<'_> {
 }
 
 impl TypeChecker<'_> {
+    #[inline]
     fn resolved_type(&self, id: HirId, t: &Type, hlir: &HLIRDisjointMut<'_>) -> TypeResult<KitTy> {
         t.resolved()
             .ok_or_else(|| {
@@ -238,6 +246,7 @@ impl TypeChecker<'_> {
         }
     }
 
+    #[inline]
     fn validate_return_value_by_id(
         &mut self,
         expr_id: HirId,
@@ -828,6 +837,7 @@ impl TypeChecker<'_> {
         }
     }
 
+    #[inline]
     fn eval_block_type_by_id(
         &mut self,
         id: HirId,
@@ -849,6 +859,7 @@ impl TypeChecker<'_> {
         }
     }
 
+    #[inline]
     fn is_id_return_statement(
         &self,
         id: HirId,
@@ -875,6 +886,7 @@ impl TypeChecker<'_> {
         }
     }
 
+    #[inline]
     fn eval_block_type(
         &mut self,
         block: &Block,

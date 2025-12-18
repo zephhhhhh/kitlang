@@ -75,6 +75,7 @@ impl Parser<'_, '_> {
         }
     }
 
+    #[inline]
     fn is_an_assign_op(&self, offset: u32) -> PResult<bool> {
         let next_token = self.peek_at(offset)?;
         Ok(matches!(
@@ -83,10 +84,12 @@ impl Parser<'_, '_> {
         ))
     }
 
+    #[inline]
     fn is_double_eq(&self) -> bool {
         self.check_kind_at(0, Punctuation::Eq) && self.check_kind_at(1, Punctuation::Eq)
     }
 
+    #[inline]
     fn is_double_dot(&self) -> bool {
         self.check_kind_at(0, Punctuation::Dot) && self.check_kind_at(1, Punctuation::Dot)
     }

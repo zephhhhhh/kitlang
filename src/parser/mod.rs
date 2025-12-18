@@ -196,6 +196,7 @@ impl TokenCursor<'_> {
 
     /// Peek at the current token _without_ advancing the cursor position.
     #[inline]
+    #[must_use]
     pub fn peek(&self) -> Option<&Token> {
         self.get(self.position)
     }
@@ -203,6 +204,7 @@ impl TokenCursor<'_> {
     /// Peek `ahead` number of tokens ahead of the current cursor position, _without_ advancing the
     /// cursor position.
     #[inline]
+    #[must_use]
     pub fn peek_at(&self, ahead: u32) -> Option<&Token> {
         self.get(self.position.saturating_add(ahead))
     }
@@ -255,6 +257,7 @@ impl RefType {
     /// Return the [`Mutability`] of the [`RefType`].
     /// I.e. `RefMut` = `Mutability::Mutable`, `Ref` & `None` = `Mutability::Immutable`.
     #[inline]
+    #[must_use]
     pub const fn mutability(self) -> Mutability {
         match self {
             Self::RefMut => Mutability::Mutable,
@@ -264,6 +267,7 @@ impl RefType {
 
     /// Returns `true` if `self` is a `reference`.
     #[inline]
+    #[must_use]
     pub const fn is_ref(self) -> bool {
         matches!(self, Self::Ref | Self::RefMut)
     }
@@ -271,6 +275,8 @@ impl RefType {
 
 impl Parser<'_, '_> {
     /// Returns true if the next 2 tokens from the cursor position are [`Punctuation::Colon`].
+    #[inline]
+    #[must_use]
     fn is_double_colon(&self) -> bool {
         self.check_kind_at(0, Punctuation::Colon) && self.check_kind_at(1, Punctuation::Colon)
     }
@@ -612,6 +618,8 @@ impl Parser<'_, '_> {
 impl Parser<'_, '_> {
     /// Start a span at the beginning of the current token.
     /// Shorthand for `self.cursor.get_current_source_start`.
+    #[inline]
+    #[must_use]
     pub fn begin_span(&self) -> u32 {
         self.cursor.get_current_source_start()
     }
@@ -619,6 +627,8 @@ impl Parser<'_, '_> {
     /// Construct a span by using a supplied beginning position, and the end of the previous token
     /// as the end position.
     /// Shorthand for `self.cursor.get_current_source_start`.
+    #[inline]
+    #[must_use]
     pub fn finish_span(&self, begin: u32) -> SourceSpan {
         (begin..self.cursor.get_previous_source_end()).into()
     }
@@ -690,6 +700,7 @@ impl Parser<'_, '_> {
     ///     checking tokens.
     /// *   `Err(ParseError)` if an invalid token was found while checking next tokens, or if there
     ///     were no more tokens available.
+    #[inline]
     fn expect_next_significant_token_with_offset(&self, offset: u32) -> PResult<(u32, &Token)> {
         self.find_next_significant_token_with_offset(offset)?
             .ok_or_else(|| self.no_token_error())
@@ -702,6 +713,7 @@ impl Parser<'_, '_> {
     ///     checking tokens.
     /// *   `Err(ParseError)` if an invalid token was found while checking next tokens, or if there
     ///     were no more tokens available.
+    #[inline]
     fn expect_next_significant_token(&self) -> PResult<(u32, &Token)> {
         self.expect_next_significant_token_with_offset(0)
     }
@@ -855,12 +867,14 @@ impl Parser<'_, '_> {
     /// Returns an error with the specified error `kind`, that is for the `token` currently pointed
     /// to by the cursor.
     #[inline]
+    #[must_use]
     fn make_error(&self, kind: ParseErrorKind) -> ParseError {
         ParseError::new(kind, self.cursor.current_span())
     }
 
     /// Returns an error representing that the token stream ended unexpectedly.
     #[inline]
+    #[must_use]
     fn no_token_error(&self) -> ParseError {
         ParseError::no_tokens(self.cursor.eof_span())
     }
@@ -899,6 +913,7 @@ pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>) -> PResult<ASTRoot
 /// This function will collect the iterator into a [`Vec<Token>`].
 ///
 /// This function also strips all comments and documentation from the code.
+#[inline]
 pub fn parse_from_source(source: &str) -> PResult<ASTRoot> {
     let token_iter = tokenise_stripped(source);
     parse_from_tokens(token_iter)

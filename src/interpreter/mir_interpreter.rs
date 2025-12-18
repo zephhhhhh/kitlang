@@ -29,6 +29,8 @@ pub struct Program {
 }
 
 impl Program {
+    #[inline]
+    #[must_use]
     pub const fn new(mir: MIR, registry: TypeRegistry, namespace: Namespace) -> Self {
         Self {
             mir,
@@ -69,6 +71,8 @@ pub enum Value {
 }
 
 impl Value {
+    #[inline]
+    #[must_use]
     pub fn from_literal(lit: Literal) -> Self {
         match lit {
             Literal::String(s) => Self::String(s),
@@ -78,10 +82,14 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn is_unit(&self) -> bool {
         matches!(self, Self::Unit)
     }
 
+    #[inline]
+    #[must_use]
     pub fn repr_string(&self) -> String {
         match self {
             Self::Unit => "()".to_string(),
@@ -95,6 +103,8 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn int(&self) -> Option<i64> {
         match self {
             Self::Integer(i) => Some(*i),
@@ -102,6 +112,8 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn uint(&self) -> Option<u64> {
         match self {
             Self::UnsignedInteger(i) => Some(*i),
@@ -109,6 +121,8 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn float(&self) -> Option<f64> {
         match self {
             Self::Float(i) => Some(*i),
@@ -116,6 +130,8 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn string(&self) -> Option<String> {
         match self {
             Self::String(s) => Some(s.clone()),
@@ -123,6 +139,8 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn str_ref(&self) -> Option<&str> {
         match self {
             Self::String(s) => Some(s),
@@ -130,6 +148,8 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn bool(&self) -> Option<bool> {
         match self {
             Self::Boolean(b) => Some(*b),
@@ -137,6 +157,8 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn are_matching_types(&self, other: &Self) -> bool {
         match self {
             Self::Unit => matches!(other, Self::Unit),
@@ -148,6 +170,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn perform_unary_op(&self, op: UnaryOpKind) -> Option<Self> {
         match self {
             Self::Unit => None,
@@ -181,6 +204,7 @@ impl Value {
         }
     }
 
+    #[must_use]
     pub fn perform_binary_op(&self, rhs: &Self, op: BinaryOpKind) -> Option<Self> {
         if !self.are_matching_types(rhs) {
             return None;
@@ -289,6 +313,8 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn perform_increment(&self) -> Option<Self> {
         match self {
             Self::Integer(i) => Some(Self::Integer(i.saturating_add(1))),
@@ -297,11 +323,14 @@ impl Value {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn is_reference(&self) -> bool {
         matches!(self, Self::Ref(_))
     }
 
     #[inline]
+    #[must_use]
     pub fn field(&self, index: usize) -> Option<&Self> {
         match self {
             Self::ADT(adtvalue_kind) => match adtvalue_kind {
@@ -312,6 +341,7 @@ impl Value {
     }
 
     #[inline]
+    #[must_use]
     pub fn field_mut(&mut self, index: usize) -> Option<&mut Self> {
         match self {
             Self::ADT(adtvalue_kind) => match adtvalue_kind {
@@ -377,6 +407,8 @@ pub struct ExecutionFrame {
 }
 
 impl ExecutionFrame {
+    #[inline]
+    #[must_use]
     pub fn new_with_capacity(capacity: usize) -> Self {
         Self {
             locals: vec![Value::Unit; capacity],
@@ -394,46 +426,64 @@ impl ExecutionFrame {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn field_access(&self, id: LocalId, field_index: usize) -> Option<&Value> {
         self.value(self.perform_deref(AssignTarget::Local(id)))?
             .field(field_index)
     }
 
+    #[inline]
+    #[must_use]
     pub fn field_access_mut(&mut self, id: LocalId, field_index: usize) -> Option<&mut Value> {
         self.value_mut(self.perform_deref(AssignTarget::Local(id)))?
             .field_mut(field_index)
     }
 
+    #[inline]
+    #[must_use]
     pub fn field_access_expect(&self, id: LocalId, field_index: usize) -> &Value {
         self.field_access(id, field_index)
             .expect("Field access doesn't exist.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn field_access_expect_mut(&mut self, id: LocalId, field_index: usize) -> &mut Value {
         self.field_access_mut(id, field_index)
             .expect("Field access doesn't exist mut.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn local(&self, id: LocalId) -> Option<&Value> {
         self.locals.get(id.0 as usize)
     }
 
+    #[inline]
+    #[must_use]
     pub fn local_mut(&mut self, id: LocalId) -> Option<&mut Value> {
         self.locals.get_mut(id.0 as usize)
     }
 
+    #[inline]
+    #[must_use]
     pub fn local_expect(&self, id: LocalId) -> &Value {
         self.locals
             .get(id.0 as usize)
             .expect("Local doesn't exist.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn local_expect_mut(&mut self, id: LocalId) -> &mut Value {
         self.locals
             .get_mut(id.0 as usize)
             .expect("Local doesn't exist mut.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn value(&self, at: AssignTarget) -> Option<&Value> {
         match at {
             AssignTarget::Local(local_id) => self.local(local_id),
@@ -441,6 +491,8 @@ impl ExecutionFrame {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn value_mut(&mut self, at: AssignTarget) -> Option<&mut Value> {
         match at {
             AssignTarget::Local(local_id) => self.local_mut(local_id),
@@ -450,14 +502,20 @@ impl ExecutionFrame {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn value_expect(&self, at: AssignTarget) -> &Value {
         self.value(at).expect("Value doesn't exist.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn value_expect_mut(&mut self, at: AssignTarget) -> &mut Value {
         self.value_mut(at).expect("Value doesn't exist mut.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn perform_deref(&self, at: AssignTarget) -> AssignTarget {
         let local_mut = match at {
             AssignTarget::Local(local_id) => self.local_expect(local_id),
@@ -484,6 +542,8 @@ pub struct InterpreterState {
 impl InterpreterState {
     const DEFAULT_ENTRY_NAME: &str = "main";
 
+    #[inline]
+    #[must_use]
     fn find_entry_point(program: &ProgramType) -> Option<OwnerDefId> {
         let main = program.namespace.items.get(Self::DEFAULT_ENTRY_NAME)?;
         if matches!(main.kind, NamespaceKind::Function) {
@@ -493,6 +553,8 @@ impl InterpreterState {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn new(program: &ProgramType) -> Option<Self> {
         let entry = Self::find_entry_point(program)?;
         Some(Self {
@@ -504,6 +566,7 @@ impl InterpreterState {
 }
 
 impl InterpreterState {
+    #[inline]
     pub fn register_native_function<F: IntoMIRKitlangFn>(&mut self, name: &str, func: F) {
         if !self.native_functions.contains_key(name) {
             self.native_functions
@@ -511,6 +574,8 @@ impl InterpreterState {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn call_native_function(&mut self, name: &str, args: &[Value]) -> Option<Value> {
         self.native_functions.get_mut(name).map_or_else(
             || {
@@ -528,29 +593,39 @@ impl InterpreterState {
 }
 
 impl InterpreterState {
+    #[inline]
     pub fn push_execution_frame(&mut self, local_count: usize) {
         self.execution_frames
             .push(ExecutionFrame::new_with_capacity(local_count));
     }
 
+    #[inline]
     pub fn pop_execution_frame(&mut self) -> Option<ExecutionFrame> {
         self.execution_frames.pop()
     }
 
+    #[inline]
+    #[must_use]
     pub fn execution_frame(&self) -> Option<&ExecutionFrame> {
         self.execution_frames.last()
     }
 
+    #[inline]
+    #[must_use]
     pub fn execution_frame_mut(&mut self) -> Option<&mut ExecutionFrame> {
         self.execution_frames.last_mut()
     }
 
+    #[inline]
+    #[must_use]
     pub fn execution_frame_expect(&self) -> &ExecutionFrame {
         self.execution_frames
             .last()
             .expect("No execution frames exist.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn execution_frame_expect_mut(&mut self) -> &mut ExecutionFrame {
         self.execution_frames
             .last_mut()
@@ -656,6 +731,8 @@ impl InterpreterState {
         return_value
     }
 
+    #[inline]
+    #[must_use]
     fn eval_operand(&self, operand: &Operand) -> Option<Value> {
         match operand {
             Operand::Copy(local) => {
@@ -671,6 +748,8 @@ impl InterpreterState {
         }
     }
 
+    #[inline]
+    #[must_use]
     fn eval_rvalue(&self, rvalue: &RValue) -> Option<Value> {
         match rvalue {
             RValue::Unchanged(operand) => self.eval_operand(operand),
@@ -711,18 +790,23 @@ impl InterpreterState {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn perform_deref(&self, local: AssignTarget) -> &Value {
         let frame = self.execution_frame().expect("Execution frame");
         let derefd = frame.perform_deref(local);
         frame.value_expect(derefd)
     }
 
+    #[inline]
+    #[must_use]
     pub fn perform_deref_mut(&mut self, local: AssignTarget) -> &mut Value {
         let frame = self.execution_frame_mut().expect("Execution frame");
         let derefd = frame.perform_deref(local);
         frame.value_expect_mut(derefd)
     }
 
+    #[inline]
     pub fn perform_assignment(&mut self, target: AssignTarget, new_value: Value) {
         let local_mut = self.perform_deref_mut(target);
         if !local_mut.are_matching_types(&new_value) && !local_mut.is_unit() {
@@ -734,6 +818,7 @@ impl InterpreterState {
         *local_mut = new_value;
     }
 
+    #[must_use]
     pub fn perform_cast(&self, value: Value, target_type: CastKind) -> Option<Value> {
         // TODO: Please just implement proper value storage. please
         match target_type {
@@ -812,6 +897,7 @@ impl InterpreterState {
         }
     }
 
+    #[inline]
     pub fn execute_statement(&mut self, statement: &Statement) {
         match &statement.kind {
             StatementKind::Assign(target, rvalue) => {
@@ -832,6 +918,8 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
+    #[inline]
+    #[must_use]
     pub fn new_with_program(program: ProgramType) -> Option<Self> {
         let state = InterpreterState::new(&program)?;
 
@@ -841,6 +929,8 @@ impl Interpreter {
         })
     }
 
+    #[inline]
+    #[must_use]
     pub fn load_program(&mut self, program: ProgramType) -> Option<()> {
         self.state = Some(InterpreterState::new(&program)?);
         self.program = Some(RefCell::new(program));
@@ -848,6 +938,7 @@ impl Interpreter {
         Some(())
     }
 
+    #[inline]
     pub fn register_native_function<F: IntoMIRKitlangFn>(&mut self, name: &str, func: F) {
         if let Some(state) = self.state.as_mut() {
             state.register_native_function(name, func);

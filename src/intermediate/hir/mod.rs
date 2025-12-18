@@ -23,6 +23,9 @@ pub struct LocalDefId(pub u32);
 impl LocalDefId {
     pub const PLACEHOLDER_ID: Self = Self(u32::MAX);
 
+    /// Check if this is a placeholder ID. I.e. (`self == u32::MAX`).
+    #[inline]
+    #[must_use]
     pub fn is_placeholder(self) -> bool {
         self == Self::PLACEHOLDER_ID
     }
@@ -42,6 +45,9 @@ impl OwnerDefId {
     pub const PLACEHOLDER_ID: Self = Self(u32::MAX);
     pub const ROOT_NODE: Self = Self(0);
 
+    /// Check if this is a placeholder ID. I.e. (`self == u32::MAX`).
+    #[inline]
+    #[must_use]
     pub fn is_placeholder(self) -> bool {
         self == Self::PLACEHOLDER_ID
     }
@@ -66,6 +72,9 @@ impl DefId {
         def_id: LocalDefId::PLACEHOLDER_ID,
     };
 
+    /// Check if this is a placeholder ID. I.e. `module_id == u32::MAX` or `def_id == u32::MAX`.
+    #[inline]
+    #[must_use]
     pub fn is_placeholder(self) -> bool {
         self.module_id == u32::MAX || self.def_id.is_placeholder()
     }
@@ -115,12 +124,18 @@ impl HirId {
         id: LocalDefId::PLACEHOLDER_ID,
     };
 
+    /// Check if this is a placeholder ID. I.e. `owner == u32::MAX` or `id == u32::MAX`.
+    #[inline]
+    #[must_use]
     pub fn is_placeholder(self) -> bool {
         self.owner.is_placeholder() || self.id.is_placeholder()
     }
 }
 
 impl HirId {
+    /// Get the next ID on the current owner by incrementing the local ID by 1.
+    #[inline]
+    #[must_use]
     pub const fn next_id(mut self) -> Self {
         self.id = LocalDefId(self.id.0 + 1);
         self
@@ -139,44 +154,62 @@ pub struct HLIR {
 }
 
 impl HLIR {
+    #[inline]
+    #[must_use]
     pub const fn owner_node_count(&self) -> u32 {
         self.owner_nodes.len() as u32
     }
 
+    #[inline]
     pub fn owner_id_iter(&self) -> impl Iterator<Item = OwnerDefId> {
         (0..self.owner_node_count()).map(OwnerDefId)
     }
 
+    #[inline]
+    #[must_use]
     pub fn root_module(&self) -> Option<&OwningNode> {
         self.owning_node(OwnerDefId::ROOT_NODE)
     }
 
+    #[inline]
+    #[must_use]
     pub fn root_module_mut(&mut self) -> Option<&mut OwningNode> {
         self.owning_node_mut(OwnerDefId::ROOT_NODE)
     }
 
+    #[inline]
+    #[must_use]
     pub fn owning_node(&self, id: OwnerDefId) -> Option<&OwningNode> {
         self.owner_nodes.get(id.0 as usize)
     }
 
+    #[inline]
+    #[must_use]
     pub fn owning_node_mut(&mut self, id: OwnerDefId) -> Option<&mut OwningNode> {
         self.owner_nodes.get_mut(id.0 as usize)
     }
 
+    #[inline]
+    #[must_use]
     pub fn owning_node_unchecked(&self, id: OwnerDefId) -> &OwningNode {
         self.owner_nodes.get(id.0 as usize).expect("Node exists.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn owning_node_mut_unchecked(&mut self, id: OwnerDefId) -> &mut OwningNode {
         self.owner_nodes
             .get_mut(id.0 as usize)
             .expect("Node exists.")
     }
 
+    #[inline]
+    #[must_use]
     pub const fn next_owner_id(&self) -> OwnerDefId {
         OwnerDefId(self.owner_node_count())
     }
 
+    #[inline]
     pub fn insert_owning_node(&mut self, mut owner_node: OwningNode) -> OwnerDefId {
         let next_id = self.next_owner_id();
         owner_node.set_owner_id(next_id);
@@ -184,6 +217,7 @@ impl HLIR {
         next_id
     }
 
+    #[inline]
     pub fn insert_owning_node_with_parent(
         &mut self,
         owner_node: OwningNode,
@@ -198,8 +232,9 @@ impl HLIR {
     }
 
     fn update_parent_item_list(&mut self, new_node: OwnerDefId, parent_id: OwnerDefId) {
-        if let Some(parent) = self.owning_node_mut(parent_id)
-            && let Some(parent_module) = parent.hir_module_mut()
+        if let Some(parent_module) = self
+            .owning_node_mut(parent_id)
+            .and_then(|o| o.hir_module_mut())
         {
             parent_module.item_ids.push(new_node);
         }
@@ -207,32 +242,43 @@ impl HLIR {
 }
 
 impl HLIR {
+    #[inline]
+    #[must_use]
     pub fn get_hir_node(&self, hir_id: HirId) -> Option<&HIRNode> {
         self.owning_node(hir_id.owner)?.get_hir_node(hir_id.id)
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_hir_node_unchecked(&self, hir_id: HirId) -> &HIRNode {
         self.owning_node_unchecked(hir_id.owner)
             .get_hir_node(hir_id.id)
             .expect("HIRNode exists.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_hir_node_mut(&mut self, hir_id: HirId) -> Option<&mut HIRNode> {
         self.owning_node_mut(hir_id.owner)?
             .get_hir_node_mut(hir_id.id)
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_hir_node_mut_unchecked(&mut self, hir_id: HirId) -> &mut HIRNode {
         self.owning_node_mut_unchecked(hir_id.owner)
             .get_hir_node_mut(hir_id.id)
             .expect("HIRNode exists.")
     }
 
+    #[inline]
+    #[must_use]
     pub fn next_hir_id_on(&self, owner_id: impl Into<OwnerDefId>) -> HirId {
         self.owning_node(owner_id.into())
             .map_or(HirId::PLACEHOLDER_ID, |owner_node| owner_node.next_hir_id())
     }
 
+    #[inline]
     pub fn insert_hir_node(
         &mut self,
         owner_id: impl Into<OwnerDefId>,
@@ -248,10 +294,14 @@ impl HLIR {
 }
 
 impl HLIR {
+    #[inline]
+    #[must_use]
     pub fn owning_node_item(&self, owner_id: OwnerDefId) -> Option<&Item> {
         self.owning_node(owner_id)?.item()
     }
 
+    #[inline]
+    #[must_use]
     pub fn owning_node_item_mut(&mut self, owner_id: OwnerDefId) -> Option<&mut Item> {
         self.owning_node_mut(owner_id)?.item_mut()
     }
@@ -259,10 +309,14 @@ impl HLIR {
 
 // "Helper" functions..
 impl HLIR {
+    #[inline]
+    #[must_use]
     pub fn span_by_owner_id(&self, id: OwnerDefId) -> Option<SourceSpan> {
         self.owning_node(id)?.span()
     }
 
+    #[inline]
+    #[must_use]
     pub fn span_by_hir_id(&self, id: HirId) -> Option<SourceSpan> {
         Some(self.get_hir_node(id)?.span())
     }
@@ -292,6 +346,7 @@ pub struct ProgramMetaData {
 
 impl ProgramMetaData {
     #[inline]
+    #[must_use]
     pub fn find_method(
         &self,
         defined_in: &IdentPath,
@@ -303,6 +358,7 @@ impl ProgramMetaData {
     }
 
     #[inline]
+    #[must_use]
     pub fn find_method_owner_def(
         &self,
         defined_in: &IdentPath,
@@ -314,6 +370,7 @@ impl ProgramMetaData {
     }
 
     #[inline]
+    #[must_use]
     pub fn find_adt_method_owner_def(
         &self,
         adt: &ADTTypeInfo,
@@ -323,6 +380,7 @@ impl ProgramMetaData {
     }
 
     #[inline]
+    #[must_use]
     pub fn find_ty_method_owner_def(&self, ty: Type, method_ident: &str) -> Option<OwnerDefId> {
         let Type::Resolved(resolved_ty) = ty else {
             return None;
@@ -342,6 +400,7 @@ impl ProgramMetaData {
 
     /// Try to get the type name of a given type.
     #[inline]
+    #[must_use]
     pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
         match ty.into() {
             Type::Unresolved(ty) => ty.get_type_ident(),
@@ -356,6 +415,7 @@ impl ProgramMetaData {
 
     /// Get the type name of a given type, or `"UnknownType"` if it cannot be determined.
     #[inline]
+    #[must_use]
     pub fn type_name(&self, ty: impl Into<Type>) -> String {
         self.try_type_name(ty)
             .unwrap_or_else(|| String::from("UnknownType"))

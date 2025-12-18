@@ -90,16 +90,19 @@ impl<'a> AssociatedReferenceMapper<'a> {
         }
     }
 
+    #[inline]
     pub fn reset_path_to(&mut self, ident_path: IdentPath) {
         self.path_stack = vec![ident_path];
     }
 
+    #[inline]
     pub fn reset_path(&mut self) {
         self.reset_path_to(IdentPath::from_segments(Vec::new(), true));
     }
 
     /// Executes `f` with `segment` temporarily pushed onto the current path.
     /// Ensures the segment is popped after `f` completes.
+    #[inline]
     fn with_pushed_segment<F>(&mut self, segment: &str, f: F)
     where
         F: FnOnce(&mut Self),
@@ -111,6 +114,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
 
     /// Executes `f` with `path` temporarily pushed onto the path stack.
     /// Ensures the path is popped after `f` completes.
+    #[inline]
     fn with_pushed_path<F>(&mut self, path: IdentPath, f: F)
     where
         F: FnOnce(&mut Self),
@@ -250,6 +254,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         Ok(())
     }
 
+    #[inline]
     fn find_last_enclosing_path(&self, path: &IdentPath) -> Option<IdentPath> {
         if path.is_empty() {
             return Some(IdentPath::new_empty(true));
@@ -258,6 +263,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         Some(self.meta.namespace.find_previous_enclosing_scope(path))
     }
 
+    #[inline]
     fn search_backtracking_for_definition(
         &self,
         ident_path: &IdentPath,
@@ -277,6 +283,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         }
     }
 
+    #[inline]
     fn validate_local_access(&self, target_path: &IdentPath, base_path: &IdentPath) -> bool {
         let Some(target_namespace) = self.get_namespace(target_path) else {
             return false;
@@ -376,30 +383,36 @@ impl AssociatedReferenceMapper<'_> {
             .expect("Always has atleast 1 in stack.")
     }
 
+    #[inline]
     pub fn current_path_mut(&mut self) -> &mut IdentPath {
         self.path_stack
             .last_mut()
             .expect("Always has atleast 1 in stack.")
     }
 
+    #[inline]
     pub fn push_to_current_path(&mut self, s: &str) {
         self.current_path_mut().push(s);
     }
 
+    #[inline]
     pub fn pop_from_current_path(&mut self) {
         self.current_path_mut().pop();
     }
 
+    #[inline]
     pub fn push_stack(&mut self, path: IdentPath) {
         self.path_stack.push(path);
     }
 
+    #[inline]
     pub fn pop_stack(&mut self) {
         self.path_stack.pop();
     }
 }
 
 impl AssociatedReferenceMapper<'_> {
+    #[inline]
     fn should_be_local(&self, path: &IdentPath) -> bool {
         let Some(namespace) = self.get_namespace(path) else {
             return false;
@@ -407,6 +420,7 @@ impl AssociatedReferenceMapper<'_> {
         namespace.local || namespace.kind == NamespaceKind::Function
     }
 
+    #[inline]
     fn get_namespace(&self, path: &IdentPath) -> Option<&Namespace> {
         let mut curr_namespace = &self.meta.namespace;
         for segment in path.segments() {
@@ -415,6 +429,7 @@ impl AssociatedReferenceMapper<'_> {
         Some(curr_namespace)
     }
 
+    #[inline]
     fn get_namespace_mut(&mut self, path: &IdentPath) -> Option<&mut Namespace> {
         let mut curr_namespace = &mut self.meta.namespace;
         for segment in path.segments() {

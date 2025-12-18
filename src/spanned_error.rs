@@ -32,11 +32,14 @@ pub struct SpannedErrorLine {
 
 impl SpannedErrorLine {
     /// Push a new comment for this line onto the back of the comment list.
+    #[inline]
     pub fn add_comment_line(&mut self, comment: &str) {
         self.comment_lines.push(comment.to_string());
     }
 
     /// The index of the last character in this line in the global source code string.
+    #[inline]
+    #[must_use]
     pub const fn end_of_line_index(&self) -> u32 {
         self.line_start_global_index
             .saturating_add(self.source.len() as u32)
@@ -44,12 +47,15 @@ impl SpannedErrorLine {
 
     /// How many characters the line number string takes up.
     /// (Used for consistent formatting of line number lengths across lines.)
+    #[inline]
+    #[must_use]
     pub fn line_number_string_len(&self) -> usize {
         self.line_number.to_string().len()
     }
 
     /// Get the prefix printed before a line, containing the line number aligned to the right hand
     /// side, with space padding to the left to maintain a consistent width.
+    #[inline]
     fn get_prefix_on_source(&self, line_no_width: usize) -> String {
         #[cfg(feature = "colour")]
         {
@@ -114,6 +120,8 @@ impl SpannedErrorLine {
     }
 
     /// Generate the final output string for this line, including prefixes and all comments.
+    #[inline]
+    #[must_use]
     pub fn generate_output(&self, line_no_width: usize, blank_prefix: &str) -> String {
         let mut output_string = format!(
             "{}{}\n",
@@ -131,6 +139,7 @@ impl SpannedErrorLine {
 
 /// Used for building pretty formatted error messages based on an error span and the source code
 /// string that was used when this error originated.
+#[must_use]
 pub struct SpannedErrorBuilder {
     pub header_lines: Vec<String>,
     pub footer_lines: Vec<String>,
@@ -147,6 +156,7 @@ pub struct SpannedErrorBuilder {
 }
 
 impl SpannedErrorBuilder {
+    #[inline]
     pub fn new(src: &str, span: SourceSpan) -> Self {
         let lines = get_lines(src, span);
         Self {
@@ -165,6 +175,7 @@ impl SpannedErrorBuilder {
 
     /// Generate a highlight comment on all applicable lines that highlight the provided error
     /// span with an underline.
+    #[inline]
     pub fn generate_highlight(&mut self) -> &mut Self {
         if self.error_span.is_null_span() {
             return self;
@@ -176,6 +187,7 @@ impl SpannedErrorBuilder {
     }
 
     /// Set the file name, used if `show_location` is set to `true`.
+    #[inline]
     pub fn set_file_name(&mut self, file_name: impl AsRef<str>) -> &mut Self {
         self.file_name = Some(file_name.as_ref().to_string());
         self
@@ -183,6 +195,7 @@ impl SpannedErrorBuilder {
 
     /// Add blank prefix lines above the source code view and below if there are `footer_lines`
     /// present.
+    #[inline]
     pub const fn pad_around_source_view(&mut self, should_pad: bool) -> &mut Self {
         self.pad_around_source_view = should_pad;
         self
@@ -190,12 +203,14 @@ impl SpannedErrorBuilder {
 
     /// Show the location (file name, line number and character index) that the error span starts
     /// at as a header line above the source code view.
+    #[inline]
     pub const fn show_location(&mut self, should_show: bool) -> &mut Self {
         self.show_location = should_show;
         self
     }
 
     /// Add any string as a header line above the source code view.
+    #[inline]
     pub fn print_header_line(&mut self, line: impl AsRef<str>) -> &mut Self {
         let header_line = if self.hard_error {
             #[cfg(feature = "colour")]
@@ -216,6 +231,7 @@ impl SpannedErrorBuilder {
     }
 
     /// Add any string as a footer line below the source code view.
+    #[inline]
     pub fn print_footer_line(&mut self, line: impl AsRef<str>) -> &mut Self {
         self.footer_lines.push(format!("{}\n", line.as_ref()));
         self
@@ -225,6 +241,8 @@ impl SpannedErrorBuilder {
 impl SpannedErrorBuilder {
     /// Constructs a blank prefix line that is padded to maintain the same width as the other
     /// prefixed lines with a specified max line number character width.
+    #[inline]
+    #[must_use]
     fn get_blank_prefix(line_no_width: usize) -> String {
         #[cfg(feature = "colour")]
         {
@@ -238,6 +256,7 @@ impl SpannedErrorBuilder {
     }
 
     /// Generates the final fully formatted output from `self`.
+    #[must_use]
     pub fn generate_output(&self) -> String {
         let max_line_no_len = self
             .lines
@@ -306,6 +325,8 @@ impl SpannedErrorBuilder {
 }
 
 /// Safely substring a string, clamping the range to the valid values.
+#[inline]
+#[must_use]
 fn substr_safe(s: &str, range: Range<u32>) -> &str {
     let (r_min, r_max) = (range.start, range.end);
     if r_max < r_min {
@@ -326,6 +347,8 @@ fn substr_safe(s: &str, range: Range<u32>) -> &str {
 
 /// Safely substring a string, clamping the range to the valid values.
 /// If the resulting clamped substring ends with '\r', it is removed.
+#[inline]
+#[must_use]
 fn substr_safe_no_trailing_return(s: &str, range: Range<u32>) -> &str {
     let r_start = range.start as usize;
     let r_end = s.len().min(range.end as usize);
@@ -338,6 +361,8 @@ fn substr_safe_no_trailing_return(s: &str, range: Range<u32>) -> &str {
 }
 
 /// Counts the number of newline (`\n`) characters in a string slice.
+#[inline]
+#[must_use]
 fn count_new_lines(str: &str) -> usize {
     str.chars().filter(|c| *c == '\n').count()
 }
@@ -345,6 +370,8 @@ fn count_new_lines(str: &str) -> usize {
 /// Get the 3 segments from the source string and `self`.
 /// # Returns
 /// `(before, the_error_span, after)`
+#[inline]
+#[must_use]
 fn get_segments_from_source(source_string: &str, span: SourceSpan) -> (&str, &str, &str) {
     let before_span = substr_safe(source_string, 0..span.start);
     let error_span = substr_safe(source_string, span.start..span.end);
@@ -356,6 +383,7 @@ fn get_segments_from_source(source_string: &str, span: SourceSpan) -> (&str, &st
 /// This finds all lines that the provided [`SourceSpan`] touches.
 /// Along with filling out meta-data about the line such as it's line number and where the line
 /// starts within the provided `source_string`.
+#[must_use]
 fn get_lines(source_string: &str, span: SourceSpan) -> Vec<SpannedErrorLine> {
     const LINE_LOOP_SAFETY: usize = 10000;
 

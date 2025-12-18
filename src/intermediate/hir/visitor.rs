@@ -256,10 +256,13 @@ pub struct HLIRDisjointMut<'a> {
 }
 
 impl<'a> HLIRDisjointMut<'a> {
+    #[inline]
     pub const fn new(hlir: &'a mut HLIR) -> Self {
         Self { hlir }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn nonmut_ref<'b>(&'a self) -> &'b HLIR
     where
         'a: 'b,
@@ -339,10 +342,14 @@ impl<T> Disjoint<T> {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn value(&self) -> &'static T {
         unsafe { &*self.v }
     }
 
+    #[inline]
+    #[must_use]
     pub fn value_mut(&self) -> &'static mut T {
         unsafe { &mut *self.v }
     }

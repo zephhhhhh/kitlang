@@ -14,6 +14,7 @@ pub struct ASTRoot {
 
 impl ASTRoot {
     #[inline]
+    #[must_use]
     pub const fn new_with_span(full_file_span: SourceSpan) -> Self {
         Self {
             items: Vec::new(),
@@ -39,14 +40,20 @@ pub struct SourceSpan {
 }
 
 impl SourceSpan {
+    #[inline]
+    #[must_use]
     pub const fn new(start: u32, end: u32) -> Self {
         Self { start, end }
     }
 
+    #[inline]
+    #[must_use]
     pub const fn null_span() -> Self {
         Self::new(0, 0)
     }
 
+    #[inline]
+    #[must_use]
     pub const fn is_null_span(&self) -> bool {
         self.start == 0 && self.end == 0
     }
@@ -102,6 +109,7 @@ impl IdentPath {
     /// # Notes
     /// The parser ensures valid paths are provided, so this method assumes well-formed input.
     #[inline]
+    #[must_use]
     pub fn new(src: impl AsRef<str>) -> Self {
         let src = src.as_ref();
         let (root_relative, remainder) = src
@@ -121,6 +129,7 @@ impl IdentPath {
 
     /// Create an empty path.
     #[inline]
+    #[must_use]
     pub const fn new_empty(root_relative: bool) -> Self {
         Self {
             segments: Vec::new(),
@@ -130,6 +139,7 @@ impl IdentPath {
 
     /// Create a path from segments.
     #[inline]
+    #[must_use]
     pub const fn from_segments(segments: IdentPathSegments, root_relative: bool) -> Self {
         Self {
             segments,
@@ -139,12 +149,14 @@ impl IdentPath {
 
     /// Create a path from a segment slice.
     #[inline]
+    #[must_use]
     pub fn from_segments_slice(segments: &[IdentPathSegment], root_relative: bool) -> Self {
         Self::from_segments(segments.to_vec(), root_relative)
     }
 
     /// Rebase this path onto another, returning `None` if this path is root-relative.
     #[inline]
+    #[must_use]
     pub fn rebase_from_path_safe(&self, base_path: &Self) -> Option<Self> {
         if self.root_relative {
             return None;
@@ -161,6 +173,7 @@ impl IdentPath {
 
     /// Rebase this path onto another. Returns self if this path is root-relative.
     #[inline]
+    #[must_use]
     pub fn rebase_from_path(&self, base_path: &Self) -> Self {
         if self.root_relative {
             self.clone()
@@ -181,24 +194,28 @@ impl IdentPath {
 
     /// Convert to an `Identifier`.
     #[inline]
+    #[must_use]
     pub fn to_ident(&self) -> Ident {
         Ident::new(self.to_string())
     }
 
     /// Check if this path is root-relative.
     #[inline]
+    #[must_use]
     pub const fn is_root_relative(&self) -> bool {
         self.root_relative
     }
 
     /// Check if this path is exactly one segment and not root-relative.
     #[inline]
+    #[must_use]
     pub const fn is_only_ident(&self) -> bool {
         self.segments.len() == 1 && !self.root_relative
     }
 
     /// Get the single identifier if this path contains exactly one segment and is not root-relative.
     #[inline]
+    #[must_use]
     pub fn get_only_ident(&self) -> Option<String> {
         if self.is_only_ident() {
             Some(self.segments[0].clone())
@@ -212,6 +229,7 @@ impl IdentPath {
     /// # Panics
     /// Panics if the path has no segments.
     #[inline]
+    #[must_use]
     pub fn path_stem(&self) -> &str {
         self.segments
             .last()
@@ -220,24 +238,28 @@ impl IdentPath {
 
     /// Number of segments in this path.
     #[inline]
+    #[must_use]
     pub const fn len(&self) -> usize {
         self.segments.len()
     }
 
     /// Check if the path has no segments.
     #[inline]
+    #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.segments.is_empty()
     }
 
     /// Get all segments as a slice.
     #[inline]
+    #[must_use]
     pub fn segments(&self) -> &[IdentPathSegment] {
         &self.segments
     }
 
     /// Get mutable access to segments.
     #[inline]
+    #[must_use]
     pub const fn segments_mut(&mut self) -> &mut Vec<IdentPathSegment> {
         &mut self.segments
     }
@@ -270,6 +292,7 @@ impl IdentPath {
 
     /// Create a new path with an additional segment.
     #[inline]
+    #[must_use]
     pub fn extend_from(&self, segment: &str) -> Self {
         let mut path = self.clone();
         path.push(segment);
@@ -278,6 +301,7 @@ impl IdentPath {
 
     /// Create a new path with an additional segment.
     #[inline]
+    #[must_use]
     pub fn extend(&self, segment: &str) -> Self {
         let mut path = self.clone();
         path.push(segment);
@@ -286,12 +310,14 @@ impl IdentPath {
 
     /// Create a new path with an additional segment from an identifier.
     #[inline]
+    #[must_use]
     pub fn extend_ident(&self, ident: &Ident) -> Self {
         self.extend(ident.str())
     }
 
     /// Create a new path with all segments from another path.
     #[inline]
+    #[must_use]
     pub fn extend_path(&self, path: &Self) -> Self {
         let mut new_path = self.clone();
         new_path.push_segments(&path.segments);
@@ -300,12 +326,14 @@ impl IdentPath {
 
     /// Create a new path from a subpath of this path from the given range.
     #[inline]
+    #[must_use]
     pub fn subpath(&self, start: usize, end: usize) -> Self {
         Self::from_segments_slice(&self.segments[start..end], self.root_relative)
     }
 
     /// Check if this path starts with all segments of another path.
     #[inline]
+    #[must_use]
     pub fn is_subpath_of(&self, other: &Self) -> bool {
         if self.len() < other.len() {
             return false;
@@ -318,6 +346,7 @@ impl IdentPath {
     }
 
     #[inline]
+    #[must_use]
     pub fn matching_segment_count(&self, other: &Self) -> usize {
         self.segments()
             .iter()
@@ -355,6 +384,8 @@ pub struct SpannedIdentPath {
 }
 
 impl SpannedIdentPath {
+    #[inline]
+    #[must_use]
     pub const fn new(path: IdentPath, span: SourceSpan) -> Self {
         Self { path, span }
     }
@@ -402,12 +433,14 @@ pub enum Visibility {
 impl Visibility {
     /// Construct a [`Visibility`] from a bool denoting if the `vis` is `public` or `private`.
     #[inline]
+    #[must_use]
     pub const fn from_is_public(v: bool) -> Self {
         if v { Self::Public } else { Self::Private }
     }
 
     /// Returns true if `self` is `Visibility::Public`.
     #[inline]
+    #[must_use]
     pub const fn is_public(self) -> bool {
         matches!(self, Self::Public)
     }
@@ -423,12 +456,14 @@ pub enum Mutability {
 impl Mutability {
     /// Construct a [`Mutability`] from a bool denoting if the `mutability` is `Mutable` (`true`) or `Immutable` (`false`).
     #[inline]
+    #[must_use]
     pub const fn from_is_mutable(v: bool) -> Self {
         if v { Self::Mutable } else { Self::Immutable }
     }
 
     /// Returns true if the `self` is `Mutability::Mutable`.
     #[inline]
+    #[must_use]
     pub const fn is_mutable(self) -> bool {
         matches!(self, Self::Mutable)
     }
@@ -448,6 +483,7 @@ pub enum UnaryOpKind {
 impl UnaryOpKind {
     /// Returns the combination of characters that represent this operation.
     #[inline]
+    #[must_use]
     pub const fn symbols(self) -> &'static str {
         match self {
             Self::Dereference => "*",
@@ -502,6 +538,7 @@ impl BinaryOpKind {
     /// Returns how many tokens the operation takes to represent.
     /// (I.e. `Equal (=)` = 1, `And (&&)` = 2)
     #[inline]
+    #[must_use]
     pub const fn token_count(self) -> u32 {
         match self {
             Self::And
@@ -518,6 +555,7 @@ impl BinaryOpKind {
 
     /// Returns the combination of characters that represent this operation.
     #[inline]
+    #[must_use]
     pub const fn symbols(self) -> &'static str {
         match self {
             Self::Add => "+",
@@ -542,6 +580,7 @@ impl BinaryOpKind {
     }
 
     #[inline]
+    #[must_use]
     pub const fn is_valid_assign_op(self) -> bool {
         matches!(
             self,
@@ -587,6 +626,7 @@ impl ItemKind {
     /// # Example usage
     /// `ItemKind::Fn(..).get_name()` = "Function"
     #[inline]
+    #[must_use]
     pub const fn get_name(&self) -> &'static str {
         match self {
             Self::Use(_) => "Use",
@@ -601,6 +641,7 @@ impl ItemKind {
 
     /// Returns the `Identifier` of the item kind, if applicable.
     #[inline]
+    #[must_use]
     pub fn ident(&self) -> Option<String> {
         match self {
             Self::Const(constant) => Some(constant.ident.string()),
@@ -635,16 +676,21 @@ pub struct Ident(pub String);
 impl Ident {
     /// Create a new identifier from a source string.
     #[inline]
+    #[must_use]
     pub fn new(src: impl AsRef<str>) -> Self {
         Self(src.as_ref().to_string())
     }
 
     /// Clones the inner string.
+    #[inline]
+    #[must_use]
     pub fn string(&self) -> String {
         self.0.clone()
     }
 
     /// Reference to the inner string as a slice.
+    #[inline]
+    #[must_use]
     pub fn str(&self) -> &str {
         &self.0
     }
@@ -671,6 +717,8 @@ pub struct SpannedIdent {
 }
 
 impl SpannedIdent {
+    #[inline]
+    #[must_use]
     pub fn new(ident: impl AsRef<str>, span: SourceSpan) -> Self {
         Self {
             ident: Ident::new(ident),
@@ -679,22 +727,29 @@ impl SpannedIdent {
     }
 
     /// Clones the inner string.
+    #[inline]
+    #[must_use]
     pub fn string(&self) -> String {
         self.ident.string()
     }
 
     /// Reference to the inner string as a slice.
+    #[inline]
+    #[must_use]
     pub fn str(&self) -> &str {
         self.ident.str()
     }
 
     /// Clones `self.ident`.
+    #[inline]
+    #[must_use]
     pub fn ident(&self) -> Ident {
         self.ident.clone()
     }
 
     /// Converts to a [`SpannedIdentPath`] with a single segment.
     #[inline]
+    #[must_use]
     pub fn as_spanned_path(&self) -> SpannedIdentPath {
         SpannedIdentPath::new(
             IdentPath::from_segments_slice(&[self.ident.string()], false),
@@ -749,6 +804,7 @@ impl Ty {
     /// # Returns
     /// `Ty::Type(src)`
     #[inline]
+    #[must_use]
     pub const fn new(src: SpannedIdentPath) -> Self {
         Self::Type(src)
     }
@@ -759,6 +815,7 @@ impl Ty {
     /// *   `Ty::Infer`, returns `None`.
     /// *   `Ty::This`, returns `None`, since we need to have context about it to deduce the type.
     #[inline]
+    #[must_use]
     pub fn get_type_ident(&self) -> Option<String> {
         match self {
             Self::Unit(_) => Some("()".to_string()),
@@ -773,6 +830,7 @@ impl Ty {
 
     /// Returns the span of the type specifier if possible.
     #[inline]
+    #[must_use]
     pub const fn get_span(&self) -> Option<SourceSpan> {
         match self {
             Self::Unit(s) => Some(*s),
@@ -827,6 +885,7 @@ pub struct Item {
 
 impl Item {
     #[inline]
+    #[must_use]
     pub const fn new(kind: ItemKind, vis: Visibility, span: SourceSpan) -> Self {
         Self { vis, kind, span }
     }
@@ -890,6 +949,7 @@ pub enum ExpressionAssociation {
 
 impl BinaryOpKind {
     #[inline]
+    #[must_use]
     pub const fn get_order(self) -> ExpressionOrder {
         match self {
             Self::Add | Self::Sub => ExpressionOrder::Sum,
@@ -910,6 +970,7 @@ impl BinaryOpKind {
     }
 
     #[inline]
+    #[must_use]
     pub const fn get_association(self) -> ExpressionAssociation {
         match self {
             Self::Add
@@ -1061,6 +1122,7 @@ impl ExpressionKind {
     /// Returns `true` if the expression is allowed to omit the trailing semi-colon without being
     /// the last statement in a block.
     #[inline]
+    #[must_use]
     pub const fn can_be_non_semi(&self) -> bool {
         matches!(
             self,
@@ -1070,6 +1132,7 @@ impl ExpressionKind {
 
     /// Get the "precendence" of the expression.
     #[inline]
+    #[must_use]
     pub const fn get_order(&self) -> ExpressionOrder {
         match self {
             Self::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_order(),
@@ -1082,6 +1145,7 @@ impl ExpressionKind {
 
     /// Get the "association" of the expression.
     #[inline]
+    #[must_use]
     pub const fn get_association(&self) -> ExpressionAssociation {
         match self {
             Self::BinaryOp(binary_op_kind, _, _) => binary_op_kind.get_association(),
@@ -1152,23 +1216,27 @@ pub struct Expression {
 
 impl Expression {
     #[inline]
+    #[must_use]
     pub const fn new(kind: ExpressionKind, span: SourceSpan) -> Self {
         Self { kind, span }
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(kind: ExpressionKind, span: SourceSpan) -> Box<Self> {
         Box::new(Self::new(kind, span))
     }
 
     /// Get the "precendence" of the expression.
     #[inline]
+    #[must_use]
     pub const fn get_order(&self) -> ExpressionOrder {
         self.kind.get_order()
     }
 
     /// Get the "association" of the expression.
     #[inline]
+    #[must_use]
     pub const fn get_association(&self) -> ExpressionAssociation {
         self.kind.get_association()
     }
@@ -1216,6 +1284,7 @@ pub struct Statement {
 
 impl Statement {
     #[inline]
+    #[must_use]
     pub const fn new(kind: StatementKind, source_span: SourceSpan) -> Self {
         Self {
             kind,
@@ -1269,6 +1338,7 @@ pub struct Local {
 
 impl Local {
     #[inline]
+    #[must_use]
     pub const fn new(ident: SpannedIdent, ty: Ty, kind: LocalKind, mutable: Mutability) -> Self {
         Self {
             ident,
@@ -1279,6 +1349,7 @@ impl Local {
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(
         ident: SpannedIdent,
         ty: Ty,
@@ -1317,11 +1388,13 @@ pub struct Constant {
 
 impl Constant {
     #[inline]
+    #[must_use]
     pub const fn new(ident: SpannedIdent, ty: Ty, expr: Box<Expression>) -> Self {
         Self { ident, ty, expr }
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(ident: SpannedIdent, ty: Ty, expr: Box<Expression>) -> Box<Self> {
         Box::new(Self::new(ident, ty, expr))
     }
@@ -1352,6 +1425,7 @@ impl Debug for Block {
 
 impl Block {
     #[inline]
+    #[must_use]
     pub const fn new(statements: Vec<Statement>, span: SourceSpan) -> Self {
         Self { statements, span }
     }
@@ -1369,6 +1443,7 @@ pub struct Parameter {
 
 impl Parameter {
     #[inline]
+    #[must_use]
     pub const fn new(ident: SpannedIdent, ty: Ty, mutable: Mutability, span: SourceSpan) -> Self {
         Self {
             ident,
@@ -1424,6 +1499,7 @@ pub struct Function {
 
 impl Function {
     #[inline]
+    #[must_use]
     pub const fn new(
         ident: SpannedIdent,
         native: bool,
@@ -1467,6 +1543,7 @@ pub struct StructField {
 
 impl StructField {
     #[inline]
+    #[must_use]
     pub const fn new(ident: SpannedIdent, ty: Ty, vis: Visibility, span: SourceSpan) -> Self {
         Self {
             ident,
@@ -1496,11 +1573,13 @@ pub struct Struct {
 
 impl Struct {
     #[inline]
+    #[must_use]
     pub const fn new(ident: SpannedIdent, fields: Vec<StructField>) -> Self {
         Self { ident, fields }
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(ident: SpannedIdent, fields: Vec<StructField>) -> Box<Self> {
         Box::new(Self::new(ident, fields))
     }
@@ -1546,6 +1625,7 @@ pub struct EnumVariant {
 
 impl EnumVariant {
     #[inline]
+    #[must_use]
     pub const fn new(ident: Ident, data: VariantData) -> Self {
         Self { ident, data }
     }
@@ -1570,23 +1650,27 @@ pub struct Enum {
 
 impl Enum {
     #[inline]
+    #[must_use]
     pub const fn new(ident: SpannedIdent, variants: Vec<EnumVariant>) -> Self {
         Self { ident, variants }
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(ident: SpannedIdent, variants: Vec<EnumVariant>) -> Box<Self> {
         Box::new(Self::new(ident, variants))
     }
 
     /// Does the enum have 'zero' variants?
     #[inline]
+    #[must_use]
     pub const fn is_never_type(&self) -> bool {
         self.variants.is_empty()
     }
 
     /// Does the enum have exactly 'one' variant?
     #[inline]
+    #[must_use]
     pub const fn is_unit_type(&self) -> bool {
         self.variants.len() == 1
     }
@@ -1619,11 +1703,13 @@ pub struct Module {
 
 impl Module {
     #[inline]
+    #[must_use]
     pub const fn new(ident: SpannedIdent, kind: ModuleKind) -> Self {
         Self { ident, kind }
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(ident: SpannedIdent, kind: ModuleKind) -> Box<Self> {
         Box::new(Self::new(ident, kind))
     }
@@ -1649,6 +1735,7 @@ pub struct Impl {
 
 impl Impl {
     #[inline]
+    #[must_use]
     pub const fn new(target_path: SpannedIdentPath, lang_item: bool, items: Vec<Item>) -> Self {
         Self {
             target_path,
@@ -1658,6 +1745,7 @@ impl Impl {
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(
         target_path: SpannedIdentPath,
         lang_item: bool,
@@ -1687,6 +1775,7 @@ pub struct MethodCall {
 
 impl MethodCall {
     #[inline]
+    #[must_use]
     pub const fn new(
         target_expr: Box<Expression>,
         method_ident: SpannedIdent,
@@ -1700,6 +1789,7 @@ impl MethodCall {
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(
         target_expr: Box<Expression>,
         method_ident: SpannedIdent,
@@ -1731,6 +1821,7 @@ pub struct FieldInitialisation {
 
 impl FieldInitialisation {
     #[inline]
+    #[must_use]
     pub const fn new(ident: Ident, expr: Box<Expression>, span: SourceSpan) -> Self {
         Self { ident, expr, span }
     }
@@ -1755,11 +1846,13 @@ pub struct StructInitialisation {
 
 impl StructInitialisation {
     #[inline]
+    #[must_use]
     pub const fn new(path: SpannedIdentPath, fields: Vec<FieldInitialisation>) -> Self {
         Self { path, fields }
     }
 
     #[inline]
+    #[must_use]
     pub fn new_boxed(path: SpannedIdentPath, fields: Vec<FieldInitialisation>) -> Box<Self> {
         Box::new(Self::new(path, fields))
     }
@@ -1784,6 +1877,7 @@ pub struct UseImport {
 
 impl UseImport {
     #[inline]
+    #[must_use]
     pub const fn new(span: SourceSpan, imports: Vec<IdentPath>) -> Self {
         Self { span, imports }
     }

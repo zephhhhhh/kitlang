@@ -15,10 +15,14 @@ pub enum ResolverErrorKind {
 }
 
 impl ResolverErrorKind {
+    #[inline]
+    #[must_use]
     pub fn with_span(&self, span: impl Into<SourceSpan>) -> ResolverError {
         ResolverError::new(self.clone(), span)
     }
 
+    #[inline]
+    #[must_use]
     pub fn with_no_span(&self) -> ResolverError {
         ResolverError::new(self.clone(), SourceSpan::null_span())
     }
@@ -41,6 +45,7 @@ impl ResolverError {
         }
     }
 
+    #[must_use]
     pub fn format_as_error_message(&self, source_string: &str) -> String {
         match &self.error_kind {
             ResolverErrorKind::UnresolvedReferences(unresolved_references) => {
@@ -134,6 +139,8 @@ pub enum ResolutionFailure {
 
 impl ResolutionFailure {
     /// Returns a human-readable description of the resolution failure with a specific target ident.
+    #[inline]
+    #[must_use]
     pub fn error_message_for(&self, target_ident: &str) -> String {
         match self {
             Self::NotFound => {

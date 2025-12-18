@@ -45,6 +45,8 @@ pub fn set_input_callback(cb: js_sys::Function) {
     });
 }
 
+#[inline]
+#[must_use]
 pub fn return_value_type(ret_val: &str) -> Option<KitTy> {
     KitTy::from_primitive_ty_str(ret_val)
 }

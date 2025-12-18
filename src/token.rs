@@ -153,6 +153,7 @@ impl Keyword {
     /// Returns true if the [`Keyword`] is 'significant' (I.e. not a 'modifier' such as `pub`
     /// or `mut`, rather something that can start an `expression` or `item` such as `let`)
     #[inline]
+    #[must_use]
     pub const fn is_significant(self) -> bool {
         !matches!(self, Self::Pub | Self::Mut | Self::Native | Self::Global)
     }
@@ -160,6 +161,7 @@ impl Keyword {
     /// Returns true if the [`Keyword`] is a valid keyword that can start an `Item` expression,
     /// I.e. Function, Struct, etc..
     #[inline]
+    #[must_use]
     pub const fn can_start_item(self) -> bool {
         matches!(
             self,
@@ -249,6 +251,7 @@ impl TokenKind {
     /// Returns true if the [`TokenKind`] is a valid token that can start an `Item` expression,
     /// I.e. Function, Struct, etc..
     #[inline]
+    #[must_use]
     pub const fn can_start_item(&self) -> bool {
         match self {
             Self::Keyword(kw) => kw.can_start_item(),
@@ -258,12 +261,14 @@ impl TokenKind {
 
     /// Returns `true` if the [`TokenKind`] is a valid `identifier`.
     #[inline]
+    #[must_use]
     pub const fn is_ident(&self) -> bool {
         matches!(self, Self::Ident(_))
     }
 
     /// Returns `Some(ident)` if the [`TokenKind`] is a valid `identifier`, `None` otherwise.
     #[inline]
+    #[must_use]
     pub fn get_ident(&self) -> Option<String> {
         match self {
             Self::Ident(i) => Some(i.clone()),
@@ -274,6 +279,7 @@ impl TokenKind {
     /// Returns `true` if the [`TokenKind`] is 'significant', (I.e. not a 'modifier' such as `pub`
     /// or `mut`, rather something that can start an `expression` or `item` such as `let`)
     #[inline]
+    #[must_use]
     pub const fn is_significant(&self) -> bool {
         match self {
             Self::Ident(_) => true,

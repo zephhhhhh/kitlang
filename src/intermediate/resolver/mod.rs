@@ -32,6 +32,8 @@ pub enum ADTKind {
 
 impl ADTKind {
     #[allow(dead_code)]
+    #[inline]
+    #[must_use]
     pub const fn is_struct(&self) -> bool {
         matches!(self, Self::Struct(_))
     }
@@ -60,6 +62,8 @@ impl Debug for ADTTypeInfo {
 }
 
 impl ADTTypeInfo {
+    #[inline]
+    #[must_use]
     pub const fn new_struct(
         owner_id: OwnerDefId,
         defined_in: IdentPath,
@@ -75,26 +79,36 @@ impl ADTTypeInfo {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn full_path(&self) -> IdentPath {
         self.defined_in.extend_ident(&self.type_ident.ident())
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_fields(&self) -> &[ADTStructField] {
         match &self.kind {
             ADTKind::Struct(fields) => fields,
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_fields_mut(&mut self) -> &mut [ADTStructField] {
         match &mut self.kind {
             ADTKind::Struct(fields) => fields,
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_field_count(&self) -> usize {
         self.get_fields().len()
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_field_index(&self, field_name: &str) -> Option<usize> {
         for (index, field) in self.get_fields().iter().enumerate() {
             if field.ident.str() == field_name {
@@ -104,12 +118,16 @@ impl ADTTypeInfo {
         None
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_field_by_ident(&self, field_name: &str) -> Option<&ADTStructField> {
         self.get_fields()
             .iter()
             .find(|f| f.ident.str() == field_name)
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_field_by_ident_mut(&mut self, field_name: &str) -> Option<&mut ADTStructField> {
         self.get_fields_mut()
             .iter_mut()
@@ -128,6 +146,8 @@ pub struct TypeRegistry {
 }
 
 impl TypeRegistry {
+    #[inline]
+    #[must_use]
     pub fn register_adt(&mut self, mut info: ADTTypeInfo) -> TypeID {
         let full_path = info.defined_in.extend_ident(&info.type_ident.ident());
 
@@ -141,14 +161,20 @@ impl TypeRegistry {
         type_id
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_from_type_id(&self, id: TypeID) -> Option<&ADTTypeInfo> {
         self.store.get(id)
     }
 
+    #[inline]
+    #[must_use]
     pub fn get_from_type_id_mut(&mut self, id: TypeID) -> Option<&mut ADTTypeInfo> {
         self.store.get_mut(id)
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_type_from_path(&self, path: &IdentPath) -> Option<KitTy> {
         if path.len() == 1
             && path.is_root_relative()
@@ -160,6 +186,8 @@ impl TypeRegistry {
         }
     }
 
+    #[inline]
+    #[must_use]
     pub fn adt_types(&self) -> &[ADTTypeInfo] {
         &self.store
     }
@@ -178,6 +206,8 @@ pub enum NamespaceKind {
 
 impl NamespaceKind {
     #[allow(dead_code)]
+    #[inline]
+    #[must_use]
     pub const fn is_resolvable_type(&self) -> bool {
         !matches!(self, Self::Module)
     }
@@ -194,6 +224,8 @@ pub struct Namespace {
 }
 
 impl Namespace {
+    #[inline]
+    #[must_use]
     pub fn default_root_definition() -> Self {
         Self {
             ident: "::".to_string(),
@@ -208,11 +240,13 @@ impl Namespace {
 
 impl Namespace {
     #[inline]
+    #[must_use]
     pub fn get(&self, ident: &str) -> Option<&Self> {
         self.items.get(ident)
     }
 
     #[inline]
+    #[must_use]
     pub fn get_mut(&mut self, ident: &str) -> Option<&mut Self> {
         self.items.get_mut(ident)
     }
@@ -223,16 +257,20 @@ impl Namespace {
     }
 
     #[inline]
+    #[must_use]
     pub fn is_module(&self) -> bool {
         self.kind == NamespaceKind::Module
     }
 
     #[allow(dead_code)]
+    #[inline]
+    #[must_use]
     pub const fn is_resolvable_type(&self) -> bool {
         self.kind.is_resolvable_type()
     }
 
     /// Track backwards from the path, finding the "deepest" enclosing scope of the path.
+    #[must_use]
     pub fn try_find_previous_enclosing_scope_impl(&self, path: &IdentPath) -> Option<IdentPath> {
         if !path.is_root_relative() {
             return None;
@@ -253,6 +291,7 @@ impl Namespace {
     }
 
     /// Track backwards from the path, finding the "deepest" module of the path.
+    #[must_use]
     pub fn try_find_previous_module_impl(&self, path: &IdentPath) -> Option<IdentPath> {
         if !path.is_root_relative() {
             return None;
@@ -270,21 +309,29 @@ impl Namespace {
     }
 
     /// Track backwards from the path, finding the "deepest" enclosing scope of the path.
+    #[inline]
+    #[must_use]
     pub fn find_previous_enclosing_scope(&self, path: &IdentPath) -> IdentPath {
         self.try_find_previous_enclosing_scope_impl(path)
             .unwrap_or_else(|| IdentPath::new_empty(true))
     }
 
     /// Track backwards from the path, finding the "deepest" module of the path.
+    #[inline]
+    #[must_use]
     pub fn find_previous_module(&self, path: &IdentPath) -> IdentPath {
         self.try_find_previous_module_impl(path)
             .unwrap_or_else(|| IdentPath::new_empty(true))
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_previous_module_from(&self, base: &IdentPath, path: &IdentPath) -> IdentPath {
         self.find_previous_module(&path.rebase_from_path(base))
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_definition_from_segments(&self, path: &[IdentPathSegment]) -> Option<&Self> {
         let mut curr_namespace = self;
         for segment in path {
@@ -293,15 +340,21 @@ impl Namespace {
         Some(curr_namespace)
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_definition(&self, path: &IdentPath) -> Option<&Self> {
         self.find_definition_from_segments(path.segments())
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_definition_from(&self, base: &IdentPath, path: &IdentPath) -> Option<&Self> {
         let final_path = path.rebase_from_path(base);
         self.find_definition_from_segments(final_path.segments())
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_method(
         &self,
         defined_in: &IdentPath,
@@ -315,6 +368,8 @@ impl Namespace {
             .get(method_ident)
     }
 
+    #[inline]
+    #[must_use]
     pub fn find_method_owner_def(
         &self,
         defined_in: &IdentPath,

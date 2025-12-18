@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{format_ident, quote};

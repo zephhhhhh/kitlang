@@ -1,5 +1,10 @@
 #![feature(iter_advance_by)]
 #![feature(debug_closure_helpers)]
+
+// Linting rules..
+
+#![warn(clippy::must_use_candidate)]
+#![warn(clippy::return_self_not_must_use)]
 #![allow(clippy::too_long_first_doc_paragraph)]
 
 //! Kitlang is a language built for embedding/scripting purposes
@@ -88,6 +93,8 @@ pub fn parse_source_string_to_mir_no_std(
 }
 
 /// Inject the standard library code into a provided source code string.
+#[inline]
+#[must_use]
 pub fn inject_standard_library(source: &str) -> String {
     const CORE_LIB: &str = include_str!("../kit-std/core.purr");
     const INTRINSICS_LIB: &str = include_str!("../kit-std/intrinsics.purr");

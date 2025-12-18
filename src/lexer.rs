@@ -67,6 +67,7 @@ impl<'a> CodeCursor<'a> {
     /// # Returns
     /// The character at the current cursor position, or the `EOF` char if the position is invalid.
     #[inline]
+    #[must_use]
     pub fn peek(&self) -> char {
         self.chars.clone().next().unwrap_or(EOF_CHAR)
     }
@@ -74,6 +75,7 @@ impl<'a> CodeCursor<'a> {
     /// Peek the next or 'current' character, without `consuming` it. (Without advancing the
     /// cursor).
     #[inline]
+    #[must_use]
     pub fn peek_opt(&self) -> Option<char> {
         self.chars.clone().next()
     }
@@ -81,6 +83,7 @@ impl<'a> CodeCursor<'a> {
     /// Peek at the character after the current character, without `consuming` (without advancing
     /// the cursor).
     #[inline]
+    #[must_use]
     pub fn peek_second(&self) -> char {
         let mut iter = self.chars.clone();
         iter.next();
@@ -90,6 +93,7 @@ impl<'a> CodeCursor<'a> {
     /// Peek at the character two characters after the current character, without
     /// `consuming` (without advancing the cursor).
     #[inline]
+    #[must_use]
     pub fn peek_third(&self) -> char {
         let mut iter = self.chars.clone();
         iter.next();
@@ -102,6 +106,7 @@ impl<'a> CodeCursor<'a> {
     /// The character at the specified `offset` or `None` if the iterator could not be advanced to
     /// that point.
     #[inline]
+    #[must_use]
     pub fn peek_at(&self, offset: CodeCursorIndex) -> Option<char> {
         if offset == 0 {
             self.chars.clone().next()
@@ -288,11 +293,15 @@ pub const fn is_whitespace(c: char) -> bool {
 }
 
 /// Returns true if the character sequence describes a comment or doc block.
+#[inline]
+#[must_use]
 const fn is_comment_sequence(first_char: char, second_char: char) -> bool {
     first_char == '/' && (second_char == '/' || second_char == '*')
 }
 
 /// Returns true if the char is considered a newline char (`'\r'` or `'\n'`)
+#[inline]
+#[must_use]
 const fn is_newline_char(c: char) -> bool {
     c == '\r' || c == '\n'
 }
@@ -306,6 +315,8 @@ struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     /// Construct a new lexer state from an input string.
+    #[inline]
+    #[must_use]
     pub fn new(source_string: &'a str) -> Self {
         Self {
             source_string,
@@ -314,6 +325,8 @@ impl<'a> Lexer<'a> {
     }
 
     /// Read a token from the current cursor position.
+    #[inline]
+    #[must_use]
     pub fn read_token(&mut self) -> Option<Token> {
         self.cursor.consume_whitespace();
 
@@ -344,6 +357,7 @@ impl<'a> Lexer<'a> {
     /// Returns a substring of the `source_string` starting at the `start` index, and ending
     /// exclusively at the `end` index.
     #[inline]
+    #[must_use]
     fn substr(&self, start: CodeCursorIndex, end: CodeCursorIndex) -> &'a str {
         &self.source_string[(start as usize)..(end as usize)]
     }
@@ -465,6 +479,7 @@ impl Lexer<'_> {
 
     /// Parses an identifier from the cursor.
     #[inline]
+    #[must_use]
     fn identifier(&mut self) -> Option<Token> {
         let pos = self.cursor.position();
         let end_pos = pos
@@ -492,6 +507,7 @@ impl Lexer<'_> {
     /// *   Decimal       ('820') and (2.1023)
     /// *   E-notation    ('2.1e6')
     #[inline]
+    #[must_use]
     fn numeric_literal(&mut self) -> Option<Token> {
         // FIXME: Does not allow for whitespace between sign and number.
         let pos = self.cursor.position();
@@ -561,6 +577,7 @@ impl Lexer<'_> {
 
     /// Parses a string literal from the cursor.
     #[inline]
+    #[must_use]
     fn string_literal(&mut self) -> Option<Token> {
         let pos = self.cursor.position();
         self.cursor.consume_expect(&['"'])?;
@@ -590,6 +607,8 @@ impl Lexer<'_> {
 }
 
 /// Returns `true` if the token kind is a comment, or documentation token.
+#[inline]
+#[must_use]
 const fn is_comment_token_kind(t: &TokenKind) -> bool {
     matches!(
         t,
