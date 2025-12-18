@@ -994,7 +994,12 @@ fn register_compiler_intrinsics(interpreter: &mut Interpreter) {
         f64_to_string,
         string_to_f64,
         bool_to_string,
-        string_to_bool
+        string_to_bool,
+        i64_sqrt,
+        u64_sqrt,
+        f64_sqrt,
+        i64_abs,
+        f64_abs
     );
 
     #[cfg(not(feature = "webasm"))]
@@ -1115,6 +1120,28 @@ fn is_empty(s: String) -> bool {
 #[kitlang_native_fn]
 fn to_lower(s: String) -> String {
     s.to_lowercase()
+}
+
+#[kitlang_native_fn]
+fn i64_sqrt(i: i64) -> i64 {
+    i.isqrt()
+}
+#[kitlang_native_fn]
+fn u64_sqrt(u: u64) -> u64 {
+    u.isqrt()
+}
+#[kitlang_native_fn]
+fn f64_sqrt(f: f64) -> f64 {
+    f.sqrt()
+}
+
+#[kitlang_native_fn]
+fn i64_abs(i: i64) -> i64 {
+    i.abs()
+}
+#[kitlang_native_fn]
+fn f64_abs(f: f64) -> f64 {
+    f.abs()
 }
 
 #[cfg(not(feature = "webasm"))]

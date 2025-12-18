@@ -666,12 +666,15 @@ impl HLIRLowerer<'_> {
             }
             ast::ExpressionKind::MethodCall(method_call) => {
                 let target_expr = self.lower_expression(&method_call.target_expr, owner_node)?;
-                let method_ident = method_call.method_ident.ident();
                 let mut arg_ids = Vec::new();
                 for arg_expr in &method_call.args {
                     arg_ids.push(self.lower_expression(arg_expr, owner_node)?);
                 }
-                Ok(ExprKind::MethodCall(target_expr, method_ident, arg_ids))
+                Ok(ExprKind::MethodCall(
+                    target_expr,
+                    method_call.method_ident.clone(),
+                    arg_ids,
+                ))
             }
             ast::ExpressionKind::Index(expression, expression1) => {
                 let target_expr = self.lower_expression(expression, owner_node)?;

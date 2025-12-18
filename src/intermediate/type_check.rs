@@ -445,7 +445,7 @@ impl TypeChecker<'_> {
                     return Err(type_fail!(
                         hlir,
                         expr.id,
-                        "Function argument count mismatch. Expected: {}, supplied: {}",
+                        "Function argument count mismatch. Expected: `{}`, supplied: `{}`",
                         func_args.len(),
                         user_params.len()
                     ));
@@ -500,9 +500,9 @@ impl TypeChecker<'_> {
 
                         if func.sig.parameters.len() != user_params.len().wrapping_add(1) {
                             return Err(type_fail!(
-                                hlir,
-                                *hir_id,
-                                "Method called with incorrect number of arguments! Expected: {}, supplied: {}",
+                                on_span,
+                                ident.span,
+                                "Method called with incorrect number of arguments! Expected: `{}`, supplied: `{}`",
                                 func.sig.parameters.len().saturating_sub(1),
                                 user_params.len(),
                             ));

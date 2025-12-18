@@ -690,7 +690,7 @@ pub enum ExprKind {
     /// Call(`target`: `HIRNode::Expr`, `args`: `Vec<HIRNode::Expr>`)
     Call(HirId, Vec<HirId>),
     /// Method Call(`target`: `HIRNode::Expr`, `method_name`: Ident, `args`: `Vec<HIRNode::Expr>`)
-    MethodCall(HirId, Ident, Vec<HirId>),
+    MethodCall(HirId, SpannedIdent, Vec<HirId>),
     /// Index(`target`: `HIRNode::Expr`, `index`: `HIRNode::Expr`)
     Index(HirId, HirId),
     /// Field Access(`target`: `HIRNode::Expr`, `field_name`: Ident)

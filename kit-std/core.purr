@@ -1,52 +1,71 @@
 // @lang
 impl i8 { 
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
+    pub fn sqrt(self) -> i8 { i64_sqrt(self as i64) as i8 }
+    pub fn abs(self) -> i8 { i64_abs(self as i64) as i8 }
 }
 // @lang
 impl i16 { 
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
+    pub fn sqrt(self) -> i16 { i64_sqrt(self as i64) as i16 }
+    pub fn abs(self) -> i16 { i64_abs(self as i64) as i16 }
 }
 // @lang
 impl i32 { 
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
+    pub fn sqrt(self) -> i32 { i64_sqrt(self as i64) as i32 }
+    pub fn abs(self) -> i32 { i64_abs(self as i64) as i32 }
 }
 // @lang
 impl i64 { 
-    pub fn to_string(self) -> string { i64_to_string(self as i64) }
+    pub fn to_string(self) -> string { i64_to_string(self) }
+    pub fn sqrt(self) -> i64 { i64_sqrt(self) }
+    pub fn abs(self) -> i64 { i64_abs(self) }
 }
 // @lang
 impl i128 { 
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
+    pub fn sqrt(self) -> i128 { i64_sqrt(self as i64) as i128 }
+    pub fn abs(self) -> i128 { i64_abs(self as i64) as i128 }
 }
 
 // @lang
 impl u8 { 
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
+    pub fn sqrt(self) -> u8 { u64_sqrt(self as u64) as u8 }
 }
 // @lang
 impl u16 { 
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
+    pub fn sqrt(self) -> u16 { u64_sqrt(self as u64) as u16 }
 }
 // @lang
 impl u32 { 
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
+    pub fn sqrt(self) -> u32 { u64_sqrt(self as u64) as u32 }
 }
 // @lang
 impl u64 { 
     pub fn to_string(self) -> string { u64_to_string(self) }
+    pub fn sqrt(self) -> u64 { u64_sqrt(self) }
 }
 // @lang
 impl u128 { 
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
+    pub fn sqrt(self) -> u128 { u64_sqrt(self as u64) as u128 }
 }
 
 // @lang
 impl f32 {
     pub fn to_string(self) -> string { f64_to_string(self as f64) }
+    pub fn sqrt(self) -> f32 { f64_sqrt(self as f64) as f32 }
+    pub fn abs(self) -> f32 { f64_abs(self as f64) as f32 }
 }
 // @lang
 impl f64 {
     pub fn to_string(self) -> string { f64_to_string(self) }
+    pub fn sqrt(self) -> f64 { f64_sqrt(self) }
+    pub fn abs(self) -> f64 { f64_abs(self) }
 }
 
 // @lang
