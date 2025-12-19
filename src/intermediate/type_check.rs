@@ -1,3 +1,19 @@
+//! The purpose of this module is to perform type checking on the resolved [`HLIR`] after reference resolution.
+//! It validates that all type rules are followed, ensures type compatibility across operations, and infers
+//! types where explicit annotations are absent.
+//!
+//! This pass walks the [`HLIR`] mutably, checking expressions, statements, and function signatures for type
+//! correctness. It validates binary and unary operations, function calls, struct initialization, field access,
+//! and control flow constructs (if, while, return). Type errors are collected and reported together rather than
+//! failing immediately, to ensure multiple errors can be corrected at once, rather than having to fix an error
+//! one at a time and recompiling to test it.
+//!
+//! The type checker maintains a [`TypeMap`] that associates each [`HirId`] with its inferred or validated [`Type`],
+//! and validates that each function adheres to its declared signature.
+//!
+//! This module is exclusively focused on type checking and type inference. Reference resolution and namespace
+//! management must be completed before this pass runs.
+
 use std::collections::HashMap;
 
 use crate::ast::{Literal, SourceSpan};
@@ -27,11 +43,13 @@ macro_rules! type_fail {
     };
 }
 
+/// Side channel data that maps a [`HirId`] to its inferred or validated [`Type`].
 pub type TypeMap = HashMap<HirId, Type>;
 
 // Type funcs
 pub type TypeResult<T> = Result<T, TypeCheckFail>;
 
+/// Retrieves a mutable reference to a statement node by its [`HirId`].
 #[inline]
 fn statement_mut_by_id(
     id: HirId,
@@ -53,13 +71,17 @@ fn statement_mut_by_id(
     }
 }
 
+/// Type checker that validates types in the [`HLIR`] after resolution.
 #[derive(Debug)]
 struct TypeChecker<'a> {
     pub meta: &'a mut ProgramMetaData,
 
+    /// Whether to perform type inference where types are not explicitly provided.
     pub should_infer: bool,
 
+    /// Collected type checking failures.
     pub errors: Vec<TypeCheckFail>,
+    /// Stack to track the expected return types in nested function contexts.
     pub return_type_stack: Vec<Type>,
 }
 
@@ -75,21 +97,25 @@ impl<'a> TypeChecker<'a> {
 }
 
 impl TypeChecker<'_> {
+    /// Pushes the current expected return type onto the stack.
     #[inline]
     pub fn push_current_return_type(&mut self, t: Type) {
         self.return_type_stack.push(t);
     }
 
+    /// Pops the current expected return type from the stack.
     #[inline]
     pub fn pop_current_return_type(&mut self) {
         self.return_type_stack.pop();
     }
 
+    /// Retrieves the current expected return type from the top of the stack, if it is set.
     #[inline]
     pub fn current_expected_return(&self) -> Option<Type> {
         self.return_type_stack.last().cloned()
     }
 
+    /// Attempts to get a human-readable type name for the given [`Type`].
     #[inline]
     #[must_use]
     pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
@@ -104,15 +130,19 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Gets a human-readable type name for the given [`Type`], defaulting to `"??"` if it cannot be determined.
     #[inline]
     #[must_use]
     pub fn type_name(&self, ty: impl Into<Type>) -> String {
-        self.try_type_name(ty)
-            .unwrap_or_else(|| String::from("UnknownType"))
+        self.try_type_name(ty).unwrap_or_else(|| String::from("??"))
     }
 }
 
 impl TypeChecker<'_> {
+    /// Ensures that the given type is resolved.
+    /// # Returns
+    /// * `Ok(KitTy)` if the type is resolved.
+    /// * `Err(TypeCheckFail)` if the type is unresolved.
     #[inline]
     fn resolved_type(&self, id: HirId, t: &Type, hlir: &HLIRDisjointMut<'_>) -> TypeResult<KitTy> {
         t.resolved()
@@ -129,6 +159,10 @@ impl TypeChecker<'_> {
 }
 
 impl TypeChecker<'_> {
+    /// Retrieves the function signature (return type and parameter types) for a function call expression by its [`HirId`].
+    /// # Returns
+    /// * `Ok((Type, Vec<Type>))` containing the return type and parameter types if successful.
+    /// * `Err(TypeCheckFail)` if there was an error retrieving the function signature.
     fn get_func_sig_by_call_expr_id(
         id: HirId,
         hlir: &mut HLIRDisjointMut<'_>,
@@ -185,6 +219,11 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Retrieves the type of a function parameter by its function [`OwnerDefId`] and parameter index.
+    /// Also takes the expression [`HirId`] for error reporting.
+    /// # Returns
+    /// * `Ok(Type)` if the parameter type is found.
+    /// * `Err(TypeCheckFail)` if there was an error retrieving the parameter type.
     fn get_type_of_function_param(
         func_id: OwnerDefId,
         expr_id: HirId,
@@ -224,6 +263,11 @@ impl TypeChecker<'_> {
 }
 
 impl TypeChecker<'_> {
+    /// Validates that the given return type matches the expected return type for the current function context.
+    /// This is called when a root block is being type checked on it's final expression.
+    /// # Returns
+    /// * `Ok(Type)` if the return type matches the expected type.
+    /// * `Err(TypeCheckFail)` if there was a type mismatch.
     fn validate_return_value(
         &self,
         id: HirId,
@@ -246,6 +290,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Validates that the return type of the expression with the given [`HirId`] matches the expected return type.
+    /// # Returns
+    /// * `Ok(Type)` if the return type matches the expected type.
+    /// * `Err(TypeCheckFail)` if there was a type mismatch, or other error while evaluating the expression type.
     #[inline]
     fn validate_return_value_by_id(
         &mut self,
@@ -256,6 +304,10 @@ impl TypeChecker<'_> {
         self.validate_return_value(expr_id, return_type, hlir)
     }
 
+    /// Evaluates the type of a non-expression [`HLIR`] node (e.g., parameter or statement) by its [`HirId`].
+    /// # Returns
+    /// * `Ok(Type)` if the non-expression type is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
     fn eval_non_expr_hir_id(id: HirId, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
         let Some(node) = hlir.get_hir_node_mut(id) else {
             return Err(type_fail!(
@@ -296,6 +348,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Evaluates the type of an expression by its [`HirId`], updating the type map accordingly.
+    /// # Returns
+    /// * `Ok(Type)` if the expression type is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
     fn eval_expr_type_by_id(
         &mut self,
         id: HirId,
@@ -320,6 +376,10 @@ impl TypeChecker<'_> {
     }
 
     // This *has* to have too many lines..
+    /// Evaluates the type of an expression node.
+    /// # Returns
+    /// * `Ok(Type)` if the expression type is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
     #[allow(clippy::too_many_lines)]
     fn eval_expr_type(&mut self, expr: &Expr, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
         match &expr.kind {
@@ -758,6 +818,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Evaluates and infers the type of a let statement, updating the statement's type if necessary.
+    /// # Returns
+    /// * `Ok(Type)` if the let statement type is successfully evaluated or inferred.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation or inference.
     fn eval_and_infer_let_statement(
         &mut self,
         id: HirId,
@@ -816,6 +880,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Evaluates the type of a statement within a block.
+    /// # Returns
+    /// * `Ok(Type)` if the statement type is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
     fn eval_statement_type(
         &mut self,
         statement: &mut Statement,
@@ -839,6 +907,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Evaluates the type of a block by its [`HirId`].
+    /// # Returns
+    /// * `Ok(Type)` if the block type is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
     #[inline]
     fn eval_block_type_by_id(
         &mut self,
@@ -861,6 +933,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Checks if the statement with the given [`HirId`] is a return statement.
+    /// # Returns
+    /// * `Ok(bool)` indicating whether the statement is a return statement.
+    /// * `Err(TypeCheckFail)` if there was an error retrieving the statement.
     #[inline]
     fn is_id_return_statement(id: HirId, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<bool> {
         let node = hlir
@@ -884,6 +960,10 @@ impl TypeChecker<'_> {
         }
     }
 
+    /// Evaluates the type of a block.
+    /// # Returns
+    /// * `Ok(Type)` if the block type is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
     #[inline]
     fn eval_block_type(
         &mut self,
@@ -910,6 +990,11 @@ impl TypeChecker<'_> {
         Ok(Type::unit())
     }
 
+    /// Evaluates an owner definition (e.g., function, use statement).
+    /// This is a dispatch for type checking the internals of various owner definitions.
+    /// # Returns
+    /// * `Ok(())` if the owner definition is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during evaluation.
     fn eval_owner_def(
         &mut self,
         owner_def_id: OwnerDefId,
@@ -958,6 +1043,7 @@ impl HLIRVisitorMut<'_> for TypeChecker<'_> {
     }
 }
 
+/// Represents a type checking failure, containing the source span and reason for the failure.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeCheckFail {
     pub span: SourceSpan,
@@ -982,6 +1068,9 @@ impl TypeCheckFail {
 /// or incompatibilities as well as where in the source code they occurred.
 /// This function can return multiple diagnostics messages/errors at once, to provide a more comprehensive
 /// overview of all type checking issues in the HIR.
+/// # Returns
+/// * `Ok(())` if the type checking passes with no errors.
+/// * `Err(LoweringError)` if there are type checking failures, containing details of the failures.
 pub fn run_type_checker(hlir: &mut HLIR, meta: &mut ProgramMetaData) -> LowerResult<()> {
     let mut checker = TypeChecker::new(meta, true);
 

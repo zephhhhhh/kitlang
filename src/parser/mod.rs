@@ -1,3 +1,13 @@
+//! The parser module transforms a stream of tokens into an Abstract Syntax Tree.
+//!
+//! It provides recursive descent parsing for expressions, statements, and items.
+//!
+//! The parser maintains a [`TokenCursor`] to track position in the token stream and provides utilities
+//! for parsing paths, blocks, and structured language constructs.
+//!
+//! Parse a Kitlang program from source code using the [`parse_from_tokens`] and [`parse_from_source`] which produce
+//! an [`ASTRoot`] on success or a [`ParseError`] on failure.
+
 mod errors;
 mod expr;
 mod item;

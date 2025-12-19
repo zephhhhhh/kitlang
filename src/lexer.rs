@@ -1,3 +1,11 @@
+//! The lexer module transforms source code strings into streams of [`Token`]s.
+//!
+//! Provides a way to peek and consume characters from the source code string as a `Stream` like structure,
+//! as well as skipping whitespace, etc.
+//!
+//! The main API for this module are the `tokenise` and `tokenise_stripped` functions, which return iterators that will lazily
+//! parse tokens from the source string, with `tokenise_stripped` ignoring comments and documentation tokens.
+
 use std::str::Chars;
 
 use crate::token::{Keyword, LiteralKind, Punctuation, Token, TokenKind};

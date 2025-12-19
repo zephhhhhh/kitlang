@@ -1,3 +1,5 @@
+//! Public re-exports of commonly used items from the Kitlang compiler crate.
+
 pub use crate::lexer::{tokenise, tokenise_stripped};
 pub use crate::token::{Keyword, Punctuation, Token, TokenKind};
 

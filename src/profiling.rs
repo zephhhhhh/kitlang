@@ -1,3 +1,5 @@
+//! Small utilities module for profiling and displaying the execution time of code blocks in an easily read format.
+
 use std::time::Duration;
 #[cfg(not(feature = "webasm"))]
 use std::time::Instant;

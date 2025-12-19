@@ -1,3 +1,15 @@
+//! The HIR module provides the primary IR structure for the compiler.
+//! It transforms the AST into a flatter representation optimized for analysis passes like resolution and type checking.
+//!
+//! The [`HLIR`] organizes nodes into "owning nodes" (top-level items like functions, structs, impls) and their owned
+//! nodes (expressions, statements), each addressable via [`HirId`]. This structure enables efficient lookups and
+//! storage of side-channel data like type information without deep tree traversals, and having to store a way of navigating
+//! this tree structure.
+//!
+//! This module defines core ID types ([`HirId`], [`OwnerDefId`], [`LocalDefId`]), the [`HLIR`] container,
+//! program metadata ([`ProgramMetaData`]), and utilities for lowering, [traversing](crate::intermediate::hir::visitor),
+//! and manipulating the HIR.
+
 use ::std::fmt::Debug;
 
 use crate::ast::{ASTRoot, IdentPath, SourceSpan};
@@ -495,14 +507,13 @@ impl ProgramMetaData {
         }
     }
 
-    /// Get the type name of a given type, or `"UnknownType"` if it cannot be determined.
+    /// Get the type name of a given type, or `"??"` if it cannot be determined.
     /// # Returns
-    /// The type name, or `"UnknownType"` if the type name cannot be determined.
+    /// The type name, or `"??"` if the type name cannot be determined.
     #[inline]
     #[must_use]
     pub fn type_name(&self, ty: impl Into<Type>) -> String {
-        self.try_type_name(ty)
-            .unwrap_or_else(|| String::from("UnknownType"))
+        self.try_type_name(ty).unwrap_or_else(|| String::from("??"))
     }
 }
 

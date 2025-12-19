@@ -1,3 +1,13 @@
+//! Defines the type of tokens and keywords used in the Kitlang compiler.
+//!
+//! It provides [`TokenKind`] for representing different categories of tokens (keywords, punctuation, literals, etc),
+//! and the final [`Token`] struct which encapsulates a token's kind along with its position via a start and end character
+//! in the source code used for error handling and diagnostic formatting.
+//!
+//! [`Keyword`]s and [`Punctuation`]s are defined via macros to avoid code duplication and to allow for easy extension
+//! in the future if required. These macros define the string or character representations of each keyword/punctuation
+//! along with methods for parsing from strings/chars and converting back to strings/chars for parsing and displaying.
+
 use ::std::fmt::{Debug, Display};
 
 // Implemented with a macro for flexibility and for it to be more declarative.

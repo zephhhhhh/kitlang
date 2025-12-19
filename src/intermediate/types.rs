@@ -226,7 +226,9 @@ pub enum KitTy {
 
 impl KitTy {
     /// Tries to convert an AST type to a `KitTy`.
-    /// Returns None if the type is not a primitive type.
+    /// # Returns
+    /// * `Some(KitTy)` if the AST type corresponds to a primitive type.
+    /// * `None` if the AST type is not a primitive type (e.g., inferred type, user-defined type).
     #[inline]
     #[must_use]
     pub fn try_from_ast_ty(ty: &ASTTy) -> Option<Self> {

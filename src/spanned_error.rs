@@ -1,3 +1,9 @@
+//! Provides utilities for building formatted error messages with source code context and highlights.
+//!
+//! This module is used throughout the compiler to format different errors that may occur, that include
+//! source code snippets and highlighting of the exact location of the error, along with messages that
+//! describe the error in detail.
+
 use std::fmt::Write;
 use std::ops::Range;
 

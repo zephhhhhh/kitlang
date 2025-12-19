@@ -1,3 +1,16 @@
+//! Defines the Abstract Syntax Tree (AST) data structures produced by the parser.
+//!
+//! The AST represents the hierarchy of items in source code after parsing, things like [`Expression`]s being
+//! inside a [`Statement`], which is inside a [`Function`], which is inside a [`Module`] etc.
+//!
+//! The module provides [`ASTRoot`] as the root container/node of the AST, [`IdentPath`] for module/type paths,
+//! and represents all possible expressions, statements, items, etc.
+//!
+//! After parsing the source code is in a "complete" form syntactically, and fully describes what the program should do.
+//! However, it does not contain any semantic information, such as types of expressions, etc, and each expression that
+//! references a variable for example, still does so only by an identifier, and not by actually referencing the other node.
+//! This resolution is only really feasible once we lower the AST into [HIR](crate::intermediate::hir).
+
 use ::std::fmt::{Debug, Display};
 use ::std::ops::Range;
 

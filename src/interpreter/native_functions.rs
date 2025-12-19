@@ -54,7 +54,7 @@ macro_rules! register_native_fn {
     }
 }
 
-/// Helper trait for extracting values from `Value` enum
+/// Helper trait for extracting underlying values from a [`MIRValue`].
 pub trait ExtractValue {
     fn extract(value: &MIRValue) -> Self;
 }

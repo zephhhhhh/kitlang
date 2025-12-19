@@ -12,9 +12,6 @@ use crate::intermediate::mir::{
 use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeRegistry};
 use crate::intermediate::types::{KitFloat, KitInt, KitUInt};
 use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
-use crate::register_native_fn;
-
-use kitlang_macros::kitlang_native_fn;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -981,33 +978,6 @@ impl Interpreter {
 
 pub type RegisterNativeFns = fn(interpreter: &mut Interpreter);
 
-/// Register the default compiler intrinsics.
-fn register_compiler_intrinsics(interpreter: &mut Interpreter) {
-    register_native_fn!(
-        interpreter,
-        to_lower,
-        is_empty,
-        i64_to_string,
-        string_to_i64,
-        u64_to_string,
-        string_to_u64,
-        f64_to_string,
-        string_to_f64,
-        bool_to_string,
-        string_to_bool,
-        i64_sqrt,
-        u64_sqrt,
-        f64_sqrt,
-        i64_abs,
-        f64_abs
-    );
-
-    #[cfg(not(feature = "webasm"))]
-    {
-        register_native_fn!(interpreter, print, println);
-    }
-}
-
 fn internal_execute_mir(
     interpreter: &mut Interpreter,
     time_execution: bool,
@@ -1071,7 +1041,7 @@ pub fn execute_mir(
     .map_or(
         Err(crate::KitlangError::FailedToFindEntryPoint),
         |mut interpreter| {
-            register_compiler_intrinsics(&mut interpreter);
+            intrinsics::register_compiler_intrinsics(&mut interpreter);
             register_fns(&mut interpreter);
 
             internal_execute_mir(&mut interpreter, time_execution)
@@ -1081,76 +1051,109 @@ pub fn execute_mir(
 
 // Compiler intrinsics implementations..
 
-#[kitlang_native_fn]
-fn i64_to_string(x: i64) -> String {
-    x.to_string()
-}
-#[kitlang_native_fn]
-fn string_to_i64(s: String) -> i64 {
-    s.parse::<i64>().unwrap_or(0)
-}
-#[kitlang_native_fn]
-fn f64_to_string(x: f64) -> String {
-    x.to_string()
-}
-#[kitlang_native_fn]
-fn string_to_f64(s: String) -> f64 {
-    s.parse::<f64>().unwrap_or(0.0)
-}
-#[kitlang_native_fn]
-fn u64_to_string(x: u64) -> String {
-    x.to_string()
-}
-#[kitlang_native_fn]
-fn string_to_u64(s: String) -> u64 {
-    s.parse::<u64>().unwrap_or(0)
-}
-#[kitlang_native_fn]
-fn bool_to_string(x: bool) -> String {
-    x.to_string()
-}
-#[kitlang_native_fn]
-fn string_to_bool(s: String) -> bool {
-    s.parse::<bool>().unwrap_or(false)
-}
-#[kitlang_native_fn]
-fn is_empty(s: String) -> bool {
-    s.is_empty()
-}
-#[kitlang_native_fn]
-fn to_lower(s: String) -> String {
-    s.to_lowercase()
-}
+mod intrinsics {
+    use crate::interpreter::mir_interpreter::Interpreter;
+    use crate::register_native_fn;
+    use kitlang_macros::kitlang_native_fn;
 
-#[kitlang_native_fn]
-fn i64_sqrt(i: i64) -> i64 {
-    i.isqrt()
-}
-#[kitlang_native_fn]
-fn u64_sqrt(u: u64) -> u64 {
-    u.isqrt()
-}
-#[kitlang_native_fn]
-fn f64_sqrt(f: f64) -> f64 {
-    f.sqrt()
-}
+    /// Register the default compiler intrinsics.
+    pub fn register_compiler_intrinsics(interpreter: &mut Interpreter) {
+        register_native_fn!(
+            interpreter,
+            to_lower,
+            is_empty,
+            i64_to_string,
+            string_to_i64,
+            u64_to_string,
+            string_to_u64,
+            f64_to_string,
+            string_to_f64,
+            bool_to_string,
+            string_to_bool,
+            i64_sqrt,
+            u64_sqrt,
+            f64_sqrt,
+            i64_abs,
+            f64_abs
+        );
 
-#[kitlang_native_fn]
-fn i64_abs(i: i64) -> i64 {
-    i.abs()
-}
-#[kitlang_native_fn]
-fn f64_abs(f: f64) -> f64 {
-    f.abs()
-}
+        #[cfg(not(feature = "webasm"))]
+        {
+            register_native_fn!(interpreter, print, println);
+        }
+    }
 
-#[cfg(not(feature = "webasm"))]
-#[kitlang_native_fn]
-fn print(s: String) {
-    print!("{s}");
-}
-#[cfg(not(feature = "webasm"))]
-#[kitlang_native_fn]
-fn println(s: String) {
-    println!("{s}");
+    #[kitlang_native_fn]
+    fn i64_to_string(x: i64) -> String {
+        x.to_string()
+    }
+    #[kitlang_native_fn]
+    fn string_to_i64(s: String) -> i64 {
+        s.parse::<i64>().unwrap_or(0)
+    }
+    #[kitlang_native_fn]
+    fn f64_to_string(x: f64) -> String {
+        x.to_string()
+    }
+    #[kitlang_native_fn]
+    fn string_to_f64(s: String) -> f64 {
+        s.parse::<f64>().unwrap_or(0.0)
+    }
+    #[kitlang_native_fn]
+    fn u64_to_string(x: u64) -> String {
+        x.to_string()
+    }
+    #[kitlang_native_fn]
+    fn string_to_u64(s: String) -> u64 {
+        s.parse::<u64>().unwrap_or(0)
+    }
+    #[kitlang_native_fn]
+    fn bool_to_string(x: bool) -> String {
+        x.to_string()
+    }
+    #[kitlang_native_fn]
+    fn string_to_bool(s: String) -> bool {
+        s.parse::<bool>().unwrap_or(false)
+    }
+    #[kitlang_native_fn]
+    fn is_empty(s: String) -> bool {
+        s.is_empty()
+    }
+    #[kitlang_native_fn]
+    fn to_lower(s: String) -> String {
+        s.to_lowercase()
+    }
+
+    #[kitlang_native_fn]
+    fn i64_sqrt(i: i64) -> i64 {
+        i.isqrt()
+    }
+    #[kitlang_native_fn]
+    fn u64_sqrt(u: u64) -> u64 {
+        u.isqrt()
+    }
+    #[kitlang_native_fn]
+    fn f64_sqrt(f: f64) -> f64 {
+        f.sqrt()
+    }
+
+    #[kitlang_native_fn]
+    fn i64_abs(i: i64) -> i64 {
+        i.abs()
+    }
+    #[kitlang_native_fn]
+    fn f64_abs(f: f64) -> f64 {
+        f.abs()
+    }
+
+    #[cfg(not(feature = "webasm"))]
+    #[kitlang_native_fn]
+    fn print(s: String) {
+        print!("{s}");
+    }
+    #[cfg(not(feature = "webasm"))]
+    #[kitlang_native_fn]
+    fn println(s: String) {
+        println!("{s}");
+    }
 }

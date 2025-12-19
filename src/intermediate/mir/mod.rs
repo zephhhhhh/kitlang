@@ -1,3 +1,17 @@
+//! The MIR module provides a control flow based IR suitable for interpretation, further optimization, and
+//! eventually lowering further into machine code or bytecode.
+//!
+//! The MIR represents function bodies as collections of [`BasicBlock`]s containing statements
+//! and instructions on what to do when exiting the block ([`ExitDirective`]).
+//! Each function [`Body`] maintains local variables and the collection of [`BasicBlock`]s
+//! that make up the function's control flow.
+//!
+//! This representation simplifies operations to assignments, branches, and calls, making it much closer to how
+//! a computer would execute the code, and is quite far removed from the original  or even `HIR` forms.
+//!
+//! At this stage, things such as identifiers, etc, have been fully removed and everything operates on essentially
+//! indexes of local variables, or an index (will eventually be a byte offset) into a local variable for field accesses.
+
 use ::std::fmt::Debug;
 use std::collections::HashMap;
 
