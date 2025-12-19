@@ -11,12 +11,20 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 /// function implementations to keep traversing the tree further, you can also omit this under conditions
 /// if you do not want traversal to continue.
 ///
+/// The `super_` functions will call the appropriate `visit_` functions for child nodes,
+/// which should then call the `super_` functions to continue traversal, if desired.
+///
+/// By default all `visit_` functions call their corresponding `super_` functions,
+/// so only the kinds of nodes you want to handle need to be overridden/implemented.
+///
 /// Implementations should be provided by overriding the `visit_` functions for the specified types
 /// you want.
 ///
 /// To start traversal, the function `visit_root` should be called on this trait with a reference
 /// to the [`HLIR`].
 pub trait HLIRVisitor {
+    /// Default implementation for visiting the root of the HLIR.
+    /// This visits the root module if it exists.
     fn super_root(&mut self, hlir: &HLIR) {
         if let Some(root_node) = hlir.owning_node(OwnerDefId::ROOT_NODE)
             && let Some(root_module) = root_node.hir_module_ref()
@@ -24,6 +32,8 @@ pub trait HLIRVisitor {
             self.visit_module(root_module, hlir);
         }
     }
+    /// Default implementation for visiting a module.
+    /// This visits all items within the module.
     fn super_module(&mut self, module: &Module, hlir: &HLIR) {
         for item_id in &module.item_ids {
             if let Some(item) = hlir.owning_node_item(*item_id) {
@@ -31,6 +41,8 @@ pub trait HLIRVisitor {
             }
         }
     }
+    /// Default implementation for visiting an item.
+    /// This dispatches to the appropriate visit function based on the item kind.
     fn super_item(&mut self, item: &Item, hlir: &HLIR) {
         match &item.kind {
             ItemKind::Module(module) => self.visit_module(module, hlir),
@@ -42,10 +54,16 @@ pub trait HLIRVisitor {
             ItemKind::Use(use_path) => self.visit_use(use_path, hlir),
         }
     }
+    /// Default implementation for visiting an item within an impl block.
+    /// This simply calls the `super_item` function.
     fn super_impl_item(&mut self, item: &Item, hlir: &HLIR) {
         self.super_item(item, hlir);
     }
+    /// Default implementation for visiting a use path.
+    /// This does nothing by default.
     fn super_use(&mut self, _use_info: &UsePath, _hlir: &HLIR) {}
+    /// Default implementation for visiting an impl block.
+    /// This visits all items within the impl block.
     fn super_impl(&mut self, impl_info: &Impl, hlir: &HLIR) {
         for item_id in &impl_info.items {
             if let Some(item) = hlir.owning_node_item(*item_id) {
@@ -53,6 +71,8 @@ pub trait HLIRVisitor {
             }
         }
     }
+    /// Default implementation for visiting a function.
+    /// This visits the function parameters and the function body block.
     fn super_function(&mut self, function: &Function, hlir: &HLIR) {
         if let Some(func_body) = &function.body {
             for param_id in &func_body.params {
@@ -65,9 +85,17 @@ pub trait HLIRVisitor {
             }
         }
     }
+    /// Default implementation for visiting a function parameter.
+    /// This does nothing by default.
     fn super_function_param(&mut self, _parameter: &Parameter, _hlir: &HLIR) {}
+    /// Default implementation for visiting an enum.
+    /// This does nothing by default.
     fn super_enum(&mut self, _enumeration: &Enum, _hlir: &HLIR) {}
+    /// Default implementation for visiting a struct.
+    /// This does nothing by default.
     fn super_struct(&mut self, _structure: &Struct, _hlir: &HLIR) {}
+    /// Default implementation for visiting a block.
+    /// This visits all statements within the block.
     fn super_block(&mut self, block: &Block, hlir: &HLIR) {
         for statement_id in &block.statements {
             if let Some(HirNode::Statement(statement)) = hlir.get_hir_node(*statement_id) {
@@ -75,6 +103,8 @@ pub trait HLIRVisitor {
             }
         }
     }
+    /// Default implementation for visiting a statement.
+    /// This dispatches based on the statement kind, either visiting a let statement, and item or an expression.
     fn super_statement(&mut self, statement: &Statement, _parent_block: &Block, hlir: &HLIR) {
         match &statement.kind {
             StatementKind::Let(let_statement) => {
@@ -92,14 +122,20 @@ pub trait HLIRVisitor {
             }
         }
     }
+    /// Default implementation for visiting a let statement.
+    /// This visits the initial value expression if it exists.
     fn super_let_statement(&mut self, _id: HirId, let_statement: &LetStatement, hlir: &HLIR) {
         if let Some(init_id) = &let_statement.initial_value {
             self.visit_expr_by_id(*init_id, hlir);
         }
     }
+    /// Default implementation for visiting a constant.
+    /// This visits the expression of the constant.
     fn super_constant(&mut self, constant: &Constant, hlir: &HLIR) {
         self.visit_expr_by_id(constant.expr, hlir);
     }
+    /// Default implementation for visiting an expression.
+    /// This dispatches based on the expression kind, visiting child expressions/blocks as necessary.
     fn super_expr(&mut self, expr: &Expr, hlir: &HLIR) {
         match &expr.kind {
             ExprKind::Path(ref_path) => self.visit_path(expr.id, ref_path, hlir),
@@ -157,64 +193,85 @@ pub trait HLIRVisitor {
             _ => {}
         }
     }
+    /// Default implementation for visiting a path.
+    /// This does nothing by default.
     fn super_path(&mut self, _hir_id: HirId, _path: &RefPath, _hlir: &HLIR) {}
 
+    /// Helper function to call `visit_expr` by using a given [`HirId`].
     fn visit_expr_by_id(&mut self, expr_id: HirId, hlir: &HLIR) {
         if let Some(HirNode::Expr(expr)) = hlir.get_hir_node(expr_id) {
             self.visit_expr(expr, hlir);
         }
     }
+    /// Helper function to call `visit_block` by using a given [`HirId`].
     fn visit_block_by_id(&mut self, block_id: HirId, hlir: &HLIR) {
         if let Some(HirNode::Block(block)) = hlir.get_hir_node(block_id) {
             self.visit_block(block, hlir);
         }
     }
 
+    /// Called for every path in the [`HLIR`].
     fn visit_path(&mut self, hir_id: HirId, path: &RefPath, hlir: &HLIR) {
         self.super_path(hir_id, path, hlir);
     }
+    /// Called for every expression in the [`HLIR`].
     fn visit_expr(&mut self, expr: &Expr, hlir: &HLIR) {
         self.super_expr(expr, hlir);
     }
+    /// Called for every constant in the [`HLIR`].
     fn visit_constant(&mut self, constant: &Constant, hlir: &HLIR) {
         self.super_constant(constant, hlir);
     }
+    /// Called for every let statement in the [`HLIR`].
     fn visit_let_statement(&mut self, id: HirId, let_statement: &LetStatement, hlir: &HLIR) {
         self.super_let_statement(id, let_statement, hlir);
     }
+    /// Called for every statement in the [`HLIR`].
     fn visit_statement(&mut self, statement: &Statement, parent_block: &Block, hlir: &HLIR) {
         self.super_statement(statement, parent_block, hlir);
     }
+    /// Called for every block in the [`HLIR`].
     fn visit_block(&mut self, block: &Block, hlir: &HLIR) {
         self.super_block(block, hlir);
     }
+    /// Called for every struct in the [`HLIR`].
     fn visit_struct(&mut self, structure: &Struct, hlir: &HLIR) {
         self.super_struct(structure, hlir);
     }
+    /// Called for every enum in the [`HLIR`].
     fn visit_enum(&mut self, enumeration: &Enum, hlir: &HLIR) {
         self.super_enum(enumeration, hlir);
     }
+    /// Called for every function parameter in the [`HLIR`].
     fn visit_function_param(&mut self, parameter: &Parameter, hlir: &HLIR) {
         self.super_function_param(parameter, hlir);
     }
+    /// Called for every function in the [`HLIR`].
     fn visit_function(&mut self, function: &Function, hlir: &HLIR) {
         self.super_function(function, hlir);
     }
+    /// Called for every impl block in the [`HLIR`].
     fn visit_impl(&mut self, impl_info: &Impl, hlir: &HLIR) {
         self.super_impl(impl_info, hlir);
     }
+    /// Called for every use path in the [`HLIR`].
     fn visit_use(&mut self, use_info: &UsePath, hlir: &HLIR) {
         self.super_use(use_info, hlir);
     }
+    /// Called for every item in the [`HLIR`].
     fn visit_item(&mut self, item: &Item, hlir: &HLIR) {
         self.super_item(item, hlir);
     }
+    /// Called for every item within an impl block in the [`HLIR`].
     fn visit_impl_item(&mut self, item: &Item, hlir: &HLIR) {
         self.super_impl_item(item, hlir);
     }
+    /// Called for every module in the [`HLIR`].
     fn visit_module(&mut self, module: &Module, hlir: &HLIR) {
         self.super_module(module, hlir);
     }
+
+    /// Entry point for visiting the [`HLIR`].
     fn visit_root(&mut self, hlir: &HLIR) {
         self.super_root(hlir);
     }
@@ -340,22 +397,30 @@ pub type DisjointHIRNode = Disjoint<HirNode>;
 pub type DisjointOwningNode = Disjoint<OwningNode>;
 pub type DisjointItem = Disjoint<Item>;
 
-/// Provides an interface from traversing the HLIR tree with mutable access to each type.
+/// Provides an interface from traversing the HLIR tree.
 ///
-/// Functions named `super_` are default implementations and are not meant to be overriden.
-/// They should be called during the corresponding `visit_` function implementations to keep
-/// traversing the tree further, you can also omit this under conditions if you do not want
-/// traversal to continue.
+/// Functions named `super_` are default implementations that traverse the tree further, and
+/// are not meant to be overriden. They should be called during the corresponding `visit_`
+/// function implementations to keep traversing the tree further, you can also omit this under conditions
+/// if you do not want traversal to continue.
+///
+/// The `super_` functions will call the appropriate `visit_` functions for child nodes,
+/// which should then call the `super_` functions to continue traversal, if desired.
+///
+/// By default all `visit_` functions call their corresponding `super_` functions,
+/// so only the kinds of nodes you want to handle need to be overridden/implemented.
 ///
 /// Implementations should be provided by overriding the `visit_` functions for the specified types
 /// you want.
 ///
-/// To start traversal, the function `walk_mut` should be called on this trait with a mutable reference
+/// To start traversal, the function `walk_mut` should be called on this trait with a reference
 /// to the [`HLIR`].
 /// # Safety
 /// This is safe as long as implementations do _NOT_ store the references obtained in the functions
 /// and are only used within the scope of the trait function bodies.
 pub trait HLIRVisitorMut<'a> {
+    /// Default implementation for visiting the root of the HLIR.
+    /// This visits the root module if it exists.
     fn super_root_mut(&mut self, hlir: &mut HLIRDisjointMut<'a>) {
         if let Some(root_node) = hlir.owning_node_mut(OwnerDefId::ROOT_NODE)
             && let Some(root_module) = root_node.value_mut().hir_module_mut()
@@ -363,6 +428,8 @@ pub trait HLIRVisitorMut<'a> {
             self.visit_module_mut(root_module, hlir);
         }
     }
+    /// Default implementation for visiting a module.
+    /// This visits all items within the module.
     fn super_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'a>) {
         for item_id in &module.item_ids {
             if let Some(item) = hlir.owning_node_item_mut(*item_id) {
@@ -370,6 +437,8 @@ pub trait HLIRVisitorMut<'a> {
             }
         }
     }
+    /// Default implementation for visiting an item.
+    /// This dispatches to the appropriate visit function based on the item kind.
     fn super_item_mut(&mut self, item: &mut Item, hlir: &mut HLIRDisjointMut<'a>) {
         match &mut item.kind {
             ItemKind::Module(module) => self.visit_module_mut(module, hlir),
@@ -381,10 +450,16 @@ pub trait HLIRVisitorMut<'a> {
             ItemKind::Use(use_path) => self.visit_use_mut(use_path, hlir),
         }
     }
+    /// Default implementation for visiting an item within an impl block.
+    /// This simply calls the `super_item_mut` function.
     fn super_impl_item_mut(&mut self, item: &mut Item, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_item_mut(item, hlir);
     }
+    /// Default implementation for visiting a use path.
+    /// This does nothing by default.
     fn super_use_mut(&mut self, _use_info: &mut UsePath, _hlir: &mut HLIRDisjointMut<'a>) {}
+    /// Default implementation for visiting an impl block.
+    /// This visits all items within the impl block.
     fn super_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'a>) {
         for item_id in &impl_info.items {
             if let Some(item) = hlir.owning_node_item_mut(*item_id) {
@@ -392,12 +467,16 @@ pub trait HLIRVisitorMut<'a> {
             }
         }
     }
+    /// Default implementation for visiting a function parameter.
+    /// This does nothing by default.
     fn super_function_param_mut(
         &mut self,
         _parameter: &mut Parameter,
         _hlir: &mut HLIRDisjointMut<'a>,
     ) {
     }
+    /// Default implementation for visiting a function.
+    /// This visits the function parameters and the function body block.
     fn super_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'a>) {
         if let Some(func_body) = &function.body {
             for param_id in &func_body.params {
@@ -410,8 +489,14 @@ pub trait HLIRVisitorMut<'a> {
             }
         }
     }
+    /// Default implementation for visiting an enum.
+    /// This does nothing by default.
     fn super_enum_mut(&mut self, _enumeration: &mut Enum, _hlir: &mut HLIRDisjointMut<'a>) {}
+    /// Default implementation for visiting a struct.
+    /// This does nothing by default.
     fn super_struct_mut(&mut self, _structure: &Struct, _hlir: &mut HLIRDisjointMut<'a>) {}
+    /// Default implementation for visiting a block.
+    /// This visits all statements within the block.
     fn super_block_mut(&mut self, block: &Block, hlir: &mut HLIRDisjointMut<'a>) {
         for statement_id in &block.statements {
             if let Some(HirNode::Statement(statement)) = hlir.get_hir_node_mut(*statement_id) {
@@ -419,6 +504,8 @@ pub trait HLIRVisitorMut<'a> {
             }
         }
     }
+    /// Default implementation for visiting a statement.
+    /// This dispatches based on the statement kind, either visiting a let statement, and item or an expression.
     fn super_statement_mut(
         &mut self,
         statement: &mut Statement,
@@ -441,6 +528,8 @@ pub trait HLIRVisitorMut<'a> {
             }
         }
     }
+    /// Default implementation for visiting a let statement.
+    /// This visits the initial value expression if it exists.
     fn super_let_statement_mut(
         &mut self,
         _id: HirId,
@@ -451,9 +540,13 @@ pub trait HLIRVisitorMut<'a> {
             self.visit_expr_by_id_mut(*init_id, hlir);
         }
     }
+    /// Default implementation for visiting a constant.
+    /// This visits the expression of the constant.
     fn super_constant_mut(&mut self, constant: &mut Constant, hlir: &mut HLIRDisjointMut<'a>) {
         self.visit_expr_by_id_mut(constant.expr, hlir);
     }
+    /// Default implementation for visiting an expression.
+    /// This dispatches based on the expression kind, visiting child expressions/blocks as necessary.
     fn super_expr_mut(&mut self, expr: &mut Expr, hlir: &mut HLIRDisjointMut<'a>) {
         match &mut expr.kind {
             ExprKind::Path(ref_path) => self.visit_path_mut(expr.id, ref_path, hlir),
@@ -518,20 +611,25 @@ pub trait HLIRVisitorMut<'a> {
             _ => {}
         }
     }
+    /// Default implementation for visiting a path.
+    /// This does nothing by default.
     fn super_path_mut(&mut self, _id: HirId, _path: &mut RefPath, _hlir: &mut HLIRDisjointMut<'a>) {
     }
 
+    /// Helper function to call `visit_expr_mut` by using a given [`HirId`].
     fn visit_expr_by_id_mut(&mut self, expr_id: HirId, hlir: &mut HLIRDisjointMut<'a>) {
         if let Some(HirNode::Expr(expr)) = hlir.get_hir_node_mut(expr_id) {
             self.visit_expr_mut(expr, hlir);
         }
     }
+    /// Helper function to call `visit_block_mut` by using a given [`HirId`].
     fn visit_block_by_id_mut(&mut self, block_id: HirId, hlir: &mut HLIRDisjointMut<'a>) {
         if let Some(HirNode::Block(block)) = hlir.get_hir_node_mut(block_id) {
             self.visit_block_mut(block, hlir);
         }
     }
 
+    /// Called for every path in the [`HLIR`].
     fn visit_path_mut(
         &mut self,
         hir_id: HirId,
@@ -540,12 +638,15 @@ pub trait HLIRVisitorMut<'a> {
     ) {
         self.super_path_mut(hir_id, path, hlir);
     }
+    /// Called for every expression in the [`HLIR`].
     fn visit_expr_mut(&mut self, expr: &mut Expr, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_expr_mut(expr, hlir);
     }
+    /// Called for every constant in the [`HLIR`].
     fn visit_constant_mut(&mut self, constant: &mut Constant, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_constant_mut(constant, hlir);
     }
+    /// Called for every let statement in the [`HLIR`].
     fn visit_let_statement_mut(
         &mut self,
         id: HirId,
@@ -554,6 +655,7 @@ pub trait HLIRVisitorMut<'a> {
     ) {
         self.super_let_statement_mut(id, let_statement, hlir);
     }
+    /// Called for every statement in the [`HLIR`].
     fn visit_statement_mut(
         &mut self,
         statement: &mut Statement,
@@ -562,18 +664,23 @@ pub trait HLIRVisitorMut<'a> {
     ) {
         self.super_statement_mut(statement, parent_block, hlir);
     }
+    /// Called for every block in the [`HLIR`].
     fn visit_block_mut(&mut self, block: &mut Block, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_block_mut(block, hlir);
     }
+    /// Called for every struct in the [`HLIR`].
     fn visit_struct_mut(&mut self, structure: &mut Struct, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_struct_mut(structure, hlir);
     }
+    /// Called for every enum in the [`HLIR`].
     fn visit_enum_mut(&mut self, enumeration: &mut Enum, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_enum_mut(enumeration, hlir);
     }
+    /// Called for every function in the [`HLIR`].
     fn visit_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_function_mut(function, hlir);
     }
+    /// Called for every function parameter in the [`HLIR`].
     fn visit_function_param_mut(
         &mut self,
         parameter: &mut Parameter,
@@ -581,25 +688,32 @@ pub trait HLIRVisitorMut<'a> {
     ) {
         self.super_function_param_mut(parameter, hlir);
     }
+    /// Called for every impl block in the [`HLIR`].
     fn visit_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_impl_mut(impl_info, hlir);
     }
+    /// Called for every use path in the [`HLIR`].
     fn visit_use_mut(&mut self, use_info: &mut UsePath, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_use_mut(use_info, hlir);
     }
+    /// Called for every item in the [`HLIR`].
     fn visit_item_mut(&mut self, item: &mut Item, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_item_mut(item, hlir);
     }
+    /// Called for every item within an impl block in the [`HLIR`].
     fn visit_impl_item_mut(&mut self, item: &mut Item, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_impl_item_mut(item, hlir);
     }
+    /// Called for every module in the [`HLIR`].
     fn visit_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_module_mut(module, hlir);
     }
+    /// Entry point for visiting the [`HLIR`].
     fn visit_root_mut(&mut self, hlir: &mut HLIRDisjointMut<'a>) {
         self.super_root_mut(hlir);
     }
 
+    /// Entry point for walking the [`HLIR`] mutably.
     fn walk_mut(&mut self, hlir: &'a mut HLIR) {
         let mut disjoint_hlir = HLIRDisjointMut::new(hlir);
         self.visit_root_mut(&mut disjoint_hlir);
