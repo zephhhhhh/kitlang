@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"attr":["kitlang_native_fn"],"fn":["kitlang_path"]};
