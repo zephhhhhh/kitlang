@@ -153,7 +153,14 @@ cargo test lexer
 
 -   [Syntax Reference](Syntax.md) - Language syntax specification
 -   [MIR Desugaring](mir_desugar.md) - MIR transformation details
--   API documentation: `cargo doc --open`
+
+### Generate and view locally
+
+To generate and open the project documentation locally you can run:
+
+```bash
+cargo doc --document-private-items --open
+```
 
 ## License
 
