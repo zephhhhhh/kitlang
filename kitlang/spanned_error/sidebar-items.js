@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["highlight_color","prefix_color"],"fn":["count_new_lines","get_lines","get_segments_from_source","substr_safe","substr_safe_no_trailing_return"],"struct":["SpannedErrorBuilder","SpannedErrorLine"]};

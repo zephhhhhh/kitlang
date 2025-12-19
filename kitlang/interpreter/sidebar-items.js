@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["mir_interpreter","native_functions"]};

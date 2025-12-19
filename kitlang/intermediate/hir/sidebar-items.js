@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["get_span_by_id","lower_ast_to_hir","parse_ast_to_hir_processed"],"mod":["errors","lowerer","nodes","visitor"],"struct":["DefId","HLIR","HirId","LocalDefId","OwnerDefId","ProgramMetaData"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["format_duration","measure_execution","print_execution_named"]};

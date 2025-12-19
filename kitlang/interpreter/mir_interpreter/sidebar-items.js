@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ADTValueKind","Value"],"fn":["execute_mir","execute_mir_no_intrinsics","internal_execute_mir"],"macro":["impl_value_ty"],"mod":["intrinsics"],"struct":["ExecutionFrame","Interpreter","InterpreterState","Program"],"type":["ProgramType","RegisterNativeFns"]};

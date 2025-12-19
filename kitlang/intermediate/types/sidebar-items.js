@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["KitFloat","KitInt","KitTy","KitUInt"],"macro":["define_primitive_tys"]};

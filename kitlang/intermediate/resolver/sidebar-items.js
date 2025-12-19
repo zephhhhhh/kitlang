@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PLACEHOLDER_TYPE_ID"],"enum":["ADTKind","NamespaceKind"],"fn":["resolve_paths"],"mod":["associated_references","errors","locals","types","verifier"],"struct":["ADTStructField","ADTTypeInfo","Namespace","TypeRegistry"],"type":["TypeID"]};

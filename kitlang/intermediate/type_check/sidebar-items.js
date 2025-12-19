@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["run_type_checker","statement_mut_by_id"],"macro":["type_fail"],"struct":["TypeCheckFail","TypeChecker"],"type":["TypeMap","TypeResult"]};

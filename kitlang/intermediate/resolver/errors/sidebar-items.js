@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ResolutionFailure","ResolverErrorKind"],"macro":["push_resolve_err","resolve_err"],"struct":["ResolverError","UnresolvedReference","UnresolvedReferences"],"type":["ResolveResult"]};

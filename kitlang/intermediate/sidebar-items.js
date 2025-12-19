@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["hir","mir","resolver","type_check","types"]};

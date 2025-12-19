@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["resolve_scope_paths"],"struct":["LocalScope","ScopeResolver"]};
