@@ -16,7 +16,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Build docs
-        run: cargo doc --no-deps --document-private-items
+        run: cargo doc --workspace --no-deps --document-private-items
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v3
