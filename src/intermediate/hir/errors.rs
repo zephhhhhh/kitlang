@@ -8,24 +8,35 @@ use crate::intermediate::resolver::errors::ResolverError;
 use crate::intermediate::type_check::TypeCheckFail;
 use crate::spanned_error::SpannedErrorBuilder;
 
+/// Represents errors that occur during the lowering phase from AST to High-level IR.
+/// Each kind shows which stage the error occurred in.
+/// This error can contain multiple errors that occurred during lowering.
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum LoweringErrorKind {
+    /// Multiple lowering errors occurred.
     #[error("Lowering errors: {0:?}")]
     LoweringErrors(Vec<LoweringError>),
+    /// Represents errors that occurred during the name resolution stage.
     #[error("Resolver error: {0:?}")]
     ResolverError(#[from] ResolverError),
+    /// Represents type checking failures that occurred during lowering.
     #[error("Failed to validate types: {0:?}")]
     TypeCheckFail(Vec<TypeCheckFail>),
+    /// An individual error that happened during lowering itself.
     #[error("Diagnostic: {0:?}")]
     Diagnostic(String),
 }
 
 impl LoweringErrorKind {
+    /// Attach a source span to the error kind, producing a [`LoweringError`].
+    #[inline]
     #[must_use]
     pub fn with_span(&self, span: impl Into<SourceSpan>) -> LoweringError {
         LoweringError::new(self.clone(), span)
     }
 
+    /// Produce a [`LoweringError`] with no associated source span.
+    #[inline]
     #[must_use]
     pub fn with_no_span(&self) -> LoweringError {
         LoweringError::new(self.clone(), SourceSpan::null_span())
@@ -43,15 +54,6 @@ pub struct LoweringError {
 impl LoweringError {
     #[inline]
     #[must_use]
-    pub fn new_no_span(kind: impl Into<LoweringErrorKind>) -> Self {
-        Self {
-            error_kind: kind.into(),
-            span: SourceSpan::null_span(),
-        }
-    }
-
-    #[inline]
-    #[must_use]
     pub fn new(kind: impl Into<LoweringErrorKind>, span: impl Into<SourceSpan>) -> Self {
         Self {
             error_kind: kind.into(),
@@ -59,6 +61,8 @@ impl LoweringError {
         }
     }
 
+    /// Format the lowering error as an error message, given the source code string.
+    /// This function can process multiple errors if there are any contained within.
     #[must_use]
     pub fn format_as_error_message(&self, source_string: &str) -> String {
         match &self.error_kind {

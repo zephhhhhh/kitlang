@@ -28,6 +28,8 @@ pub mod token;
 // Re-export macros for use in downstream crates.
 pub use kitlang_macros as macros;
 
+use crate::{ast::SourceSpan, spanned_error::SpannedErrorBuilder};
+
 #[cfg(feature = "webasm")]
 pub mod webasm;
 
@@ -39,12 +41,16 @@ pub mod webasm;
 /// Represents errors from different stages in the compilation process.
 #[derive(Debug, Error)]
 pub enum KitlangError {
+    /// Errors originating from the parser stage.
     #[error("Parser Error: {0}")]
     ParserError(#[from] crate::parser::ParseError),
+    /// Errors originating from the lowering stage.
     #[error("Lowering Error: {0}")]
     LoweringError(#[from] crate::intermediate::hir::LoweringError),
+    /// Indicates that execution ended unexpectedly, I.e. the interpreter encountered an error.
     #[error("Execution ended unexpectedly.")]
     ExecutionEndedUnexpectedly,
+    /// Indicates that the entry point 'main' function could not be found when trying to execute.
     #[error("Failed to find entry point 'main' function.")]
     FailedToFindEntryPoint,
 }
@@ -57,10 +63,10 @@ impl KitlangError {
         match self {
             Self::ParserError(err) => err.format_as_error_message(source_string),
             Self::LoweringError(err) => err.format_as_error_message(source_string),
-            Self::ExecutionEndedUnexpectedly => "Error: Execution ended unexpectedly.".to_string(),
-            Self::FailedToFindEntryPoint => {
-                "Error: Failed to find entry point 'main' function.".to_string()
-            }
+            e => SpannedErrorBuilder::new(source_string, SourceSpan::null_span())
+                .print_header_line(format!("{e}"))
+                .generate_highlight()
+                .generate_output(),
         }
     }
 }

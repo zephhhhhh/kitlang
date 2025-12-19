@@ -7,6 +7,9 @@ use crate::parser::errors::{PResult, ParseError, ParseErrorKind};
 
 use crate::token::{Keyword, Punctuation, TokenKind};
 
+#[cfg(doc)]
+use crate::parser::TokenStream;
+
 /// Output from parsing a variable pattern from the [`TokenStream`].
 /// Describes the declaration of a variable, as a parameter or similar.
 #[derive(Debug, Clone)]

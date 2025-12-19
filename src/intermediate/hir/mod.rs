@@ -402,8 +402,20 @@ pub struct ProgramMetaData {
     pub type_map: TypeMap,
 }
 
+impl Default for ProgramMetaData {
+    fn default() -> Self {
+        Self {
+            namespace: Namespace::default_root_definition(),
+            type_registry: TypeRegistry::default(),
+            type_map: TypeMap::new(),
+        }
+    }
+}
+
 impl ProgramMetaData {
     /// Find a method in the namespace given its defining path, data type identifier, and method identifier.
+    /// # Returns
+    /// The method namespace if found, otherwise `None`.
     #[inline]
     #[must_use]
     pub fn find_method(
@@ -417,6 +429,8 @@ impl ProgramMetaData {
     }
 
     /// Find a method owner definition ID in the namespace given its defining path, data type identifier, and method identifier.
+    /// # Returns
+    /// The method owner definition ID if found, otherwise `None`.
     #[inline]
     #[must_use]
     pub fn find_method_owner_def(
@@ -430,6 +444,8 @@ impl ProgramMetaData {
     }
 
     /// Find the owner definition ID for a method defined on an ADT.
+    /// # Returns
+    /// The method owner definition ID if found, otherwise `None`.
     #[inline]
     #[must_use]
     pub fn find_adt_method_owner_def(
@@ -441,6 +457,8 @@ impl ProgramMetaData {
     }
 
     /// Find the owner definition ID for a method defined on a given type.
+    /// # Returns
+    /// The method owner definition ID if found, otherwise `None`.
     #[inline]
     #[must_use]
     pub fn find_ty_method_owner_def(&self, ty: &Type, method_ident: &str) -> Option<OwnerDefId> {
@@ -461,6 +479,8 @@ impl ProgramMetaData {
     }
 
     /// Try to get the type name of a given type.
+    /// # Returns
+    /// The type name if it can be determined, otherwise `None`.
     #[inline]
     #[must_use]
     pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
@@ -476,6 +496,8 @@ impl ProgramMetaData {
     }
 
     /// Get the type name of a given type, or `"UnknownType"` if it cannot be determined.
+    /// # Returns
+    /// The type name, or `"UnknownType"` if the type name cannot be determined.
     #[inline]
     #[must_use]
     pub fn type_name(&self, ty: impl Into<Type>) -> String {

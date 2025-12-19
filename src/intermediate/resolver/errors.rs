@@ -1,3 +1,7 @@
+//! The purpose of this module is to define error types for the resolution phase of the compiler.
+//! Provides structured error representations for various resolution failures, including unresolved references,
+//! inaccessible items, and general diagnostic messages.
+
 use crate::ast::{SourceSpan, SpannedIdentPath};
 use crate::intermediate::hir::HirId;
 use crate::spanned_error::SpannedErrorBuilder;
@@ -153,10 +157,15 @@ impl ResolutionFailure {
     }
 }
 
+/// Represents a single unresolved reference in the intermediate representation.
+/// It contains the path of the reference, its associated [`HirId`], and the reason for the failure.
 #[derive(Clone, PartialEq, Eq)]
 pub struct UnresolvedReference {
+    /// The spanned identifier path of the unresolved reference.
     pub path: SpannedIdentPath,
+    /// The [`HirId`] associated with the unresolved reference.
     pub id: HirId,
+    /// The reason for the resolution failure.
     pub failure: ResolutionFailure,
 }
 
@@ -166,6 +175,8 @@ impl Debug for UnresolvedReference {
     }
 }
 
+/// Represents a collection of unresolved references in the intermediate representation.
+/// Used for error handling, to bundle up multiple resolution failures into one error value.
 #[derive(Clone, PartialEq, Eq)]
 pub struct UnresolvedReferences {
     pub references: Vec<UnresolvedReference>,

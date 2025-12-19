@@ -1,3 +1,11 @@
+mod errors;
+mod expr;
+mod item;
+mod statement;
+
+#[cfg(doc)]
+use crate::ast::{Expression, Item, Statement};
+
 use ::std::ops::Range;
 
 use crate::ast::{
@@ -10,11 +18,6 @@ use crate::parser::errors::PResult;
 use crate::token::{Keyword, Punctuation, Token, TokenKind};
 
 pub use crate::parser::errors::{ParseError, ParseErrorKind};
-
-mod errors;
-mod expr;
-mod item;
-mod statement;
 
 pub type TokenList = Vec<Token>;
 

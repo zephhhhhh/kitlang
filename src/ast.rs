@@ -102,6 +102,11 @@ pub struct IdentPath {
 impl IdentPath {
     /// Separator used to separate path segments.
     pub const PATH_SEP: &str = "::";
+    /// An empty root-relative path. (Represents the root module)
+    pub const ROOT: Self = Self {
+        segments: Vec::new(),
+        root_relative: true,
+    };
 
     /// Create a new path from a string representation.
     /// Automatically detects if the path is root-relative by checking for leading `::`.
@@ -171,7 +176,7 @@ impl IdentPath {
         })
     }
 
-    /// Rebase this path onto another. Returns self if this path is root-relative.
+    /// Rebase this path onto another. Returns `self` if this path is `root_relative`.
     #[inline]
     #[must_use]
     pub fn rebase_from_path(&self, base_path: &Self) -> Self {

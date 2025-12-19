@@ -16,6 +16,10 @@ thread_local! {
     static NATIVE_FNS: RefCell<Vec<(String, js_sys::Function, String)>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Adds a native function to be available in the interpreter.
+/// * `name` is the name of the function to be used in kitlang code.
+/// * `func` is the JavaScript function to be called.
+/// * `ret_val` is the kitlang return type of the function as a string (e.g., "i32", "string", etc.)
 #[wasm_bindgen]
 pub fn add_native_function(name: &str, func: js_sys::Function, ret_val: &str) {
     NATIVE_FNS.with(|slot| {
@@ -24,6 +28,7 @@ pub fn add_native_function(name: &str, func: js_sys::Function, ret_val: &str) {
     });
 }
 
+/// Clears all registered native functions bindings.
 #[wasm_bindgen]
 pub fn clear_native_functions() {
     NATIVE_FNS.with(|slot| {
@@ -31,6 +36,8 @@ pub fn clear_native_functions() {
     });
 }
 
+/// Sets the print callback function to be used by the `print` and `println` native functions.
+/// * `cb` is the JavaScript function to be called for printing.
 #[wasm_bindgen]
 pub fn set_print_callback(cb: js_sys::Function) {
     PRINT_CALLBACK.with(|slot| {
@@ -38,6 +45,11 @@ pub fn set_print_callback(cb: js_sys::Function) {
     });
 }
 
+/// Sets the input callback function to be used by the `input` native function.
+/// * `cb` is the JavaScript function to be called for input.
+/// # Note
+/// This function should dispatch both the case where the input has no default value, and the case where it does.
+/// I.e. This function is responsible for handling both `input(prompt: string)` and `input_placeholder(prompt: string, default: string)`.
 #[wasm_bindgen]
 pub fn set_input_callback(cb: js_sys::Function) {
     INPUT.with(|slot| {
@@ -45,9 +57,11 @@ pub fn set_input_callback(cb: js_sys::Function) {
     });
 }
 
+/// Returns the KitTy corresponding to the given return value string, if valid.
+/// (Used primarily for differentiating between JS numbers being interpreted as an integer or float in kitlang)
 #[inline]
 #[must_use]
-pub fn return_value_type(ret_val: &str) -> Option<KitTy> {
+fn return_value_type(ret_val: &str) -> Option<KitTy> {
     KitTy::from_primitive_ty_str(ret_val)
 }
 
@@ -87,11 +101,14 @@ fn internal_execute_source_string(source: &str, time_execution: bool) -> Result<
     }
 }
 
+/// Parses and executes the given Kitlang source code string, returning the result as a JsValue.
 #[wasm_bindgen]
 pub fn wasm_execute_source_string(source: &str, time_execution: bool) -> Result<JsValue, JsValue> {
     internal_execute_source_string(source, time_execution)
 }
 
+/// Parses and executes the given Kitlang source code string, with registered native functions,
+/// returning the result as a JsValue.
 #[wasm_bindgen]
 pub fn wasm_execute_source_string_with_native_fns(
     source: &str,
@@ -105,6 +122,7 @@ pub fn wasm_execute_source_string_with_native_fns(
     }
 }
 
+/// Initializes logging for the WebAssembly module, to ensure logs are printed to the browser console.
 #[wasm_bindgen]
 pub fn init_logging() {
     #[cfg(feature = "logging")]

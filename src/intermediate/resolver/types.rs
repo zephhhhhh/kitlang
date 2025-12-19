@@ -1,3 +1,17 @@
+//! The purpose of this module is to resolve type references during the resolution phase of the compiler.
+//! A type reference is any place where a type is referenced by its path, such as in function parameters,
+//! return types, let bindings, or struct field definitions.
+//!
+//! This module walks the [`HLIR`] and converts unresolved type paths into resolved type IDs that can be
+//! looked up in the type registry. This includes resolving types within structs, functions, let statements,
+//! and impl blocks, as well as handling `this` type annotations within impl contexts.
+//!
+//! This module is exclusively focused on type reference resolution. Other forms of reference resolution,
+//! such as local variable resolution or module/definition resolution, are handled elsewhere.
+
+#[cfg(doc)]
+use crate::intermediate::resolver::{Namespace, TypeRegistry};
+
 use crate::ast::{IdentPath, Ty};
 
 use crate::intermediate::hir::nodes::{
@@ -13,12 +27,38 @@ use crate::intermediate::resolver::errors::{
 use crate::intermediate::resolver::{NamespaceKind, TypeID};
 use crate::intermediate::types::KitTy;
 
+/// A resolver that walks the [`HLIR`] and resolves type references.
+/// This struct maintains state about the current path context and any errors encountered during resolution.
+///
+/// This stage runs after all ADTs have been registered in the [`TypeRegistry`], allowing it to resolve types to
+/// their corresponding [`TypeID`]s.
+///
+/// # Example
+/// ```ignore
+/// struct ExampleStruct { ... }
+///
+/// fn main() {
+///     let s = ExampleStruct { ... };
+/// }
+///
+/// fn example_function(param: ExampleStruct) -> ExampleStruct { ... }
+/// ```
+/// In the above example, the [`TypeResolver`] would resolve the type reference `ExampleStruct` in the `let` statement
+/// to the corresponding [`TypeID`] in the type registry.
+///
+/// It would also resolve the parameter and return types of `example_function` to the appropriate [`TypeID`].
 struct TypeResolver<'a> {
+    /// The current implementation type context, if within an `impl` block.
+    /// This is used to resolve `self` type annotations.
     pub current_impl: Option<Type>,
-    pub path_stack: Vec<IdentPath>,
+    /// The stack of identifier paths representing the current path of where we are in the [`HLIR`].
+    pub current_path: IdentPath,
 
     pub meta: &'a mut ProgramMetaData,
 
+    /// A collection of resolver errors encountered during type resolution.
+    /// These errors are accumulated and reported after the resolution process.
+    /// If there are any errors in here after the process is complete, the resolution is considered to have failed.
     pub errors: Vec<ResolverError>,
 }
 
@@ -26,7 +66,7 @@ impl<'a> TypeResolver<'a> {
     pub fn new(meta: &'a mut ProgramMetaData) -> Self {
         Self {
             current_impl: None,
-            path_stack: vec![IdentPath::from_segments(Vec::new(), true)],
+            current_path: IdentPath::ROOT,
             meta,
             errors: Vec::new(),
         }
@@ -34,6 +74,14 @@ impl<'a> TypeResolver<'a> {
 }
 
 impl TypeResolver<'_> {
+    /// `Entrypoint` for resolving types in the given [`HLIR`].
+    /// This function performs a mutable walk over the [`HLIR`], resolving type references.
+    /// # Returns
+    /// * `Ok(())` if all type references were resolved successfully.
+    /// * `Err(ResolverError)` if there were any resolution errors.
+    /// # Errors
+    /// This function will return an error if any type references could not be resolved.
+    /// The returned error may contain multiple resolution errors if there were multiple failures.
     pub fn resolve_types(&mut self, hlir: &mut HLIR) -> ResolveResult<()> {
         self.walk_mut(hlir);
 
@@ -44,6 +92,15 @@ impl TypeResolver<'_> {
         Ok(())
     }
 
+    /// Resolve a type from the given identifier path.
+    /// This function attempts to find the type definition in the current [`Namespace`] context.
+    /// If the path is root relative, it will be resolved from the root namespace, otherwise it will be
+    /// resolved relative to the current module path.
+    /// # Returns
+    /// * `Ok(TypeID)` if the type was resolved successfully.
+    /// * `Err(ResolverError)` if the type could not be resolved.
+    /// # Errors
+    /// This function will return an error if the type definition could not be found, describing the failure reason.
     fn resolve_type(&self, path: &IdentPath) -> ResolveResult<TypeID> {
         let final_path = path.rebase_from_path(
             &self
@@ -74,34 +131,38 @@ impl TypeResolver<'_> {
 }
 
 impl TypeResolver<'_> {
+    /// Get a reference to the current identifier path from the top of the path stack.
+    /// This represents the current module or path during the resolution process.
+    #[inline]
+    #[must_use]
     pub fn current_path(&self) -> &IdentPath {
-        self.path_stack
-            .last()
-            .expect("Always has atleast 1 in stack.")
+        &self.current_path
     }
 
+    /// Get a mutable reference to the current identifier path from the top of the path stack.
+    /// This represents the current module or path during the resolution process.
+    #[inline]
+    #[must_use]
     pub fn current_path_mut(&mut self) -> &mut IdentPath {
-        self.path_stack
-            .last_mut()
-            .expect("Always has atleast 1 in stack.")
+        &mut self.current_path
     }
 
+    /// Push a new segment onto the end of the current identifier path.
+    /// # Example
+    /// If our current path is `::example::inner_module` and we push `MyStruct`, our new path will be
+    /// `::example::inner_module::MyStruct`.
+    #[inline]
     pub fn push_to_current_path(&mut self, s: &str) {
         self.current_path_mut().push(s);
     }
 
+    /// Pop the last segment from the current identifier path.
+    /// # Example
+    /// If our current path is `::example::inner_module::MyStruct` and we pop, our new path will be
+    /// `::example::inner_module`.
+    #[inline]
     pub fn pop_from_current_path(&mut self) {
         self.current_path_mut().pop();
-    }
-
-    #[allow(dead_code)]
-    pub fn push_stack(&mut self, path: IdentPath) {
-        self.path_stack.push(path);
-    }
-
-    #[allow(dead_code)]
-    pub fn pop_stack(&mut self) {
-        self.path_stack.pop();
     }
 }
 
@@ -288,6 +349,14 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     }
 }
 
+/// Resolves all types referenced by a path to a [`TypeID`] in the given [`HLIR`].
+/// This function performs a mutable walk over the [`HLIR`], resolving type references.
+/// # Returns
+/// * `Ok(())` if all type references were resolved successfully.
+/// * `Err(ResolverError)` if there were any resolution errors.
+/// # Errors
+/// This function will return an error if any type references could not be resolved.
+/// The returned error may contain multiple resolution errors if there were multiple failures.
 pub fn resolve_types(hlir: &mut HLIR, meta: &mut ProgramMetaData) -> ResolveResult<()> {
     TypeResolver::new(meta).resolve_types(hlir)
 }

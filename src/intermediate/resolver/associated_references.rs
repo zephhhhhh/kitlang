@@ -1,3 +1,34 @@
+//! The purpose of this module is to build and maintain the namespace scope tree
+//! and resolve associated references (paths to items like types, modules, functions, fields) across the program.
+//! It enforces visibility and local access rules while converting unresolved paths into resolved IDs.
+//!
+//! This pass proceeds in multiple stages:
+//! - Inject builtin types into the root [`Namespace`].
+//! - Walk the [`HLIR`] to construct the [`Namespace`] tree, deferring `impl` items until types and modules exist.
+//! - Visit deferred `impl` items, now that their target types are defined.
+//! - Resolve `use` items by importing target definitions into the current [`Namespace`].
+//! - Do a final mutable pass over expressions to resolve `Path` references.
+//!
+//! Example of an associated reference:
+//! ```ignore
+//! struct Foo;
+//!
+//! impl Foo {
+//!    fn bar() {}
+//! }
+//!
+//! fn main() {
+//!   Foo::bar();
+//! }
+//! ```
+//! In this example, `Foo::bar()` is an associated reference resolved to its owning definition.
+//!
+//! Builtin types are present in the root [`Namespace`] for resolution, though their underlying layout
+//! and type information are defined internally by the compiler rather than as source declarations.
+//!
+//! This module is exclusively focused on global/associated reference resolution and [`Namespace`] building.
+//! Local variable resolution and type resolution are handled by other modules in the resolver.
+
 use std::collections::HashMap;
 
 use crate::ast::{IdentPath, SpannedIdentPath, Visibility};
@@ -18,62 +49,32 @@ use crate::intermediate::resolver::{ADTStructField, ADTTypeInfo, Namespace, Name
 
 use log::debug;
 
-/// Builds and maintains the namespace scope tree by walking the HIR, and
-/// resolves associated references. I.e. paths from types, modules, etc.
-/// This is also where visibility and 'local' access control is enforced.
-/// ```ignore
-/// Struct Foo;
-///
-/// impl Foo {
-///    fn bar() {}
-/// }
-///
-/// fn main() {
-///   Foo::bar();
-/// }
-/// ```
-/// In this example, `Foo::bar()` is an associated reference that this mapper
-/// will resolve to it's [`OwnerDefId`].
-///
-/// This also keeps track of defined global/native functions, as those also function like
-/// associated types in that they can be referenced from anywhere, and are not 'locals'.
-///
-/// Builtin types are also defined in the root namespace for resolution,
-/// and implementation, although the underlying layout and type info is defined
-/// within the compiler, hence there is no `pub struct i32 ...` declaration or similar to
-/// be found anywhere in the code, as it is handled and defined here.
-///
-/// # Technical details
-///
-/// The 'entrypoint' for this resolving pass is the `map_references` function.
-/// This mapper works in multiple stages:
-/// - First the builtin types are injected into the root namespace.
-/// - Then the HIR is walked to build the namespace tree, ignoring `impl` items while storing
-///   their paths for later processing. This is because `impl` items may refer to types that are defined
-///   below them and thus do not yet have a namespace associated with them.
-///   This pass is done immutably as no modifications need to be made.
-/// - In the next stage, we manually visit all the `impl` items that were deferred and add them to the namespace
-///   now that all types and modules should have been defined, this way we know if it is not defined at this point,
-///   then this constitutes an error. This stage is also done immutably.
-/// - After that, we resolve all `use` items by essentially copying the definitions from the target to the current namespace.
-/// - Now that the namespace tree is fully built and all items are defined, we do a final mutable pass to resolve `Path`
-///   expressions in the tree.
-///
-/// Any errors that occured during the process are collected and returned after all stages have been attempted,
-/// this makes it possible to report multiple errors in one go instead of failing fast on the first error encountered.
-/// As a developer this makes it much easier to fix multiple errors at once, instead of having to re-run the compiler
-/// multiple times to fix each error one by one.
+// Internal mapper used by this module to construct the namespace tree
+// and resolve associated references across modules, types, functions, and uses.
 struct AssociatedReferenceMapper<'a> {
     pub meta: &'a mut ProgramMetaData,
 
+    /// Tracks all defined global functions, for quick lookup during resolution.
+    /// We check this map first when resolving single-segment paths.
     pub global_functions: HashMap<String, OwnerDefId>,
 
+    /// Stack of identifier paths representing the current scope during traversal.
+    /// This is used if we need to temporarily change scope while visiting nested items,
+    /// before reverting back to the previous scope.
     pub path_stack: Vec<IdentPath>,
+
+    /// Lookup table of all `impl` items encountered during the first pass,
+    /// so we can defer visiting them until later.
     pub impl_path_lut: Vec<(OwnerDefId, IdentPath)>,
 
+    /// Indicates whether the first stage of mapping (building namespaces) is complete.
     pub stage1_complete: bool,
 
+    /// Collected resolver errors encountered during mapping.
     pub errors: Vec<ResolverError>,
+    /// Collected resolution failures for unresolved references, to be reported after resolution.
+    /// Each entry contains the [`HirId`] of the item that failed, the [`SpannedIdentPath`] it is trying to access,
+    /// and the [`ResolutionFailure`] reason.
     pub resolution_failures: Vec<(HirId, SpannedIdentPath, ResolutionFailure)>,
 }
 
@@ -90,11 +91,13 @@ impl<'a> AssociatedReferenceMapper<'a> {
         }
     }
 
+    /// Resets the current path stack to only contain `ident_path`.
     #[inline]
     pub fn reset_path_to(&mut self, ident_path: IdentPath) {
         self.path_stack = vec![ident_path];
     }
 
+    /// Resets the current path stack to be empty, i.e. the root namespace.
     #[inline]
     pub fn reset_path(&mut self) {
         self.reset_path_to(IdentPath::from_segments(Vec::new(), true));
@@ -124,6 +127,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         self.pop_stack();
     }
 
+    /// Injects builtin type definitions into the root [`Namespace`].
     fn inject_builtin_definitions(&mut self) {
         fn builtin_namespace(name: &str) -> Namespace {
             Namespace {
@@ -149,6 +153,10 @@ impl<'a> AssociatedReferenceMapper<'a> {
             });
     }
 
+    /// Recursively resolves all `use` items in the given [`Namespace`] by
+    /// looking up their target definitions in the `root_namespace` and cloning them
+    /// into the current [`Namespace`].
+    // TODO: This is a bit messy, needs refactoring, also this should reference other items not just clone.
     fn resolve_uses_in_namespace(
         root_namespace: &Namespace,
         namespace: &mut Namespace,
@@ -195,6 +203,8 @@ impl<'a> AssociatedReferenceMapper<'a> {
         }
     }
 
+    /// `Entrypoint` function to map all associated references in the given [`HLIR`].
+    /// This will build the [`Namespace`] tree and map, then resolve all associated references,
     pub fn map_references(&mut self, hlir: &mut HLIR) -> ResolveResult<()> {
         self.inject_builtin_definitions();
 
@@ -254,6 +264,8 @@ impl<'a> AssociatedReferenceMapper<'a> {
         Ok(())
     }
 
+    /// Finds the last enclosing scope path for the given `path`.
+    /// Where an enclosing scope is something like a module or function that defines a 'border' of accessibility.
     #[inline]
     fn find_last_enclosing_path(&self, path: &IdentPath) -> IdentPath {
         if path.is_empty() {
@@ -262,6 +274,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         self.meta.namespace.find_previous_enclosing_scope(path)
     }
 
+    /// Searches for the definition of `ident_path` starting from `base_path`,
     #[inline]
     fn search_backtracking_for_definition(
         &self,
@@ -282,6 +295,10 @@ impl<'a> AssociatedReferenceMapper<'a> {
         }
     }
 
+    /// Validates that if the target path is marked as local (private), it is being accessed from within its enclosing scope.
+    /// # Returns
+    /// * `true` if access is valid.
+    /// * `false` if access violates local visibility rules.
     #[inline]
     fn validate_local_access(&self, target_path: &IdentPath, base_path: &IdentPath) -> bool {
         let Some(target_namespace) = self.get_namespace(target_path) else {
@@ -296,6 +313,12 @@ impl<'a> AssociatedReferenceMapper<'a> {
         true
     }
 
+    /// Searches for the definition of `ident_path` starting from `base_path`.
+    /// This function performs backtracking to find the definition in enclosing scopes,
+    /// while also enforcing visibility and local access rules.
+    /// # Returns
+    /// * `Ok(ResolvedID)` if the definition is found and accessible.
+    /// * `Err(ResolutionFailure)` if the definition is not found or inaccessible.
     pub fn search_for_definition(
         &self,
         ident_path: &IdentPath,
@@ -369,6 +392,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
 }
 
 impl AssociatedReferenceMapper<'_> {
+    /// Get a reference to the current identifier path from the top of the path stack.
     #[inline]
     pub fn current_path(&self) -> &IdentPath {
         self.path_stack
@@ -376,6 +400,7 @@ impl AssociatedReferenceMapper<'_> {
             .expect("Always has atleast 1 in stack.")
     }
 
+    /// Get a mutable reference to the current identifier path from the top of the path stack.
     #[inline]
     pub fn current_path_mut(&mut self) -> &mut IdentPath {
         self.path_stack
@@ -383,21 +408,31 @@ impl AssociatedReferenceMapper<'_> {
             .expect("Always has atleast 1 in stack.")
     }
 
+    /// Push a new segment onto the end of the current identifier path.
+    /// # Example
+    /// If our current path is `::example` and we push `inner_module`, our new path will be
+    /// `::example::inner_module`.
     #[inline]
     pub fn push_to_current_path(&mut self, s: &str) {
         self.current_path_mut().push(s);
     }
 
+    /// Pop the last segment from the end of the current identifier path.
+    /// # Example
+    /// If our current path is `::example::inner_module` and we pop, our new path will be
+    /// `::example`.
     #[inline]
     pub fn pop_from_current_path(&mut self) {
         self.current_path_mut().pop();
     }
 
+    /// Push a new identifier path onto the top of the path stack.
     #[inline]
     pub fn push_stack(&mut self, path: IdentPath) {
         self.path_stack.push(path);
     }
 
+    /// Pop the top identifier path from the path stack.
     #[inline]
     pub fn pop_stack(&mut self) {
         self.path_stack.pop();
@@ -405,6 +440,8 @@ impl AssociatedReferenceMapper<'_> {
 }
 
 impl AssociatedReferenceMapper<'_> {
+    /// Determines if the given `path` should be marked as local based on its namespace.
+    /// A path is considered local if it is defined within a local scope or is a function
     #[inline]
     fn should_be_local(&self, path: &IdentPath) -> bool {
         let Some(namespace) = self.get_namespace(path) else {
@@ -413,6 +450,7 @@ impl AssociatedReferenceMapper<'_> {
         namespace.local || namespace.kind == NamespaceKind::Function
     }
 
+    /// Get a reference to the [`Namespace`] defined at a given `path`, if it exists.
     #[inline]
     fn get_namespace(&self, path: &IdentPath) -> Option<&Namespace> {
         let mut curr_namespace = &self.meta.namespace;
@@ -422,6 +460,7 @@ impl AssociatedReferenceMapper<'_> {
         Some(curr_namespace)
     }
 
+    /// Get a mutable reference to the [`Namespace`] defined at a given `path`, if it exists.
     #[inline]
     fn get_namespace_mut(&mut self, path: &IdentPath) -> Option<&mut Namespace> {
         let mut curr_namespace = &mut self.meta.namespace;

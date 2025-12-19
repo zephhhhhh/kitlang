@@ -77,6 +77,22 @@ pub enum ParseErrorKind {
     UnknownLiteralKind(TokenKind),
 }
 
+impl ParseErrorKind {
+    /// Create a new [`ParseError`] from this kind and the given [`SourceSpan`].
+    #[inline]
+    #[must_use]
+    pub fn with_span(&self, span: impl Into<SourceSpan>) -> ParseError {
+        ParseError::new(self.clone(), span.into())
+    }
+
+    /// Create a new [`ParseError`] from this kind and a null [`SourceSpan`].
+    #[inline]
+    #[must_use]
+    pub fn with_no_span(&self) -> ParseError {
+        ParseError::new(self.clone(), SourceSpan::null_span())
+    }
+}
+
 /// Represents an error while parsing the tokens produced by the lexer into an AST.
 #[derive(Debug, Error)]
 pub struct ParseError {
@@ -86,6 +102,7 @@ pub struct ParseError {
 }
 
 impl ParseError {
+    /// Create a new [`ParseError`] from the given kind and source span.
     #[inline]
     #[must_use]
     pub fn new(kind: impl Into<ParseErrorKind>, span: impl Into<SourceSpan>) -> Self {
@@ -95,6 +112,7 @@ impl ParseError {
         }
     }
 
+    /// Create a new [`ParseError`] indicating that there were no tokens to parse.
     #[inline]
     #[must_use]
     pub fn no_tokens(span: impl Into<SourceSpan>) -> Self {

@@ -539,16 +539,16 @@ impl HLIRLowerer<'_> {
             kind: ExprKind::Block(loop_block_real_id),
             span: block.span,
         };
-        let Some(loop_block_expr_id) = self
+        let loop_block_expr_id = self
             .hlir
             .insert_hir_node(owner_node, HirNode::Expr(block_expr))
-        else {
-            return Err(lowering_err!(
-                on_span,
-                block.span,
-                "Failed to create for-loop block expression."
-            ));
-        };
+            .ok_or_else(|| {
+                lowering_err!(
+                    on_span,
+                    block.span,
+                    "Failed to create for-loop block expression."
+                )
+            })?;
 
         let loop_block_id = {
             let hir_statement = Statement {
@@ -556,17 +556,15 @@ impl HLIRLowerer<'_> {
                 kind: StatementKind::Expr(loop_block_expr_id),
                 span: binding.span,
             };
-            let Some(bid) = self
-                .hlir
+            self.hlir
                 .insert_hir_node(owner_node, HirNode::Statement(hir_statement))
-            else {
-                return Err(lowering_err!(
-                    on_span,
-                    binding.span,
-                    "Failed to create for-loop loop block statement."
-                ));
-            };
-            bid
+                .ok_or_else(|| {
+                    lowering_err!(
+                        on_span,
+                        block.span,
+                        "Failed to create for-loop loop block statement."
+                    )
+                })?
         };
 
         if let HirNode::Block(block) = self.hlir.get_hir_node_mut_unchecked(enclosing_block_id) {

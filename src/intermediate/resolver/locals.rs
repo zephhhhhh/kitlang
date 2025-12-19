@@ -1,3 +1,13 @@
+//! The purpose of this module is to manage local scopes during the resolution phase of the compiler.
+//! A local scope is a scope in which local variables are defined and can be resolved.
+//! This is usually within functions, blocks, or other constructs that introduce a new scope.
+//!
+//! This file is *NOT* responsible for managing scopes between modules, other functions, etc.
+//! That is handled by the `associated_references` resolver.
+//!
+//! This module is exclusively focused on local variable resolution, and ensuring that variables are correctly
+//! scoped and resolved within their respective local contexts. All other references are handled elsewhere.
+
 use ::std::fmt::Debug;
 use std::collections::HashMap;
 
@@ -10,20 +20,30 @@ use crate::intermediate::resolver::errors::{
     ResolveResult, ResolverError, ResolverErrorKind, resolve_err,
 };
 
+/// Represents a local scope in the resolver, maintaining variable definitions and their resolved IDs.
+///
+/// These local scopes may be nested inside a parent scopes, forming a hierarchy of scopes.
+/// Expressions inside scopes may only access variables defined in their own scope or in parent scopes,
+/// not variables in child scopes.
 #[derive(Debug, Clone, PartialEq)]
 struct LocalScope {
+    /// An optional identifier for the scope, useful for debugging or error messages.
     pub scope_ident: Option<String>,
+    /// A mapping from variable names to their resolved IDs within this scope.
     pub definitions: HashMap<String, ResolvedID>,
+    /// An optional parent scope, allowing for nested scopes.
     pub parent: Option<Box<Self>>,
 }
 
 impl LocalScope {
+    /// Create a new local scope with an optional identifier.
     #[inline]
     #[must_use]
     pub fn new(scope_ident: Option<String>) -> Self {
         Self::new_with_parent(scope_ident, None)
     }
 
+    /// Create a new local scope with an optional identifier and a parent scope.
     #[inline]
     #[must_use]
     pub fn new_with_parent(scope_ident: Option<String>, parent: Option<Box<Self>>) -> Self {
@@ -34,18 +54,23 @@ impl LocalScope {
         }
     }
 
+    /// Create a child scope of the current scope with an optional identifier.
     #[inline]
     #[must_use]
     pub fn child_scope(&self, scope_ident: Option<String>) -> Self {
         Self::new_with_parent(scope_ident, Some(Box::new(self.clone())))
     }
 
+    /// Check if this scope is the root scope (i.e., has no parent).
     #[inline]
     #[allow(dead_code)]
     pub const fn is_root_scope(&self) -> bool {
         self.parent.is_none()
     }
 
+    /// Add a new definition, ensuring that the name is unique within this scope.
+    /// # Returns
+    /// `true` if the definition was added successfully, `false` if the name already exists.
     #[inline]
     pub fn add_definition_unique(&mut self, name: &str, id: ResolvedID) -> bool {
         if self.definitions.contains_key(name) {
@@ -56,11 +81,17 @@ impl LocalScope {
     }
 
     /// Add a new definition, redefining the value that was already there, if exists.
+    /// # Returns
+    /// `true` if the definition overwrote an existing one, `false` if it was newly added.
     #[inline]
     pub fn add_definition_overwrite(&mut self, name: &str, id: ResolvedID) -> bool {
         self.definitions.insert(name.to_string(), id).is_some()
     }
 
+    /// Add a new definition, returning an error if the name already exists in this scope.
+    /// # Returns
+    /// * `Ok(())` if the definition was added successfully
+    /// * `Err(ResolverError)` if the name already exists.
     #[allow(dead_code)]
     #[inline]
     pub fn add_definition_result(&mut self, name: &str, id: ResolvedID) -> ResolveResult<()> {
@@ -75,6 +106,10 @@ impl LocalScope {
         }
     }
 
+    /// Find a definition in the current scope or any parent scopes.
+    /// # Returns
+    /// * `Some(ResolvedID)` if the definition is found.
+    /// * `None` if the definition is not found.
     #[inline]
     #[must_use]
     pub fn find_definition(&self, name: &str) -> Option<ResolvedID> {
@@ -89,47 +124,82 @@ impl LocalScope {
     }
 }
 
+/// A resolver that manages local scopes and resolves local variable references in the HLIR.
+/// We keep track of resolver state in this struct, and use it to implement the [`HLIR`] visitor traits.
+/// In this case, the scope resolver only requires one mutable pass over the [`HLIR`] to resolve local references.
+#[derive(Default, Debug, Clone)]
 struct ScopeResolver {
     pub scope: Vec<LocalScope>,
+    /// Collected resolver errors during the resolution process.
     pub errors: Vec<ResolverError>,
 }
 
 impl ScopeResolver {
-    #[inline]
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            scope: Vec::new(),
-            errors: Vec::new(),
-        }
-    }
-
+    /// Push a new local scope onto the scope stack.
     #[inline]
     pub fn push_scope(&mut self, local_scope: LocalScope) {
         self.scope.push(local_scope);
     }
 
+    /// Pop the current local scope from the scope stack.
     #[inline]
     pub fn pop_scope(&mut self) {
         self.scope.pop();
     }
 
+    /// Get a reference to the current local scope.
     #[inline]
     pub fn current_scope(&self) -> &LocalScope {
         self.scope.last().expect("Must have valid scope.")
     }
 
+    /// Get a mutable reference to the current local scope.
     #[inline]
     #[must_use]
     pub fn current_scope_mut(&mut self) -> &mut LocalScope {
         self.scope.last_mut().expect("Must have valid scope.")
     }
 
+    /// Create a new child scope of the current scope, with an optional identifier, and push it onto the scope stack.
     #[inline]
     pub fn push_child_scope(&mut self, scope_ident: Option<String>) {
         self.push_scope(self.current_scope().child_scope(scope_ident));
     }
 
+    /// Executes `f` within a new local scope with an optional identifier.
+    /// The new scope is pushed onto the scope stack before executing `f`,
+    /// and popped off the stack after `f` completes.
+    #[inline]
+    fn with_scope<F>(&mut self, scope_ident: Option<String>, f: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        self.push_scope(LocalScope::new(scope_ident));
+        f(self);
+        self.pop_scope();
+    }
+
+    /// Executes `f` within a new child scope of the current scope with an optional identifier.
+    /// The new scope is pushed onto the scope stack before executing `f`,
+    /// and popped off the stack after `f` completes.
+    #[inline]
+    fn with_child_scope<F>(&mut self, scope_ident: Option<String>, f: F)
+    where
+        F: FnOnce(&mut Self),
+    {
+        self.push_child_scope(scope_ident);
+        f(self);
+        self.pop_scope();
+    }
+
+    /// `Entrypoint` to resolve local variable references in the given HLIR.
+    /// This function performs a mutable walk over the HLIR, resolving local variable references.
+    /// # Returns
+    /// * `Ok(())` if all local variable references were resolved successfully.
+    /// * `Err(ResolverError)` if there were any resolution errors.
+    /// # Errors
+    /// This function will return an error if any local variable references could not be resolved.
+    /// The returned error may contain multiple resolution errors if there were multiple failures.
     #[inline]
     pub fn resolve(&mut self, hlir: &mut HLIR) -> ResolveResult<()> {
         self.walk_mut(hlir);
@@ -145,9 +215,9 @@ impl ScopeResolver {
 impl HLIRVisitorMut<'_> for ScopeResolver {
     fn visit_block_mut(&mut self, block: &mut Block, hlir: &mut HLIRDisjointMut<'_>) {
         if block.root_block {
-            self.push_child_scope(None);
-            self.super_block_mut(block, hlir);
-            self.pop_scope();
+            self.with_child_scope(None, |r| {
+                r.super_block_mut(block, hlir);
+            });
         } else {
             self.super_block_mut(block, hlir);
         }
@@ -169,12 +239,11 @@ impl HLIRVisitorMut<'_> for ScopeResolver {
     fn visit_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'_>) {
         let has_body = function.body.is_some();
         if has_body {
-            self.push_scope(LocalScope::new(Some(function.ident.string())));
-        }
-        self.super_function_mut(function, hlir);
-
-        if has_body {
-            self.pop_scope();
+            self.with_scope(Some(function.ident.string()), |r| {
+                r.super_function_mut(function, hlir);
+            });
+        } else {
+            self.super_function_mut(function, hlir);
         }
     }
 
@@ -205,6 +274,14 @@ impl HLIRVisitorMut<'_> for ScopeResolver {
     }
 }
 
+/// Resolves local variable references in the given HLIR.
+/// This function performs a mutable walk over the HLIR, resolving local variable references.
+/// # Returns
+/// * `Ok(())` if all local variable references were resolved successfully.
+/// * `Err(ResolverError)` if there were any resolution errors.
+/// # Errors
+/// This function will return an error if any local variable references could not be resolved.
+/// The returned error may contain multiple resolution errors if there were multiple failures.
 pub fn resolve_scope_paths(hlir: &mut HLIR) -> ResolveResult<()> {
-    ScopeResolver::new().resolve(hlir)
+    ScopeResolver::default().resolve(hlir)
 }
