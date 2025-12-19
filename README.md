@@ -8,7 +8,7 @@
 
 A statically-typed, Rust-inspired programming language designed for embedding as a plugin, extension, or modding language.
 
-> **Note**: Kitlang is a hobby project for personal use and demonstrating compiler construction principles. Kitlang is still a work in progress and many features are either not implemented entirely, only partially implemented, or is still in progress of being tested and worked on. Kitlang is _**NOT**_ ready for any serious application in it's current state and using it as such may lead to instability and undefined behaviour.
+> **Note**: Kitlang is a hobby project for personal use and demonstrating compiler construction principles. Kitlang is still a work in progress and many features are still in progress of being tested and validated. Kitlang is _**NOT**_ ready for any serious application in it's current state and using it as such may lead to instability and undefined behaviour.
 
 ## Features
 
