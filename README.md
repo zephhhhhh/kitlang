@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
 [![Rust](https://github.com/zephhhhhh/kitlang/actions/workflows/rust.yml/badge.svg)](https://github.com/zephhhhhh/kitlang/actions/workflows/rust.yml)
+[![Static Badge](https://img.shields.io/badge/pages-Docs-informational?logo=github)](https://zephhhhhh.github.io/kitlang/)
+
 
 A statically-typed, Rust-inspired programming language designed for embedding as a plugin, extension, or modding language.
 
@@ -153,6 +155,11 @@ cargo test lexer
 
 -   [Syntax Reference](Syntax.md) - Language syntax specification
 -   [MIR Desugaring](mir_desugar.md) - MIR transformation details
+
+### View docs on GitHub pages
+
+The documentation for this crate is automatically generated and hosted on GitHub pages on this repo
+viewable [Here](https://zephhhhhh.github.io/kitlang/)
 
 ### Generate and view locally
 
