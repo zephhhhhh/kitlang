@@ -206,14 +206,14 @@ impl Compiler {
     /// # Returns
     /// * `Ok(ASTRoot)` - The parsed AST root node if parsing was successful.
     /// * `Err(KitlangError)` - An error indicating what went wrong during parsing
-    pub fn parse_ast(&self) -> KitlangResult<crate::ast::ASTRoot> {
+    pub fn parse_ast(&mut self) -> KitlangResult<crate::ast::ASTRoot> {
         let source_string = self.context.source();
         Ok(if self.profile_stages {
             crate::profiling::print_execution_named("Parse", || {
-                crate::parser::parse_from_tokens(crate::lexer::tokenise_stripped(&source_string))
+                crate::parser::parse_from_tokens(crate::lexer::tokenise_stripped(&source_string), &mut self.context)
             })
         } else {
-            crate::parser::parse_from_tokens(crate::lexer::tokenise_stripped(&source_string))
+            crate::parser::parse_from_tokens(crate::lexer::tokenise_stripped(&source_string), &mut self.context)
         }?)
     }
 

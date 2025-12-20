@@ -16,6 +16,8 @@ mod statement;
 #[cfg(doc)]
 use crate::ast::{Expression, Item, Statement};
 
+use crate::compiler::CompilerContext;
+
 use ::std::ops::Range;
 
 use crate::ast::{
@@ -228,18 +230,13 @@ impl TokenCursor<'_> {
 #[derive(Debug)]
 pub struct TokenStream(pub Vec<Token>);
 
-/// Context/Information about a parsing session.
-/// Contains things such as Diagnostic settings, warning settings, etc..
-#[derive(Debug)]
-pub struct ParserContext {}
-
 /// Contains the state needed to parse an input file, as well as methods to parse different [`Item`]s,
 /// [`Expression`]s and [`Statement`]s.
 #[derive(Debug)]
 pub(crate) struct Parser<'a, 'b> {
     // TODO: Add functionality to this.
     #[allow(dead_code)]
-    context: &'a ParserContext,
+    context: &'a mut CompilerContext,
 
     cursor: TokenCursor<'b>,
 }
@@ -247,7 +244,7 @@ pub(crate) struct Parser<'a, 'b> {
 impl<'a, 'b> Parser<'a, 'b> {
     #[inline]
     #[must_use]
-    pub const fn from_cursor(token_cursor: TokenCursor<'b>, context: &'a ParserContext) -> Self {
+    pub const fn from_cursor(token_cursor: TokenCursor<'b>, context: &'a mut CompilerContext) -> Self {
         Self {
             context,
             cursor: token_cursor,
@@ -951,13 +948,12 @@ impl Parser<'_, '_> {
 /// This function will return an error if any part of parsing the token stream fails.
 /// The returned error will contain information about where in the source code the error occurred,
 /// and a message about the nature of the error.
-pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>) -> PResult<ASTRoot> {
+pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>, ctx: &mut CompilerContext) -> PResult<ASTRoot> {
     // TODO: Probably try a method to not collect the iterator in the future, this is easier for
     // now though.
     let token_list = tokens.collect::<Vec<Token>>();
-    let context = ParserContext {};
 
-    let mut parser = Parser::from_cursor(TokenCursor::new(&token_list), &context);
+    let mut parser = Parser::from_cursor(TokenCursor::new(&token_list), ctx);
 
     parser.parse_root()
 }
@@ -972,7 +968,7 @@ pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>) -> PResult<ASTRoot
 /// The returned error will contain information about where in the source code the error occurred,
 /// and a message about the nature of the error.
 #[inline]
-pub fn parse_from_source(source: &str) -> PResult<ASTRoot> {
+pub fn parse_from_source(source: &str, ctx: &mut CompilerContext) -> PResult<ASTRoot> {
     let token_iter = tokenise_stripped(source);
-    parse_from_tokens(token_iter)
+    parse_from_tokens(token_iter, ctx)
 }

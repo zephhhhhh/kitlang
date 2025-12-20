@@ -33,6 +33,7 @@
 
 use crate::ast::{self, SourceSpan, SpannedIdent, Visibility};
 
+use crate::compiler::CompilerContext;
 use crate::intermediate::hir::errors::{LowerResult, lowering_err};
 use crate::intermediate::hir::nodes::{
     Block, Constant, Enum, Expr, ExprKind, Function, FunctionBody, FunctionSig, HirNode, Impl,
@@ -45,6 +46,9 @@ use crate::intermediate::hir::{HLIR, HirId, LoweringError, LoweringErrorKind, Ow
 /// This struct is how we store and maintain the HLIR while we lower from AST to HIR.
 /// Contains all the logic for doing the lowering.
 struct HLIRLowerer<'a> {
+    #[allow(dead_code)]
+    ctx: &'a mut CompilerContext,
+
     hlir: &'a mut HLIR,
 }
 
@@ -803,11 +807,11 @@ impl HLIRLowerer<'_> {
 /// This function will return an error if any part of the AST cannot be lowered properly.
 /// The returned error will contain a diagnostic message indicating the nature and location of any failures,
 /// as well as which stage of lowering it occurred in.
-pub fn lower_ast_to_hir(ast: &ast::ASTRoot) -> LowerResult<HLIR> {
+pub fn lower_ast_to_hir(ast: &ast::ASTRoot, ctx: &mut CompilerContext) -> LowerResult<HLIR> {
     let mut hir = HLIR::default();
 
     {
-        let mut lowerer = HLIRLowerer { hlir: &mut hir };
+        let mut lowerer = HLIRLowerer { hlir: &mut hir, ctx };
         lowerer.build_hir_representation(ast)?;
     }
 

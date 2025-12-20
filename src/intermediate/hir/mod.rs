@@ -535,8 +535,8 @@ pub(crate) fn get_span_by_id(hlir: &HLIR, hir_id: HirId) -> SourceSpan {
 /// This function will return an error if any part of the AST cannot be lowered properly.
 /// The returned error will contain a diagnostic message indicating the nature and location of any failures,
 /// as well as which stage of lowering it occurred in.
-pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
-    lowerer::lower_ast_to_hir(ast)
+pub fn lower_ast_to_hir(ast: &ASTRoot, ctx: &mut CompilerContext) -> LowerResult<HLIR> {
+    lowerer::lower_ast_to_hir(ast, ctx)
 }
 
 /// Lower the output of the parser state to HIR, using a provided metadata structure.
@@ -551,7 +551,7 @@ pub fn parse_ast_to_hir_processed_with(
     ast: &ASTRoot,
     ctx: &mut CompilerContext,
 ) -> LowerResult<HLIR> {
-    let mut hlir = lower_ast_to_hir(ast)?;
+    let mut hlir = lower_ast_to_hir(ast, ctx)?;
 
     // Resolution..
     resolve_paths(&mut hlir, ctx)
