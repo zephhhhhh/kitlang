@@ -233,19 +233,23 @@ impl Compiler {
             crate::profiling::print_execution_named("Lower to HIR", || {
                 crate::intermediate::hir::parse_ast_to_hir_processed_with(
                     &ast,
-                    self.context.meta_mut(),
+                    &mut self.context,
                 )
             })
         } else {
-            crate::intermediate::hir::parse_ast_to_hir_processed_with(&ast, self.context.meta_mut())
+            crate::intermediate::hir::parse_ast_to_hir_processed_with(&ast, &mut self.context)
         }?)
     }
 
     /// Compile the provided source code up to the MIR stage.
     /// This function will parse to AST, then compile to HIR, then lower the HIR to MIR.
     /// # Errors
-    /// This function will return an error if any part of the HIR cannot be lowered properly.
-    /// The returned error will contain a diagnostic message indicating the nature and location of any failures.
+    /// This function will return an error if any part of the parsing or lowering process fails.
+    /// The returned error will contain a diagnostic message indicating the nature and location of any failures, as well
+    /// as which stage they originate from.
+    ///
+    /// These errors can be formatted into user-friendly error messages using the `format_as_error_message`
+    /// method on the `KitlangError` on the `Err` variant.
     /// # Returns
     /// * `Ok(MIR)` - The lowered MIR if successful.
     /// * `Err(KitlangError)` - An error indicating what went wrong during any lowering or parsing stage.
@@ -253,10 +257,10 @@ impl Compiler {
         let hir = self.compile_to_hir()?;
         Ok(if self.profile_stages {
             crate::profiling::print_execution_named("Lower to MIR", || {
-                crate::intermediate::mir::lower_hir_to_mir(&hir, self.context.meta())
+                crate::intermediate::mir::lower_hir_to_mir(&hir, &self.context)
             })
         } else {
-            crate::intermediate::mir::lower_hir_to_mir(&hir, self.context.meta())
+            crate::intermediate::mir::lower_hir_to_mir(&hir, &self.context)
         }?)
     }
 }

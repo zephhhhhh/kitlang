@@ -8,9 +8,10 @@ use crate::intermediate::hir::nodes::{
     Statement, StatementKind, Type,
 };
 use crate::intermediate::hir::visitor::HLIRVisitor;
-use crate::intermediate::hir::{
-    HLIR, HirId, LoweringError, LoweringErrorKind, OwnerDefId, ProgramMetaData,
-};
+use crate::intermediate::hir::{HLIR, HirId, LoweringError, LoweringErrorKind, OwnerDefId};
+
+use crate::compiler::CompilerContext;
+
 
 use crate::intermediate::mir::{
     BasicBlock, BasicBlockId, BlockExitKind, Body, CastKind, ExitDirective, LocalDefinition,
@@ -131,7 +132,8 @@ impl HIRToMIRFuncLowererState {
 }
 
 struct HIRToMIRFuncLowerer<'a> {
-    pub program_meta_data: &'a ProgramMetaData,
+    pub ctx: &'a CompilerContext,
+
     pub body: Body,
     pub func_owner_id: OwnerDefId,
     pub func_body_id: HirId,
@@ -148,11 +150,11 @@ struct HIRToMIRFuncLowerer<'a> {
 impl<'a> HIRToMIRFuncLowerer<'a> {
     pub fn from_func_id(
         hlir: &HLIR,
-        meta_data: &'a ProgramMetaData,
+        ctx: &'a CompilerContext,
         func_id: OwnerDefId,
     ) -> Result<Body, Vec<LoweringError>> {
         let mut f = Self {
-            program_meta_data: meta_data,
+            ctx,
             body: Body::new_empty(),
             func_owner_id: func_id,
             func_body_id: HirId::PLACEHOLDER_ID,
@@ -831,7 +833,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     push_lower_err!(self, hlir, *hir_id, "Failed to eval target method!");
                     return;
                 };
-                let Some(obj_ty) = self.program_meta_data.type_map.get(hir_id) else {
+                let Some(obj_ty) = self.ctx.type_map().get(hir_id) else {
                     push_lower_err!(
                         self,
                         hlir,
@@ -843,7 +845,8 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 };
 
                 let Some(method_def) = self
-                    .program_meta_data
+                    .ctx
+                    .meta()
                     .find_ty_method_owner_def(obj_ty, ident.str())
                 else {
                     push_lower_err!(
@@ -852,7 +855,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         *hir_id,
                         "Failed to find method `{}` for type `{:?}`",
                         ident.str(),
-                        self.program_meta_data.type_name(obj_ty.clone())
+                        self.ctx.meta().type_name(obj_ty.clone())
                     );
                     return;
                 };
@@ -901,11 +904,11 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
             ExprKind::FieldAccess(hir_id, ident) => {
                 if let Some(target_local) = self.visit_expr_assigned(*hir_id, hlir) {
                     if let Some(Type::Resolved(KitTy::Abstract(type_id))) =
-                        self.program_meta_data.type_map.get(hir_id)
+                        self.ctx.type_map().get(hir_id)
                     {
                         let to_access = self
-                            .program_meta_data
-                            .type_registry
+                            .ctx
+                            .type_registry()
                             .get_from_type_id(*type_id)
                             .expect("Type exists.");
                         let Some(field_index) = to_access.find_field_index(ident.str()) else {
@@ -955,11 +958,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     );
                     return;
                 };
-                if let Some(type_info) = self
-                    .program_meta_data
-                    .type_registry
-                    .get_from_type_id(type_id)
-                {
+                if let Some(type_info) = self.ctx.type_registry().get_from_type_id(type_id) {
                     if type_info.get_field_count() != struct_initialisation.fields.len() {
                         push_lower_err!(
                             self,
@@ -1211,7 +1210,7 @@ pub fn is_non_expr_expr(hlir: &HLIR, expr_id: HirId) -> bool {
     )
 }
 
-pub fn lower_hir_to_mir(hlir: &HLIR, type_info: &ProgramMetaData) -> LowerResult<MIR> {
+pub fn lower_hir_to_mir(hlir: &HLIR, ctx: &CompilerContext) -> LowerResult<MIR> {
     let mut bodies = HashMap::<OwnerDefId, Body>::new();
     let mut native_function_links = HashMap::<OwnerDefId, String>::new();
 
@@ -1222,7 +1221,7 @@ pub fn lower_hir_to_mir(hlir: &HLIR, type_info: &ProgramMetaData) -> LowerResult
             if func.native {
                 native_function_links.insert(i, func.ident.string());
             } else {
-                match HIRToMIRFuncLowerer::from_func_id(hlir, type_info, i) {
+                match HIRToMIRFuncLowerer::from_func_id(hlir, ctx, i) {
                     Ok(body) => {
                         bodies.insert(i, body);
                     }

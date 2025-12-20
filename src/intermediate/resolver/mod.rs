@@ -16,27 +16,28 @@
 
 pub mod errors;
 
-#[cfg(doc)]
-use crate::intermediate::hir::HirId;
-#[cfg(doc)]
-use crate::intermediate::hir::nodes::RefPath;
-
 // Resolvers..
 mod associated_references;
 mod locals;
 mod types;
 mod verifier;
 
+#[cfg(doc)]
+use crate::intermediate::hir::HirId;
+#[cfg(doc)]
+use crate::intermediate::hir::nodes::RefPath;
+
 use std::collections::HashMap;
 use std::fmt::Debug;
 
 use crate::ast::{IdentPath, IdentPathSegment, SpannedIdent, Visibility};
 
-use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::hir::nodes::{ResolvedID, Type};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
 use crate::intermediate::resolver::errors::ResolveResult;
 use crate::intermediate::types::KitTy;
+
+use crate::compiler::CompilerContext;
 
 /// Represents a field in a struct ADT.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -664,11 +665,11 @@ impl Namespace {
 /// This function will return an error if any part of the HIR cannot be lowered properly.
 /// The returned error will contain a diagnostic message indicating what can't be resolved,
 /// why it can't be resolved and where it occured.
-pub fn resolve_paths(hlir: &mut HLIR, meta_data: &mut ProgramMetaData) -> ResolveResult<()> {
+pub fn resolve_paths(hlir: &mut HLIR, ctx: &mut CompilerContext) -> ResolveResult<()> {
     locals::resolve_scope_paths(hlir)?;
-    associated_references::resolve_associated_references(hlir, meta_data)?;
+    associated_references::resolve_associated_references(hlir, ctx)?;
 
-    types::resolve_types(hlir, meta_data)?;
+    types::resolve_types(hlir, ctx)?;
 
     // Verify all references have been resolved.
     verifier::verify_references(hlir)?;

@@ -40,19 +40,20 @@ use crate::intermediate::hir::nodes::{
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitor, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
-use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::resolver::errors::{
     ResolutionFailure, ResolveResult, ResolverError, ResolverErrorKind, UnresolvedReference,
     UnresolvedReferences, push_resolve_err, resolve_err,
 };
 use crate::intermediate::resolver::{ADTStructField, ADTTypeInfo, Namespace, NamespaceKind};
 
+use crate::compiler::CompilerContext;
+
 use log::debug;
 
 // Internal mapper used by this module to construct the namespace tree
 // and resolve associated references across modules, types, functions, and uses.
 struct AssociatedReferenceMapper<'a> {
-    pub meta: &'a mut ProgramMetaData,
+    pub ctx: &'a mut CompilerContext,
 
     /// Tracks all defined global functions, for quick lookup during resolution.
     /// We check this map first when resolving single-segment paths.
@@ -79,10 +80,10 @@ struct AssociatedReferenceMapper<'a> {
 }
 
 impl<'a> AssociatedReferenceMapper<'a> {
-    pub fn new(meta: &'a mut ProgramMetaData) -> Self {
+    pub fn new(ctx: &'a mut CompilerContext) -> Self {
         Self {
             global_functions: HashMap::new(),
-            meta,
+            ctx,
             path_stack: vec![IdentPath::from_segments(Vec::new(), true)],
             impl_path_lut: Vec::new(),
             stage1_complete: false,
@@ -149,7 +150,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
             .into_iter()
             .map(builtin_namespace)
             .for_each(|ns| {
-                self.meta.namespace.insert(ns);
+                self.ctx.namespace_mut().insert(ns);
             });
     }
 
@@ -161,7 +162,6 @@ impl<'a> AssociatedReferenceMapper<'a> {
         root_namespace: &Namespace,
         namespace: &mut Namespace,
         current_path: &IdentPath,
-        // so bad...
         errors: &mut Vec<ResolverError>,
     ) {
         let item_idents: Vec<String> = namespace.items.keys().cloned().collect();
@@ -170,36 +170,36 @@ impl<'a> AssociatedReferenceMapper<'a> {
             let Some(item_namespace) = namespace.get_mut(&ident) else {
                 continue;
             };
+
             let mut next_path = current_path.clone();
             next_path.push(&ident);
-            if let NamespaceKind::Use(use_path) = &item_namespace.kind {
-                let target_path = use_path.rebase_from_path(current_path);
 
-                if let Some(target_namespace) = root_namespace.find_definition(&target_path) {
-                    let mut cloned = target_namespace.clone();
-                    cloned.ident.clone_from(&item_namespace.ident);
-                    cloned.vis = item_namespace.vis;
-                    cloned.local = item_namespace.local;
-                    cloned.id = target_namespace.id;
-                    *item_namespace = cloned;
-
-                    Self::resolve_uses_in_namespace(
-                        root_namespace,
-                        item_namespace,
-                        &next_path,
-                        errors,
-                    );
-                } else {
-                    errors.push(resolve_err!(
-                        no_span,
-                        "Failed to resolve use path `{:?}` within namespace `{:?}`",
-                        target_path,
-                        current_path
-                    ));
-                }
-            } else {
+            let NamespaceKind::Use(use_path) = &item_namespace.kind else {
                 Self::resolve_uses_in_namespace(root_namespace, item_namespace, &next_path, errors);
-            }
+                continue;
+            };
+
+            let target_path = use_path.rebase_from_path(current_path);
+
+            let Some(target_namespace) = root_namespace.find_definition(&target_path) else {
+                errors.push(resolve_err!(
+                    no_span,
+                    "Failed to resolve use path `{:?}` within namespace `{:?}`",
+                    target_path,
+                    current_path
+                ));
+                continue;
+            };
+
+            let mut cloned = target_namespace.clone();
+            cloned.ident.clone_from(&item_namespace.ident);
+            cloned.vis = item_namespace.vis;
+            cloned.local = item_namespace.local;
+            cloned.id = target_namespace.id;
+
+            *item_namespace = cloned;
+
+            Self::resolve_uses_in_namespace(root_namespace, item_namespace, &next_path, errors);
         }
     }
 
@@ -223,11 +223,11 @@ impl<'a> AssociatedReferenceMapper<'a> {
             }
         }
 
-        let root_namespace_clone = self.meta.namespace.clone();
+        let root_namespace_clone = self.ctx.namespace().clone();
         let mut resolve_use_errors = Vec::new();
         Self::resolve_uses_in_namespace(
             &root_namespace_clone,
-            &mut self.meta.namespace,
+            self.ctx.namespace_mut(),
             &IdentPath::new_empty(true),
             &mut resolve_use_errors,
         );
@@ -271,7 +271,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         if path.is_empty() {
             return IdentPath::new_empty(true);
         }
-        self.meta.namespace.find_previous_enclosing_scope(path)
+        self.ctx.namespace().find_previous_enclosing_scope(path)
     }
 
     /// Searches for the definition of `ident_path` starting from `base_path`,
@@ -282,7 +282,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         mut base_path: IdentPath,
     ) -> Option<(IdentPath, ResolvedID)> {
         let path = ident_path.rebase_from_path(&base_path);
-        if let Some(def) = self.meta.namespace.find_definition(&path) {
+        if let Some(def) = self.ctx.namespace().find_definition(&path) {
             return Some((path, def.id));
         }
 
@@ -453,7 +453,7 @@ impl AssociatedReferenceMapper<'_> {
     /// Get a reference to the [`Namespace`] defined at a given `path`, if it exists.
     #[inline]
     fn get_namespace(&self, path: &IdentPath) -> Option<&Namespace> {
-        let mut curr_namespace = &self.meta.namespace;
+        let mut curr_namespace = self.ctx.namespace();
         for segment in path.segments() {
             curr_namespace = curr_namespace.get(segment)?;
         }
@@ -463,7 +463,7 @@ impl AssociatedReferenceMapper<'_> {
     /// Get a mutable reference to the [`Namespace`] defined at a given `path`, if it exists.
     #[inline]
     fn get_namespace_mut(&mut self, path: &IdentPath) -> Option<&mut Namespace> {
-        let mut curr_namespace = &mut self.meta.namespace;
+        let mut curr_namespace = self.ctx.namespace_mut();
         for segment in path.segments() {
             curr_namespace = curr_namespace.get_mut(segment)?;
         }
@@ -576,7 +576,8 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
                 })
                 .collect();
 
-            self.meta
+            self.ctx
+                .meta
                 .type_registry
                 .register_adt(ADTTypeInfo::new_struct(
                     structure.owner_id,
@@ -751,7 +752,7 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper<'_> {
 
 pub fn resolve_associated_references(
     hlir: &mut HLIR,
-    meta_data: &mut ProgramMetaData,
+    ctx: &mut CompilerContext,
 ) -> ResolveResult<()> {
-    AssociatedReferenceMapper::new(meta_data).map_references(hlir)
+    AssociatedReferenceMapper::new(ctx).map_references(hlir)
 }

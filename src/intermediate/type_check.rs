@@ -22,7 +22,6 @@ use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringError
 use crate::intermediate::hir::visitor::HLIRVisitorMut;
 use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
-use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::hir::nodes::{
     Block, Expr, ExprKind, HirNode, RefPath, ResolvedID, Statement, StatementKind, Type,
 };
@@ -30,6 +29,8 @@ use crate::intermediate::types::{KitFloat, KitInt, KitTy};
 
 use super::hir::nodes::{Function, LetStatement};
 use super::hir::visitor::HLIRDisjointMut;
+
+use crate::compiler::CompilerContext;
 
 macro_rules! type_fail {
     (no_span, $($arg:tt)*) => {
@@ -74,7 +75,7 @@ fn statement_mut_by_id(
 /// Type checker that validates types in the [`HLIR`] after resolution.
 #[derive(Debug)]
 struct TypeChecker<'a> {
-    pub meta: &'a mut ProgramMetaData,
+    pub ctx: &'a mut CompilerContext,
 
     /// Whether to perform type inference where types are not explicitly provided.
     pub should_infer: bool,
@@ -86,9 +87,9 @@ struct TypeChecker<'a> {
 }
 
 impl<'a> TypeChecker<'a> {
-    pub const fn new(meta_data: &'a mut ProgramMetaData, should_infer: bool) -> Self {
+    pub const fn new(ctx: &'a mut CompilerContext, should_infer: bool) -> Self {
         Self {
-            meta: meta_data,
+            ctx,
             should_infer,
             errors: Vec::new(),
             return_type_stack: Vec::new(),
@@ -122,7 +123,7 @@ impl TypeChecker<'_> {
         match ty.into() {
             Type::Unresolved(ty) => ty.get_type_ident(),
             Type::Resolved(KitTy::Abstract(ty_id)) => {
-                let abs_ty = self.meta.type_registry.get_from_type_id(ty_id)?;
+                let abs_ty = self.ctx.type_registry().get_from_type_id(ty_id)?;
                 let type_path = abs_ty.defined_in.extend_ident(&abs_ty.type_ident.ident);
                 Some(type_path.to_string())
             }
@@ -363,7 +364,7 @@ impl TypeChecker<'_> {
 
         if let HirNode::Expr(expr) = node {
             let expr_ty = self.eval_expr_type(expr, hlir)?;
-            self.meta.type_map.insert(id, expr_ty.clone());
+            self.ctx.type_map_mut().insert(id, expr_ty.clone());
             Ok(expr_ty)
         } else {
             Err(type_fail!(
@@ -535,7 +536,7 @@ impl TypeChecker<'_> {
                 match expr_ty {
                     Type::Resolved(t) => {
                         let Some(method_def) =
-                            self.meta.find_ty_method_owner_def(&expr_ty, ident.str())
+                            self.ctx.meta.find_ty_method_owner_def(&expr_ty, ident.str())
                         else {
                             return Err(type_fail!(
                                 hlir,
@@ -598,8 +599,8 @@ impl TypeChecker<'_> {
                 match expr_ty {
                     Type::Resolved(KitTy::Abstract(type_id)) => {
                         let type_info = self
-                            .meta
-                            .type_registry
+                            .ctx
+                            .type_registry()
                             .get_from_type_id(type_id)
                             .expect("Type exists");
                         type_info.get_field_by_ident(ident.str()).map_or_else(
@@ -638,8 +639,8 @@ impl TypeChecker<'_> {
                 };
                 let struct_type = Type::Resolved(KitTy::Abstract(*type_id));
                 let struct_adt = self
-                    .meta
-                    .type_registry
+                    .ctx
+                    .type_registry()
                     .get_from_type_id(*type_id)
                     .ok_or_else(|| {
                         type_fail!(
@@ -1071,8 +1072,8 @@ impl TypeCheckFail {
 /// # Returns
 /// * `Ok(())` if the type checking passes with no errors.
 /// * `Err(LoweringError)` if there are type checking failures, containing details of the failures.
-pub fn run_type_checker(hlir: &mut HLIR, meta: &mut ProgramMetaData) -> LowerResult<()> {
-    let mut checker = TypeChecker::new(meta, true);
+pub fn run_type_checker(hlir: &mut HLIR, ctx: &mut CompilerContext) -> LowerResult<()> {
+    let mut checker = TypeChecker::new(ctx, true);
 
     checker.walk_mut(hlir);
 

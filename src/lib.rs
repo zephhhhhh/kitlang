@@ -26,13 +26,13 @@ pub mod profiling;
 pub mod spanned_error;
 pub mod token;
 
+#[cfg(feature = "webasm")]
+pub mod webasm;
+
 // Re-export macros for use in downstream crates.
 pub use kitlang_macros as macros;
 
 use crate::{ast::SourceSpan, spanned_error::SpannedErrorBuilder};
-
-#[cfg(feature = "webasm")]
-pub mod webasm;
 
 // #[cfg(feature = "logging")]
 // use log::*;
@@ -74,43 +74,6 @@ impl KitlangError {
 
 /// Result type for Kitlang operations with error variants for different stages in the compilation process.
 pub type KitlangResult<T> = Result<T, KitlangError>;
-
-/// Parse a given kitlang source code string into MIR representations.
-/// This function injects the standard library, if you do not want that, use `parse_source_string_to_mir_no_std` instead.
-/// # Errors
-/// This function will return an error if any part of the parsing or lowering process fails.
-/// The returned error will contain a diagnostic message indicating the nature and location of any failures, as well
-/// as which stage they originate from.
-///
-/// These errors can be formatted into user-friendly error messages using the `format_as_error_message`
-/// method on the `KitlangError` on the `Err` variant.
-pub fn parse_source_string_to_mir(
-    source: &str,
-) -> KitlangResult<(intermediate::hir::ProgramMetaData, intermediate::mir::MIR)> {
-    let final_source = inject_standard_library(source);
-
-    let ast = crate::parser::parse_from_source(&final_source)?;
-    let (meta_data, hir) = intermediate::hir::parse_ast_to_hir_processed(&ast)?;
-    let mir = intermediate::mir::lower_hir_to_mir(&hir, &meta_data)?;
-    Ok((meta_data, mir))
-}
-
-/// Parse a given kitlang source code string into MIR representations.
-/// # Errors
-/// This function will return an error if any part of the parsing or lowering process fails.
-/// The returned error will contain a diagnostic message indicating the nature and location of any failures, as well
-/// as which stage they originate from.
-///
-/// These errors can be formatted into user-friendly error messages using the `format_as_error_message`
-/// method on the `KitlangError` on the `Err` variant.
-pub fn parse_source_string_to_mir_no_std(
-    source: &str,
-) -> KitlangResult<(intermediate::hir::ProgramMetaData, intermediate::mir::MIR)> {
-    let ast = crate::parser::parse_from_source(source)?;
-    let (meta_data, hir) = intermediate::hir::parse_ast_to_hir_processed(&ast)?;
-    let mir = intermediate::mir::lower_hir_to_mir(&hir, &meta_data)?;
-    Ok((meta_data, mir))
-}
 
 /// Inject the standard library code into a provided source code string.
 #[inline]

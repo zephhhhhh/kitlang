@@ -10,23 +10,24 @@
 //! program metadata ([`ProgramMetaData`]), and utilities for lowering, [traversing](crate::intermediate::hir::visitor),
 //! and manipulating the HIR.
 
+pub mod lowerer;
+pub mod errors;
+pub mod nodes;
+pub mod visitor;
+
 use ::std::fmt::Debug;
 
 use crate::ast::{ASTRoot, IdentPath, SourceSpan};
 
 use crate::intermediate::hir::errors::LowerResult;
 use crate::intermediate::hir::nodes::{HirNode, Item, OwningNode, OwningNodeKind, Type};
+pub use crate::intermediate::hir::errors::{LoweringError, LoweringErrorKind};
+
 use crate::intermediate::resolver::{ADTTypeInfo, Namespace, TypeRegistry, resolve_paths};
 use crate::intermediate::type_check::{TypeMap, run_type_checker};
-
-pub use crate::intermediate::hir::errors::{LoweringError, LoweringErrorKind};
 use crate::intermediate::types::KitTy;
 
-pub mod lowerer;
-
-pub mod errors;
-pub mod nodes;
-pub mod visitor;
+use crate::compiler::CompilerContext;
 
 /// Definition ID that is only valid when relative to the "owner".
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -548,36 +549,16 @@ pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
 /// as well as which stage of lowering it occurred in.
 pub fn parse_ast_to_hir_processed_with(
     ast: &ASTRoot,
-    meta_data: &mut ProgramMetaData,
+    ctx: &mut CompilerContext,
 ) -> LowerResult<HLIR> {
     let mut hlir = lower_ast_to_hir(ast)?;
 
     // Resolution..
-    resolve_paths(&mut hlir, meta_data)
+    resolve_paths(&mut hlir, ctx)
         .map_err(|e| LoweringErrorKind::ResolverError(e).with_no_span())?;
 
     // Type checking..
-    run_type_checker(&mut hlir, meta_data)?;
+    run_type_checker(&mut hlir, ctx)?;
 
     Ok(hlir)
-}
-
-/// Lower the output of the parser state to HIR.
-/// # Note
-/// Unlike `lower_ast_to_hir`, this function does do all HIR processing.
-/// (Type checking, resolution, etc).
-/// # Errors
-/// This function will return an error if any part of the AST cannot be lowered properly.
-/// The returned error will contain a diagnostic message indicating the nature and location of any failures,
-/// as well as which stage of lowering it occurred in.
-pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData, HLIR)> {
-    let mut meta_data = ProgramMetaData {
-        namespace: Namespace::default_root_definition(),
-        type_registry: TypeRegistry::default(),
-        type_map: TypeMap::new(),
-    };
-
-    let hlir = parse_ast_to_hir_processed_with(ast, &mut meta_data)?;
-
-    Ok((meta_data, hlir))
 }

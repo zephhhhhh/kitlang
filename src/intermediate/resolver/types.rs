@@ -20,12 +20,13 @@ use crate::intermediate::hir::nodes::{
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, OwnerDefId};
 
-use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::resolver::errors::{
     ResolveResult, ResolverError, ResolverErrorKind, push_resolve_err, resolve_err,
 };
 use crate::intermediate::resolver::{NamespaceKind, TypeID};
 use crate::intermediate::types::KitTy;
+
+use crate::compiler::CompilerContext;
 
 /// A resolver that walks the [`HLIR`] and resolves type references.
 /// This struct maintains state about the current path context and any errors encountered during resolution.
@@ -48,13 +49,13 @@ use crate::intermediate::types::KitTy;
 ///
 /// It would also resolve the parameter and return types of `example_function` to the appropriate [`TypeID`].
 struct TypeResolver<'a> {
+    pub ctx: &'a mut CompilerContext,
+
     /// The current implementation type context, if within an `impl` block.
     /// This is used to resolve `self` type annotations.
     pub current_impl: Option<Type>,
     /// The stack of identifier paths representing the current path of where we are in the [`HLIR`].
     pub current_path: IdentPath,
-
-    pub meta: &'a mut ProgramMetaData,
 
     /// A collection of resolver errors encountered during type resolution.
     /// These errors are accumulated and reported after the resolution process.
@@ -63,11 +64,11 @@ struct TypeResolver<'a> {
 }
 
 impl<'a> TypeResolver<'a> {
-    pub fn new(meta: &'a mut ProgramMetaData) -> Self {
+    pub fn new(ctx: &'a mut CompilerContext) -> Self {
         Self {
+            ctx,
             current_impl: None,
             current_path: IdentPath::ROOT,
-            meta,
             errors: Vec::new(),
         }
     }
@@ -104,12 +105,12 @@ impl TypeResolver<'_> {
     fn resolve_type(&self, path: &IdentPath) -> ResolveResult<TypeID> {
         let final_path = path.rebase_from_path(
             &self
-                .meta
-                .namespace
+                .ctx
+                .namespace()
                 .find_previous_module(self.current_path()),
         );
 
-        let Some(def) = self.meta.namespace.find_definition(&final_path) else {
+        let Some(def) = self.ctx.namespace().find_definition(&final_path) else {
             return Err(resolve_err!(
                 no_span,
                 "Cannot find parent namespace while type checking for path `{}`",
@@ -309,8 +310,8 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                     field.ty = Type::Resolved(KitTy::Abstract(type_id));
 
                     let struct_info = self
-                        .meta
-                        .type_registry
+                        .ctx
+                        .type_registry_mut()
                         .get_from_type_id_mut(current_struct_type)
                         .expect("Has to exist.");
                     if let Some(field_info) = struct_info.get_field_by_ident_mut(field.ident.str())
@@ -334,7 +335,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     fn visit_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'_>) {
         let impl_path = impl_info.self_ty.rebase_from_path(self.current_path());
 
-        if let Some(t) = self.meta.type_registry.find_type_from_path(&impl_path) {
+        if let Some(t) = self.ctx.type_registry().find_type_from_path(&impl_path) {
             self.current_impl = Some(Type::Resolved(t));
             self.super_impl_mut(impl_info, hlir);
             self.current_impl = None;
@@ -357,6 +358,6 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
 /// # Errors
 /// This function will return an error if any type references could not be resolved.
 /// The returned error may contain multiple resolution errors if there were multiple failures.
-pub fn resolve_types(hlir: &mut HLIR, meta: &mut ProgramMetaData) -> ResolveResult<()> {
-    TypeResolver::new(meta).resolve_types(hlir)
+pub fn resolve_types(hlir: &mut HLIR, ctx: &mut CompilerContext) -> ResolveResult<()> {
+    TypeResolver::new(ctx).resolve_types(hlir)
 }

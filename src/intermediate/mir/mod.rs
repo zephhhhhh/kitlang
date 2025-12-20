@@ -12,6 +12,8 @@
 //! At this stage, things such as identifiers, etc, have been fully removed and everything operates on essentially
 //! indexes of local variables, or an index (will eventually be a byte offset) into a local variable for field accesses.
 
+mod lowerer;
+
 use ::std::fmt::Debug;
 use std::collections::HashMap;
 
@@ -520,14 +522,12 @@ pub struct MIR {
     pub native_function_links: HashMap<OwnerDefId, String>,
 }
 
-mod lowerer;
-
 /// # Errors
 /// This function will return an error if any part of the HIR cannot be lowered properly.
 /// The returned error will contain a diagnostic message indicating the nature and location of any failures.
 pub fn lower_hir_to_mir(
     hlir: &crate::intermediate::hir::HLIR,
-    meta_data: &crate::intermediate::hir::ProgramMetaData,
+    ctx: &crate::compiler::CompilerContext,
 ) -> crate::intermediate::hir::errors::LowerResult<MIR> {
-    lowerer::lower_hir_to_mir(hlir, meta_data)
+    lowerer::lower_hir_to_mir(hlir, ctx)
 }
