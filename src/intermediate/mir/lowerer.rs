@@ -5,7 +5,7 @@ use crate::ast::{BinaryOpKind, Mutability};
 use crate::intermediate::hir::errors::{LowerResult, lowering_err, push_lower_err};
 use crate::intermediate::hir::nodes::{
     Block, Expr, ExprKind, Function, HirNode, LetStatement, Parameter, RefPath, ResolvedID,
-    Statement, StatementKind, Type,
+    Statement, StatementKind, StructInitialisation, Type,
 };
 use crate::intermediate::hir::visitor::HLIRVisitor;
 use crate::intermediate::hir::{HLIR, HirId, LoweringError, LoweringErrorKind, OwnerDefId};
@@ -31,6 +31,7 @@ struct HIRToMIRBlockBuilder {
 }
 
 impl HIRToMIRBlockBuilder {
+    #[inline]
     pub const fn is_empty(&self) -> bool {
         self.statements.is_empty()
     }
@@ -40,26 +41,69 @@ impl HIRToMIRBlockBuilder {
         self.push_assign(AssignTarget::Field(target, field_index), value);
     }
 
+    #[inline]
     pub fn push_local_assign(&mut self, target: LocalId, value: RValue) {
         self.push_assign(AssignTarget::Local(target), value);
     }
 
+    #[inline]
     pub fn push_assign(&mut self, target: AssignTarget, value: RValue) {
         self.push_statement_kind(MIRStatementKind::Assign(target, value));
     }
 
+    #[inline]
     pub fn push_statement_kind(&mut self, kind: MIRStatementKind) {
         self.push_statement(MIRStatement { kind });
     }
 
+    #[inline]
     pub fn push_statement(&mut self, statement: MIRStatement) {
         self.statements.push(statement);
     }
 
+    #[inline]
+    pub fn push_goto(&mut self, target: BasicBlockId) {
+        self.set_exit_kind(BlockExitKind::Goto(target));
+    }
+
+    #[inline]
+    pub fn push_return(&mut self, value: RValue) {
+        self.push_local_assign(LocalId::RETURN_VALUE, value);
+        self.set_exit_kind(BlockExitKind::Return);
+    }
+
+    #[inline]
+    pub fn push_branch(
+        &mut self,
+        condition: Operand,
+        true_block: BasicBlockId,
+        else_block: BasicBlockId,
+    ) {
+        self.set_exit_kind(BlockExitKind::Branch(condition, true_block, else_block));
+    }
+
+    #[inline]
+    pub fn push_call(
+        &mut self,
+        result_slot: LocalId,
+        target: OwnerDefId,
+        args: Vec<Operand>,
+        continue_block: BasicBlockId,
+    ) {
+        self.set_exit_kind(BlockExitKind::Call(
+            result_slot,
+            target,
+            args,
+            continue_block,
+        ));
+    }
+
+    #[inline]
     pub fn set_exit_kind(&mut self, kind: BlockExitKind) {
         self.directive = Some(kind);
     }
 
+    #[inline]
     pub fn build(self) -> Option<BasicBlock> {
         Some(BasicBlock {
             statements: self.statements,
@@ -181,7 +225,6 @@ impl<'a> HIRToMIRFuncLowerer<'a> {
 
 impl HIRToMIRFuncLowerer<'_> {
     const DEBUG_BLOCK_CREATION: bool = false;
-    const DEBUG_LOOP_STATE: bool = false;
 
     fn create_block_builder(&mut self) {
         self.block_stack.push(HIRToMIRBlockBuilder::default());
@@ -267,9 +310,7 @@ impl HIRToMIRFuncLowerer<'_> {
             }
         }
 
-        let builder = self.builder_mut_expect();
-        builder.push_local_assign(LocalId::RETURN_VALUE, RValue::unit());
-        builder.set_exit_kind(BlockExitKind::Return);
+        self.builder_mut_expect().push_return(RValue::unit());
         self.emit_block()
     }
 }
@@ -388,6 +429,612 @@ impl HIRToMIRFuncLowerer<'_> {
     }
 }
 
+impl HIRToMIRFuncLowerer<'_> {
+    /// Updates the else target of a branch block.
+    /// # Returns
+    /// `true` if the target was updated, `false` otherwise.
+    #[inline]
+    fn update_branch_else_target(
+        &mut self,
+        branch_id: BasicBlockId,
+        new_target: BasicBlockId,
+    ) -> bool {
+        if let Some(BlockExitKind::Branch(_, _, else_block)) =
+            self.body.block_exit_kind_mut(branch_id)
+        {
+            *else_block = new_target;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Updates the true and else targets of a branch block.
+    /// # Returns
+    /// `true` if the target was updated, `false` otherwise.
+    #[inline]
+    fn update_branch_targets(
+        &mut self,
+        branch_id: BasicBlockId,
+        new_true_target: BasicBlockId,
+        new_false_target: BasicBlockId,
+    ) -> bool {
+        if let Some(BlockExitKind::Branch(_, true_block, else_block)) =
+            self.body.block_exit_kind_mut(branch_id)
+        {
+            *true_block = new_true_target;
+            *else_block = new_false_target;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Updates the goto target of a goto block.
+    /// # Returns
+    /// `true` if the target was updated, `false` otherwise.
+    #[inline]
+    fn update_goto_target(&mut self, block_id: BasicBlockId, new_target: BasicBlockId) -> bool {
+        if let Some(BlockExitKind::Goto(goto)) = self.body.block_exit_kind_mut(block_id) {
+            *goto = new_target;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Updates all break goto targets from the current loop to the given block.
+    /// # Parameters
+    /// - `expr_id`: The expression ID of the full loop expression used for error reporting.
+    /// - `block_id`: The block ID to update the break targets to.
+    #[inline]
+    fn update_goto_targets_from_loop(
+        &mut self,
+        hlir: &HLIR,
+        expr_id: HirId,
+        block_id: BasicBlockId,
+    ) {
+        let breaks_to_update = if let Some(current_loop) = self.state.current_loop() {
+            current_loop.breaks_to_update.clone()
+        } else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Tried to update goto targets while not in loop?"
+            );
+            return;
+        };
+        for break_to_update in breaks_to_update {
+            self.update_goto_target(break_to_update, block_id);
+        }
+    }
+
+    /// Converts a block target to an [`RValue`].
+    #[inline]
+    fn block_target_to_rvalue(target: Option<AssignTarget>) -> RValue {
+        target
+            .as_ref()
+            .map_or_else(RValue::unit, |t| RValue::copy(*t))
+    }
+}
+
+impl HIRToMIRFuncLowerer<'_> {
+    fn lower_if(
+        &mut self,
+        hlir: &HLIR,
+        if_expr_id: HirId,
+        condition: HirId,
+        true_block: HirId,
+        else_expr: Option<&HirId>,
+    ) {
+        // No else
+        //      True block -> Goto next block
+        //      Else block -> Goto next block after last true block (Same)
+        // Else
+        //      True block -> Goto block after last else block.
+        //      Else block -> Goto next block after last else block (Same)
+
+        let Some(target) = self.visit_expr_assigned(condition, hlir) else {
+            push_lower_err!(self, hlir, condition, "Failed to eval if condition.");
+            return;
+        };
+
+        let branch_bb_id = self.body.next_block_id();
+        let true_start_id = branch_bb_id.next();
+
+        self.builder_mut_expect().push_branch(
+            Operand::Copy(target),
+            true_start_id,
+            BasicBlockId::PLACEHOLDER_ID,
+        );
+        self.emit_and_replace_block().unwrap();
+
+        let mut is_local_set = false;
+        let if_result_local = self.new_temp_local();
+
+        self.visit_block_by_id(true_block, hlir);
+
+        if !self.is_directive_set() {
+            let true_block_value =
+                Self::block_target_to_rvalue(self.state.read_last_block_target());
+            self.builder_mut_expect()
+                .push_local_assign(if_result_local, true_block_value);
+            is_local_set = true;
+        }
+
+        let final_true_block_id = self.emit_and_replace_block().unwrap();
+        if !self.update_branch_else_target(branch_bb_id, final_true_block_id.next()) {
+            push_lower_err!(self, hlir, if_expr_id, "Failed to update if branch block.");
+        }
+
+        if let Some(else_id) = else_expr {
+            self.visit_expr_by_id(*else_id, hlir);
+
+            if is_local_set && self.is_directive_set() {
+                self.emit_and_replace_block().unwrap();
+            }
+
+            if !self.is_directive_set() {
+                let false_value = Self::block_target_to_rvalue(self.state.read_last_block_target());
+                self.builder_mut_expect()
+                    .push_local_assign(if_result_local, false_value);
+            }
+
+            let final_false_block_id = self.emit_and_replace_block().unwrap();
+
+            if !self.update_goto_target(final_true_block_id, final_false_block_id.next()) {
+                push_lower_err!(
+                    self,
+                    hlir,
+                    if_expr_id,
+                    "Failed to update else branch block."
+                );
+            }
+        } else {
+            if !is_local_set {
+                self.builder_mut_expect()
+                    .push_local_assign(if_result_local, RValue::unit());
+            }
+            if !self.update_goto_target(final_true_block_id, final_true_block_id.next()) {
+                push_lower_err!(self, hlir, if_expr_id, "Failed to update if goto block.");
+            }
+        }
+
+        if is_local_set {
+            self.state.last_block_target = Some(if_result_local.into());
+        }
+    }
+
+    fn lower_loop(&mut self, hlir: &HLIR, loop_expr_id: HirId, loop_block_id: HirId) {
+        if !self.builder_expect().is_empty() {
+            self.emit_and_replace_block();
+        }
+
+        let loop_result_local = self.new_temp_local();
+
+        let loop_body_start_id = self.body.next_block_id();
+        self.state
+            .loop_stack
+            .push(HIRToMIRLoopState::new(loop_body_start_id));
+
+        self.visit_block_by_id(loop_block_id, hlir);
+
+        self.builder_mut_expect().push_goto(loop_body_start_id);
+        let final_loop_body_id = self.emit_and_replace_block().unwrap();
+
+        self.update_goto_targets_from_loop(hlir, loop_expr_id, final_loop_body_id.next());
+
+        self.state.loop_stack.pop();
+        self.builder_mut_expect()
+            .push_local_assign(loop_result_local, RValue::unit());
+        self.state.last_block_target = Some(loop_result_local.into());
+    }
+
+    fn lower_for(
+        &mut self,
+        hlir: &HLIR,
+        for_expr_id: HirId,
+        binding_id: HirId,
+        iterable_id: HirId,
+        block_id: HirId,
+    ) {
+        if !self.builder_expect().is_empty() {
+            self.emit_and_replace_block();
+        }
+
+        let for_result_local = self.new_temp_local();
+        let binding_local = self.new_temp_local();
+        let (inclusive, max_expr_id) = {
+            let Some(HirNode::Expr(iterable_expr)) = hlir.get_hir_node(iterable_id) else {
+                push_lower_err!(self, hlir, iterable_id, "Failed to get iterable expr.");
+                return;
+            };
+            let ExprKind::Range(min_expr, max_expr, inclusive) = &iterable_expr.kind else {
+                push_lower_err!(self, hlir, iterable_id, "Iterable is not a range.");
+                return;
+            };
+
+            let Some(binding_init_rhs_local) = self.visit_expr_assigned(*min_expr, hlir) else {
+                push_lower_err!(
+                    self,
+                    hlir,
+                    *min_expr,
+                    "Failed to eval for loop binding initial value."
+                );
+                return;
+            };
+
+            self.builder_mut_expect()
+                .push_assign(binding_local.into(), RValue::copy(binding_init_rhs_local));
+            self.emit_and_replace_block();
+            self.lut.insert(binding_id, binding_local);
+            (*inclusive, *max_expr)
+        };
+
+        let loop_start_bb_id = self.body.next_block_id();
+        self.state
+            .loop_stack
+            .push(HIRToMIRLoopState::new(loop_start_bb_id));
+
+        let condition_expr = self.new_temp_local();
+        let binary_op_kind = if inclusive {
+            BinaryOpKind::LessThanOrEqual
+        } else {
+            BinaryOpKind::LessThan
+        };
+        let Some(max_expr) = self.visit_expr_assigned(max_expr_id, hlir) else {
+            push_lower_err!(self, hlir, max_expr_id, "Failed to eval max expr!");
+            return;
+        };
+        self.builder_mut_expect().push_local_assign(
+            condition_expr,
+            RValue::BinaryOp(
+                binary_op_kind,
+                (Operand::Copy(binding_local.into()), Operand::Copy(max_expr)),
+            ),
+        );
+
+        self.builder_mut_expect().push_branch(
+            Operand::Copy(condition_expr.into()),
+            BasicBlockId::PLACEHOLDER_ID,
+            BasicBlockId::PLACEHOLDER_ID,
+        );
+        let branch_block_id = self.emit_and_replace_block().unwrap();
+
+        self.visit_block_by_id(block_id, hlir);
+        self.builder_mut_expect().push_local_assign(
+            binding_local,
+            RValue::Increment(Operand::Copy(binding_local.into())),
+        );
+        self.builder_mut_expect().push_goto(loop_start_bb_id);
+        let final_loop_body_id = self.emit_and_replace_block().unwrap();
+
+        if !self.update_branch_targets(
+            branch_block_id,
+            branch_block_id.next(),
+            final_loop_body_id.next(),
+        ) {
+            push_lower_err!(
+                self,
+                hlir,
+                for_expr_id,
+                "Failed to get for loop branch block."
+            );
+        }
+
+        self.update_goto_targets_from_loop(hlir, for_expr_id, final_loop_body_id.next());
+        self.state.loop_stack.pop();
+        self.builder_mut_expect()
+            .push_local_assign(for_result_local, RValue::unit());
+        self.state.last_block_target = Some(for_result_local.into());
+    }
+
+    fn lower_while(&mut self, hlir: &HLIR, while_expr_id: HirId, condition: HirId, block: HirId) {
+        if !self.builder_expect().is_empty() {
+            self.emit_and_replace_block();
+        }
+
+        let Some(target) = self.visit_expr_assigned(condition, hlir) else {
+            push_lower_err!(self, hlir, condition, "Failed to eval while condition.");
+            return;
+        };
+
+        let while_result_local = self.new_temp_local();
+        let condition_check_bb_id = self.body.next_block_id();
+        self.state
+            .loop_stack
+            .push(HIRToMIRLoopState::new(condition_check_bb_id));
+
+        self.builder_mut_expect().push_branch(
+            Operand::Copy(target),
+            BasicBlockId::PLACEHOLDER_ID,
+            BasicBlockId::PLACEHOLDER_ID,
+        );
+        let branch_block_id = self.emit_and_replace_block().unwrap();
+        self.visit_block_by_id(block, hlir);
+        self.builder_mut_expect()
+            .set_exit_kind(BlockExitKind::Goto(condition_check_bb_id));
+        let final_loop_body_id = self.emit_and_replace_block().unwrap();
+
+        self.update_branch_targets(
+            branch_block_id,
+            branch_block_id.next(),
+            final_loop_body_id.next(),
+        );
+
+        self.update_goto_targets_from_loop(hlir, while_expr_id, final_loop_body_id.next());
+
+        self.state.loop_stack.pop();
+        self.builder_mut_expect()
+            .push_local_assign(while_result_local, RValue::unit());
+        self.state.last_block_target = Some(while_result_local.into());
+    }
+
+    fn lower_call(&mut self, hlir: &HLIR, expr_id: HirId, call_id: HirId, args: &[HirId]) {
+        let Some(target) = self.visit_expr_expect_owner(call_id, hlir) else {
+            push_lower_err!(self, hlir, call_id, "Failed to get call target.");
+            return;
+        };
+
+        let Some(arg_local_ids) = args
+            .iter()
+            .map(|a_id| {
+                let local_id = self.visit_expr_assigned(*a_id, hlir)?;
+                Some(Operand::Copy(local_id))
+            })
+            .collect::<Option<Vec<_>>>()
+        else {
+            push_lower_err!(self, hlir, expr_id, "Failed to eval all args!");
+            return;
+        };
+
+        if self.is_directive_set() {
+            self.emit_and_replace_block()
+                .expect("Emit block before call.");
+        }
+        let call_block_id = self.body.next_block_id();
+        let call_result_slot = self.new_temp_local();
+        self.builder_mut_expect().push_call(
+            call_result_slot,
+            target,
+            arg_local_ids,
+            call_block_id.next(),
+        );
+        assert!(
+            self.emit_and_replace_block().expect("Emit call block.") == call_block_id,
+            "Call block id does not match expected."
+        );
+        self.state.last_block_target = Some(call_result_slot.into());
+    }
+
+    fn lower_method_call(
+        &mut self,
+        hlir: &HLIR,
+        expr_id: HirId,
+        target_id: HirId,
+        method_name: &str,
+        args: &[HirId],
+    ) {
+        fn is_def_method_func(hlir: &HLIR, owner_id: OwnerDefId) -> bool {
+            let Some(owning_node) = hlir.owning_node(owner_id) else {
+                return false;
+            };
+            let Some(func) = owning_node.hir_function_ref() else {
+                return false;
+            };
+            func.is_method
+        }
+
+        let Some(self_id) = self.visit_expr_assigned(target_id, hlir) else {
+            push_lower_err!(self, hlir, target_id, "Failed to eval target method!");
+            return;
+        };
+        let Some(obj_ty) = self.ctx.type_map().get(&target_id) else {
+            push_lower_err!(
+                self,
+                hlir,
+                target_id,
+                "Failed to get object type for method call `{:?}`",
+                target_id
+            );
+            return;
+        };
+
+        let call_str = self.ctx.resolve_sym(ident);
+        let Some(method_def) = self
+            .program_meta_data
+            .find_ty_method_owner_def(obj_ty, &call_str)
+        else {
+            push_lower_err!(
+                self,
+                hlir,
+                target_id,
+                "Failed to find method `{}` for type `{:?}`",
+                call_str,
+                self.program_meta_data.type_name(obj_ty.clone())
+            );
+            return;
+        };
+
+        if !is_def_method_func(hlir, method_def) {
+            push_lower_err!(self, hlir, target_id, "Associated call is not a method!");
+            return;
+        }
+
+        let self_arg = Operand::Copy(self_id);
+        let Some(arg_local_ids) = std::iter::once(Some(self_arg))
+            .chain(args.iter().map(|a_id| {
+                let local_id = self.visit_expr_assigned(*a_id, hlir)?;
+                Some(Operand::Copy(local_id))
+            }))
+            .collect::<Option<Vec<_>>>()
+        else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Failed to eval all args of method call!"
+            );
+            return;
+        };
+
+        if self.is_directive_set() {
+            self.emit_and_replace_block()
+                .expect("Emit block before method call.");
+        }
+        let call_block_id = self.body.next_block_id();
+        let call_result_slot = self.new_temp_local();
+        self.builder_mut_expect().push_call(
+            call_result_slot,
+            method_def,
+            arg_local_ids,
+            call_block_id.next(),
+        );
+        assert!(
+            self.emit_and_replace_block().expect("Emit call block.") == call_block_id,
+            "Call block id does not match expected."
+        );
+        self.state.last_block_target = Some(call_result_slot.into());
+    }
+
+    fn lower_field_access(
+        &mut self,
+        hlir: &HLIR,
+        expr_id: HirId,
+        target_id: HirId,
+        field_name: &str,
+    ) {
+        let Some(target_local) = self.visit_expr_assigned(target_id, hlir) else {
+            push_lower_err!(self, hlir, target_id, "Failed to eval target field local!");
+            return;
+        };
+
+        let Some(Type::Resolved(KitTy::Abstract(type_id))) =
+            self.program_meta_data.type_map.get(&target_id)
+        else {
+            push_lower_err!(self, hlir, target_id, "Target is not abstract.");
+            return;
+        };
+
+        let to_access = self
+            .program_meta_data
+            .type_registry
+            .get_from_type_id(*type_id)
+            .expect("Type exists.");
+
+        let field_name = self.ctx.resolve_sym(*ident);
+        let Some(field_index) = to_access.find_field_index(field_name) else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Failed to find field index for `{}`",
+                field_name
+            );
+            return;
+        };
+
+        let target_local_id = target_local.local_expect();
+        let local = self.new_temp_local_with_mut(self.get_mutability_of_local(target_local_id));
+        self.builder_mut_expect().push_local_assign(
+            local,
+            RValue::refer(AssignTarget::Field(target_local_id, field_index)),
+        );
+    }
+
+    fn lower_struct_init(
+        &mut self,
+        hlir: &HLIR,
+        expr_id: HirId,
+        struct_init: &StructInitialisation,
+    ) {
+        let RefPath::Resolved(_, resolved_id) = &struct_init.ty_path else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Failed to resolve struct init type `{:?}`",
+                struct_init.ty_path
+            );
+            return;
+        };
+        let ResolvedID::TypeDef(type_id) = *resolved_id else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Resolved id is not a type id, but rather: `{:?}`",
+                resolved_id
+            );
+            return;
+        };
+
+        let Some(type_info) = self
+            .ctx
+            .type_registry()
+            .get_from_type_id(type_id)
+        else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Failed to get type info for struct initialisation."
+            );
+            return;
+        };
+
+        if type_info.get_field_count() != struct_init.fields.len() {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Field count mismatch in initialisation! Expected `{}`, got `{}`",
+                type_info.get_field_count(),
+                struct_init.fields.len()
+            );
+            return;
+        }
+
+        let mut field_values = type_info
+            .get_fields()
+            .iter()
+            .map(|_| Operand::Unit)
+            .collect::<Vec<_>>();
+
+        for field_init in &struct_init.fields {
+            let Some(field_index) = type_info.find_field_index(field_init.ident.str()) else {
+                push_lower_err!(
+                    self,
+                    hlir,
+                    expr_id,
+                    "Failed to find field index for `{}`",
+                    field_init.ident.str()
+                );
+                return;
+            };
+
+            if let Some(field_init_local) = self.visit_expr_assigned(field_init.expr, hlir) {
+                *field_values.get_mut(field_index).expect("Field index") =
+                    Operand::Copy(field_init_local);
+            } else {
+                push_lower_err!(
+                    self,
+                    hlir,
+                    field_init.expr,
+                    "Failed to eval field initialisation expression."
+                );
+            }
+        }
+
+        let struct_local = self.new_temp_local();
+        self.builder_mut_expect().push_local_assign(
+            struct_local,
+            RValue::ADT(super::ADTKind::Struct(type_id), field_values),
+        );
+    }
+}
+
 impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
     // This *has* to have too many lines..
     #[allow(clippy::too_many_lines)]
@@ -419,603 +1066,61 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 );
             }
             ExprKind::UnaryOp(unary_op_kind, hir_id) => {
-                if let Some(rhs_local) = self.visit_expr_assigned(*hir_id, hlir) {
-                    let local = self.new_temp_local();
-                    self.builder_mut_expect().push_local_assign(
-                        local,
-                        RValue::UnaryOp(*unary_op_kind, Operand::Copy(rhs_local)),
-                    );
-                }
+                let Some(rhs_local) = self.visit_expr_assigned(*hir_id, hlir) else {
+                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve RHS of unary op.");
+                    return;
+                };
+                let local = self.new_temp_local();
+                self.builder_mut_expect().push_local_assign(
+                    local,
+                    RValue::UnaryOp(*unary_op_kind, Operand::Copy(rhs_local)),
+                );
             }
             ExprKind::If(condition, true_block, else_expr) => {
-                // FIXME: Really inefficient.
-                if let Some(target) = self.visit_expr_assigned(*condition, hlir) {
-                    // No else
-                    //      True block -> Goto next block
-                    //      Else block -> Goto next block after last true block (Same)
-                    // Else
-                    //      True block -> Goto block after last else block.
-                    //      Else block -> Goto next block after last else block (Same)
-
-                    let has_else = else_expr.is_some();
-
-                    let branch_bb_id = self.body.next_block_id();
-                    let true_start_id = branch_bb_id.next();
-                    self.builder_mut_expect()
-                        .set_exit_kind(BlockExitKind::Branch(
-                            Operand::Copy(target),
-                            true_start_id,
-                            BasicBlockId::PLACEHOLDER_ID,
-                        ));
-                    self.emit_and_replace_block().unwrap();
-                    assert!(
-                        self.body.next_block_id() == true_start_id,
-                        "True start id wrong!"
-                    );
-
-                    let mut is_local_set = false;
-                    let if_result_local = self.new_temp_local();
-
-                    self.visit_block_by_id(*true_block, hlir);
-                    if !self.is_directive_set() {
-                        let true_block_last_target = self.state.read_last_block_target();
-                        let true_final_assign_value = true_block_last_target
-                            .as_ref()
-                            .map_or_else(RValue::unit, |last_target| {
-                                RValue::Unchanged(Operand::Copy(*last_target))
-                            });
-                        self.builder_mut_expect()
-                            .push_local_assign(if_result_local, true_final_assign_value);
-                        is_local_set = true;
-                    }
-
-                    let final_true_block_id = self.emit_and_replace_block().unwrap();
-                    if let Some(BlockExitKind::Branch(_, _, else_block)) =
-                        self.body.block_exit_kind_mut(branch_bb_id)
-                    {
-                        *else_block = final_true_block_id.next();
-                    } else {
-                        push_lower_err!(self, hlir, expr.id, "Failed to get if branch block.");
-                    }
-
-                    if has_else {
-                        self.visit_expr_by_id(else_expr.unwrap(), hlir);
-                        if is_local_set && self.is_directive_set() {
-                            self.emit_and_replace_block().unwrap();
-                        }
-                        if !self.is_directive_set() {
-                            let false_block_last_target = self.state.read_last_block_target();
-                            let false_final_assign_value = false_block_last_target
-                                .as_ref()
-                                .map_or_else(RValue::unit, |last_target| {
-                                    RValue::Unchanged(Operand::Copy(*last_target))
-                                });
-                            self.builder_mut_expect()
-                                .push_local_assign(if_result_local, false_final_assign_value);
-                        }
-
-                        let final_false_block_id = self.emit_and_replace_block().unwrap();
-
-                        if let Some(BlockExitKind::Goto(last_true_goto)) =
-                            self.body.block_exit_kind_mut(final_true_block_id)
-                        {
-                            *last_true_goto = final_false_block_id.next();
-                        }
-                    } else {
-                        if !is_local_set && !has_else {
-                            self.builder_mut_expect()
-                                .push_local_assign(if_result_local, RValue::unit());
-                        }
-
-                        if let Some(BlockExitKind::Goto(last_true_goto)) =
-                            self.body.block_exit_kind_mut(final_true_block_id)
-                        {
-                            *last_true_goto = final_true_block_id.next();
-                        }
-                    }
-
-                    if is_local_set {
-                        self.state.last_block_target = Some(if_result_local.into());
-                    }
-                }
+                self.lower_if(hlir, expr.id, *condition, *true_block, else_expr.as_ref());
             }
             ExprKind::Loop(block) => {
-                if !self.builder_expect().is_empty() {
-                    self.emit_and_replace_block();
-                }
-
-                let loop_result_local = self.new_temp_local();
-
-                let init_binding_local = self.new_temp_local();
-                self.builder_mut_expect()
-                    .push_local_assign(init_binding_local, RValue::unit());
-
-                let loop_body_start_id = self.body.next_block_id();
-                self.state
-                    .loop_stack
-                    .push(HIRToMIRLoopState::new(loop_body_start_id));
-
-                self.visit_block_by_id(*block, hlir);
-
-                self.builder_mut_expect()
-                    .set_exit_kind(BlockExitKind::Goto(loop_body_start_id));
-                let final_loop_body_id = self.emit_and_replace_block().unwrap();
-
-                for break_to_update in &self
-                    .state
-                    .current_loop()
-                    .expect("Not in loop?")
-                    .breaks_to_update
-                {
-                    if let Some(BlockExitKind::Goto(break_goto)) =
-                        self.body.block_exit_kind_mut(*break_to_update)
-                    {
-                        if Self::DEBUG_LOOP_STATE {
-                            debug!("Updated Goto.");
-                        }
-                        *break_goto = final_loop_body_id.next();
-                    } else {
-                        push_lower_err!(self, hlir, expr.id, "Failed to update break goto target.");
-                    }
-                }
-
-                if Self::DEBUG_LOOP_STATE {
-                    debug!("Popped loop stack.");
-                }
-                self.state.loop_stack.pop();
-
-                self.builder_mut_expect()
-                    .push_local_assign(loop_result_local, RValue::unit());
-                self.state.last_block_target = Some(loop_result_local.into());
+                self.lower_loop(hlir, expr.id, *block);
             }
-            ExprKind::For(_, binding_id, iterable_id, loop_block_expr_id) => {
-                if !self.builder_expect().is_empty() {
-                    self.emit_and_replace_block();
-                }
-
-                let _init_block_id = self.body.next_block_id();
-                let for_result_local = self.new_temp_local();
-                let binding_local = self.new_temp_local();
-                let (inclusive, max_expr_id) = {
-                    let Some(HirNode::Expr(iterable_expr)) = hlir.get_hir_node(*iterable_id) else {
-                        push_lower_err!(self, hlir, *iterable_id, "Failed to get iterable expr.");
-                        return;
-                    };
-                    let ExprKind::Range(min_expr, max_expr, inclusive) = &iterable_expr.kind else {
-                        push_lower_err!(self, hlir, *iterable_id, "Iterable is not a range.");
-                        return;
-                    };
-
-                    if let Some(binding_init_rhs_local) = self.visit_expr_assigned(*min_expr, hlir)
-                    {
-                        self.builder_mut_expect().push_assign(
-                            binding_local.into(),
-                            RValue::Unchanged(Operand::Copy(binding_init_rhs_local)),
-                        );
-                        self.emit_and_replace_block();
-                    } else {
-                        push_lower_err!(
-                            self,
-                            hlir,
-                            *min_expr,
-                            "Failed to eval for loop binding initial value."
-                        );
-                        return;
-                    }
-
-                    self.lut.insert(*binding_id, binding_local);
-
-                    (*inclusive, *max_expr)
-                };
-
-                let loop_start_bb_id = self.body.next_block_id();
-                self.state
-                    .loop_stack
-                    .push(HIRToMIRLoopState::new(loop_start_bb_id));
-
-                let condition_expr = self.new_temp_local();
-                let binary_op_kind = if inclusive {
-                    BinaryOpKind::LessThanOrEqual
-                } else {
-                    BinaryOpKind::LessThan
-                };
-                let Some(max_expr) = self.visit_expr_assigned(max_expr_id, hlir) else {
-                    push_lower_err!(self, hlir, max_expr_id, "Failed to eval max expr!");
-                    return;
-                };
-                self.builder_mut_expect().push_local_assign(
-                    condition_expr,
-                    RValue::BinaryOp(
-                        binary_op_kind,
-                        (Operand::Copy(binding_local.into()), Operand::Copy(max_expr)),
-                    ),
-                );
-
-                self.builder_mut_expect()
-                    .set_exit_kind(BlockExitKind::Branch(
-                        Operand::Copy(condition_expr.into()),
-                        BasicBlockId::PLACEHOLDER_ID,
-                        BasicBlockId::PLACEHOLDER_ID,
-                    ));
-                let branch_block_id = self.emit_and_replace_block().unwrap();
-
-                self.visit_block_by_id(*loop_block_expr_id, hlir);
-                self.builder_mut_expect().push_local_assign(
-                    binding_local,
-                    RValue::Increment(Operand::Copy(binding_local.into())),
-                );
-                self.builder_mut_expect()
-                    .set_exit_kind(BlockExitKind::Goto(loop_start_bb_id));
-                let final_loop_body_id = self.emit_and_replace_block().unwrap();
-
-                if let Some(BlockExitKind::Branch(_, true_block, else_block)) =
-                    self.body.block_exit_kind_mut(branch_block_id)
-                {
-                    *else_block = final_loop_body_id.next();
-                    *true_block = branch_block_id.next();
-                } else {
-                    push_lower_err!(self, hlir, expr.id, "Failed to get for loop branch block.");
-                }
-
-                for break_to_update in &self
-                    .state
-                    .current_loop()
-                    .expect("Not in loop?")
-                    .breaks_to_update
-                {
-                    if let Some(BlockExitKind::Goto(break_goto)) =
-                        self.body.block_exit_kind_mut(*break_to_update)
-                    {
-                        if Self::DEBUG_LOOP_STATE {
-                            debug!("Updated Goto.");
-                        }
-                        *break_goto = final_loop_body_id.next();
-                    } else {
-                        push_lower_err!(
-                            self,
-                            hlir,
-                            expr.id,
-                            "Failed to update break goto target in for loop."
-                        );
-                    }
-                }
-
-                if Self::DEBUG_LOOP_STATE {
-                    debug!("Popped loop stack.");
-                }
-                self.state.loop_stack.pop();
-
-                self.builder_mut_expect()
-                    .push_local_assign(for_result_local, RValue::unit());
-                self.state.last_block_target = Some(for_result_local.into());
+            ExprKind::For(_, bind_id, iter_id, loop_block_id) => {
+                self.lower_for(hlir, expr.id, *bind_id, *iter_id, *loop_block_id);
             }
             ExprKind::While(loop_condition_id, block_id) => {
-                if !self.builder_expect().is_empty() {
-                    self.emit_and_replace_block();
-                }
-
-                if let Some(target) = self.visit_expr_assigned(*loop_condition_id, hlir) {
-                    let while_result_local = self.new_temp_local();
-
-                    let condition_check_bb_id = self.body.next_block_id();
-                    if Self::DEBUG_LOOP_STATE {
-                        debug!("Pushed loop stack.");
-                    }
-                    self.state
-                        .loop_stack
-                        .push(HIRToMIRLoopState::new(condition_check_bb_id));
-
-                    self.builder_mut_expect()
-                        .set_exit_kind(BlockExitKind::Branch(
-                            Operand::Copy(target),
-                            BasicBlockId::PLACEHOLDER_ID,
-                            BasicBlockId::PLACEHOLDER_ID,
-                        ));
-                    let branch_block_id = self.emit_and_replace_block().unwrap();
-
-                    self.visit_block_by_id(*block_id, hlir);
-                    self.builder_mut_expect()
-                        .set_exit_kind(BlockExitKind::Goto(condition_check_bb_id));
-                    let final_loop_body_id = self.emit_and_replace_block().unwrap();
-
-                    if let Some(BlockExitKind::Branch(_, true_block, else_block)) =
-                        self.body.block_exit_kind_mut(branch_block_id)
-                    {
-                        *else_block = final_loop_body_id.next();
-                        *true_block = branch_block_id.next();
-                    } else {
-                        push_lower_err!(self, hlir, expr.id, "Failed to get while branch block.");
-                    }
-
-                    for break_to_update in &self
-                        .state
-                        .current_loop()
-                        .expect("Not in loop?")
-                        .breaks_to_update
-                    {
-                        if let Some(BlockExitKind::Goto(break_goto)) =
-                            self.body.block_exit_kind_mut(*break_to_update)
-                        {
-                            if Self::DEBUG_LOOP_STATE {
-                                debug!("Updated Goto.");
-                            }
-                            *break_goto = final_loop_body_id.next();
-                        } else {
-                            push_lower_err!(
-                                self,
-                                hlir,
-                                expr.id,
-                                "Failed to update break goto target."
-                            );
-                        }
-                    }
-
-                    if Self::DEBUG_LOOP_STATE {
-                        debug!("Popped loop stack.");
-                    }
-                    self.state.loop_stack.pop();
-
-                    self.builder_mut_expect()
-                        .push_local_assign(while_result_local, RValue::unit());
-                    self.state.last_block_target = Some(while_result_local.into());
-                } else {
-                    warn!("No loop condition target!");
-                }
+                self.lower_while(hlir, expr.id, *loop_condition_id, *block_id);
             }
             ExprKind::Assign(hir_id, hir_id1) => {
-                if let Some(target) = self.visit_expr_assigned(*hir_id, hlir) {
-                    if let Some(local) = self.body.local(target.local_id())
-                        && !local.mutable.is_mutable()
-                    {
-                        push_lower_err!(
-                            self,
-                            hlir,
-                            *hir_id,
-                            "Cannot assign to immutable variable!"
-                        );
-                    }
-                    if let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) {
-                        self.builder_mut_expect()
-                            .push_assign(target, RValue::Unchanged(Operand::Copy(rhs_local)));
-                    }
-                } else {
+                let Some(target) = self.visit_expr_assigned(*hir_id, hlir) else {
                     push_lower_err!(self, hlir, *hir_id, "Failed to resolve assignment target.");
+                    return;
+                };
+
+                if let Some(local) = self.body.local(target.local_id())
+                    && !local.mutable.is_mutable()
+                {
+                    push_lower_err!(self, hlir, *hir_id, "Cannot assign to immutable variable!");
+                    return;
                 }
+
+                let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) else {
+                    push_lower_err!(self, hlir, *hir_id1, "Failed to resolve assignment RHS.");
+                    return;
+                };
+
+                self.builder_mut_expect()
+                    .push_assign(target, RValue::copy(rhs_local));
             }
             ExprKind::Call(call_expr, args) => {
-                if let Some(target) = self.visit_expr_expect_owner(*call_expr, hlir) {
-                    let arg_local_ids: Option<Vec<_>> = args
-                        .iter()
-                        .map(|a_id| {
-                            let local_id = self.visit_expr_assigned(*a_id, hlir)?;
-                            Some(Operand::Copy(local_id))
-                        })
-                        .collect();
-                    if let Some(arg_ids) = arg_local_ids {
-                        if self.is_directive_set() {
-                            self.emit_and_replace_block()
-                                .expect("Emit block before call.");
-                        }
-                        let call_block_id = self.body.next_block_id();
-                        let call_result_slot = self.new_temp_local();
-                        self.builder_mut_expect().set_exit_kind(BlockExitKind::Call(
-                            call_result_slot,
-                            target,
-                            arg_ids,
-                            call_block_id.next(),
-                        ));
-                        assert!(
-                            self.emit_and_replace_block().expect("Emit call block.")
-                                == call_block_id,
-                            "Call block id does not match expected."
-                        );
-                        self.state.last_block_target = Some(call_result_slot.into());
-                    } else {
-                        push_lower_err!(self, hlir, expr.id, "Failed to eval all args!");
-                    }
-                } else {
-                    push_lower_err!(self, hlir, *call_expr, "Failed to get call target id.");
-                }
+                self.lower_call(hlir, expr.id, *call_expr, args);
             }
             ExprKind::MethodCall(hir_id, ident, args) => {
-                fn is_def_method_func(hlir: &HLIR, owner_id: OwnerDefId) -> bool {
-                    let Some(owning_node) = hlir.owning_node(owner_id) else {
-                        return false;
-                    };
-                    let Some(func) = owning_node.hir_function_ref() else {
-                        return false;
-                    };
-                    func.is_method
-                }
-
-                let Some(self_id) = self.visit_expr_assigned(*hir_id, hlir) else {
-                    push_lower_err!(self, hlir, *hir_id, "Failed to eval target method!");
-                    return;
-                };
-                let Some(obj_ty) = self.ctx.type_map().get(hir_id) else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        *hir_id,
-                        "Failed to get object type for method call `{:?}`",
-                        hir_id
-                    );
-                    return;
-                };
-
-                let call_str = self.ctx.resolve_sym(ident);
-                let Some(method_def) = self.ctx.meta().find_ty_method_owner_def(obj_ty, &call_str)
-                else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        *hir_id,
-                        "Failed to find method `{}` for type `{:?}`",
-                        call_str,
-                        self.ctx.meta().type_name(obj_ty.clone())
-                    );
-                    return;
-                };
-
-                if !is_def_method_func(hlir, method_def) {
-                    push_lower_err!(self, hlir, *hir_id, "Associated call is not a method!");
-                    return;
-                }
-
-                let self_arg = Operand::Copy(self_id);
-                let arg_local_ids: Option<Vec<_>> = std::iter::once(Some(self_arg))
-                    .chain(args.iter().map(|a_id| {
-                        let local_id = self.visit_expr_assigned(*a_id, hlir)?;
-                        Some(Operand::Copy(local_id))
-                    }))
-                    .collect();
-
-                if let Some(arg_ids) = arg_local_ids {
-                    if self.is_directive_set() {
-                        self.emit_and_replace_block()
-                            .expect("Emit block before method call.");
-                    }
-                    let call_block_id = self.body.next_block_id();
-                    let call_result_slot = self.new_temp_local();
-                    self.builder_mut_expect().set_exit_kind(BlockExitKind::Call(
-                        call_result_slot,
-                        method_def,
-                        arg_ids,
-                        call_block_id.next(),
-                    ));
-                    assert!(
-                        self.emit_and_replace_block().expect("Emit call block.") == call_block_id,
-                        "Call block id does not match expected."
-                    );
-                    self.state.last_block_target = Some(call_result_slot.into());
-                } else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        expr.id,
-                        "Failed to eval all args of method call!"
-                    );
-                }
+                self.lower_method_call(hlir, expr.id, *hir_id, ident.str(), args);
             }
             // ExprKind::Index(hir_id, hir_id1) => {},
             ExprKind::FieldAccess(hir_id, ident) => {
-                if let Some(target_local) = self.visit_expr_assigned(*hir_id, hlir) {
-                    if let Some(Type::Resolved(KitTy::Abstract(type_id))) =
-                        self.ctx.type_map().get(hir_id)
-                    {
-                        let to_access = self
-                            .ctx
-                            .type_registry()
-                            .get_from_type_id(*type_id)
-                            .expect("Type exists.");
-                        let field_name = self.ctx.resolve_sym(*ident);
-                        let Some(field_index) = to_access.find_field_index(&field_name) else {
-                            push_lower_err!(
-                                self,
-                                hlir,
-                                *hir_id,
-                                "Failed to find field index for `{}`",
-                                field_name
-                            );
-                            return;
-                        };
-
-                        let target_local_id = target_local.local_expect();
-
-                        let local = self
-                            .new_temp_local_with_mut(self.get_mutability_of_local(target_local_id));
-                        self.builder_mut_expect().push_local_assign(
-                            local,
-                            RValue::refer(AssignTarget::Field(target_local_id, field_index)),
-                        );
-                    } else {
-                        push_lower_err!(self, hlir, *hir_id, "Target is not abstract.");
-                    }
-                } else {
-                    push_lower_err!(self, hlir, *hir_id, "Failed to eval target field local!");
-                }
+                self.lower_field_access(hlir, expr.id, *hir_id, ident.str());
             }
             ExprKind::StructInit(struct_initialisation) => {
-                let RefPath::Resolved(_, resolved_id) = &struct_initialisation.ty_path else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        expr.id,
-                        "Failed to resolve struct init type `{:?}`",
-                        struct_initialisation.ty_path
-                    );
-                    return;
-                };
-                let ResolvedID::TypeDef(type_id) = *resolved_id else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        expr.id,
-                        "Resolved id is not a type id, but rather: `{:?}`",
-                        resolved_id
-                    );
-                    return;
-                };
-                if let Some(type_info) = self.ctx.type_registry().get_from_type_id(type_id) {
-                    if type_info.get_field_count() != struct_initialisation.fields.len() {
-                        push_lower_err!(
-                            self,
-                            hlir,
-                            expr.id,
-                            "Field count mismatch in initialisation! Expected `{}`, got `{}`",
-                            type_info.get_field_count(),
-                            struct_initialisation.fields.len()
-                        );
-                        return;
-                    }
-
-                    let mut field_values = type_info
-                        .get_fields()
-                        .iter()
-                        .map(|_| Operand::Unit)
-                        .collect::<Vec<_>>();
-
-                    for field_init in &struct_initialisation.fields {
-                        let Some(field_index) = type_info.find_field_index(field_init.ident.str())
-                        else {
-                            push_lower_err!(
-                                self,
-                                hlir,
-                                expr.id,
-                                "Failed to find field index for `{}`",
-                                field_init.ident.str()
-                            );
-                            return;
-                        };
-
-                        if let Some(field_init_local) =
-                            self.visit_expr_assigned(field_init.expr, hlir)
-                        {
-                            *field_values.get_mut(field_index).expect("Field index") =
-                                Operand::Copy(field_init_local);
-                        } else {
-                            push_lower_err!(
-                                self,
-                                hlir,
-                                field_init.expr,
-                                "Failed to eval field initialisation expression."
-                            );
-                        }
-                    }
-
-                    let struct_local = self.new_temp_local();
-                    self.builder_mut_expect().push_local_assign(
-                        struct_local,
-                        RValue::ADT(super::ADTKind::Struct(type_id), field_values),
-                    );
-                } else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        expr.id,
-                        "Failed to get type info for struct initialisation."
-                    );
-                }
+                self.lower_struct_init(hlir, expr.id, struct_initialisation);
             }
             ExprKind::Path(ref_path) => {
                 if let Some(resolved) = ref_path.resolved_id() {
@@ -1079,7 +1184,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
 
                 let return_value = if let Some(return_expr_id) = hir_id {
                     if let Some(target) = self.visit_expr_assigned(*return_expr_id, hlir) {
-                        RValue::Unchanged(Operand::Copy(target))
+                        RValue::copy(target)
                     } else {
                         push_lower_err!(
                             self,
@@ -1093,10 +1198,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     RValue::unit()
                 };
 
-                self.builder_mut_expect()
-                    .push_local_assign(LocalId::RETURN_VALUE, return_value);
-                self.builder_mut_expect()
-                    .set_exit_kind(BlockExitKind::Return);
+                self.builder_mut_expect().push_return(return_value);
             }
             ExprKind::Cast(target, target_type) => {
                 let Some(lhs_local) = self.visit_expr_assigned(*target, hlir) else {
@@ -1133,7 +1235,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
         if let Some(init_id) = &let_statement.initial_value {
             if let Some(target) = self.visit_expr_assigned(*init_id, hlir) {
                 self.builder_mut_expect()
-                    .push_local_assign(local_id, RValue::Unchanged(Operand::Copy(target)));
+                    .push_local_assign(local_id, RValue::copy(target));
             } else {
                 push_lower_err!(
                     self,
@@ -1158,12 +1260,8 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 // Do as a return.
                 if parent_block.id == self.func_body_id {
                     let last_local = self.last_target();
-                    let builder = self.builder_mut_expect();
-                    builder.set_exit_kind(BlockExitKind::Return);
-                    builder.push_statement_kind(MIRStatementKind::Assign(
-                        AssignTarget::Local(LocalId::RETURN_VALUE),
-                        RValue::Unchanged(Operand::Copy(last_local)),
-                    ));
+                    self.builder_mut_expect()
+                        .push_return(RValue::copy(last_local));
                 } else {
                     self.state.last_block_target = Some(self.last_target());
                 }
@@ -1219,7 +1317,7 @@ pub fn lower_hir_to_mir(hlir: &HLIR, ctx: &CompilerContext) -> LowerResult<MIR> 
             if func.native {
                 native_function_links.insert(i, func.ident.string());
             } else {
-                let body = HIRToMIRFuncLowerer::from_func_id(hlir, ctx, i)
+                let body = HIRToMIRFuncLowerer::from_func_id(hlir, type_info, i)
                     .map_err(|e| LoweringErrorKind::LoweringErrors(e).with_no_span())?;
                 bodies.insert(i, body);
             }
