@@ -10,12 +10,47 @@
 //! let mir = compiler.compile_to_mir()?;
 //! ```
 
+use std::cell::RefCell;
+
+use string_interner::DefaultStringInterner;
+
 use crate::KitlangResult;
+use crate::ast::SourceSpan;
 use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::resolver::{Namespace, TypeRegistry};
 use crate::intermediate::type_check::TypeMap;
 
 use crate::token::Token;
+
+pub type IdentSymbol = string_interner::symbol::SymbolU32;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SpannedSymbol {
+    pub symbol: IdentSymbol,
+    pub span: SourceSpan,
+}
+
+impl SpannedSymbol {
+    #[inline]
+    #[must_use]
+    pub fn new(symbol: IdentSymbol, span: SourceSpan) -> Self {
+        Self { symbol, span }
+    }
+}
+
+impl From<&SpannedSymbol> for IdentSymbol {
+    #[inline]
+    fn from(val: &SpannedSymbol) -> Self {
+        val.symbol
+    }
+}
+
+impl From<SpannedSymbol> for IdentSymbol {
+    #[inline]
+    fn from(val: SpannedSymbol) -> Self {
+        val.symbol
+    }
+}
 
 /// A context structure for the compiler, holds state relevant to the compilation process.
 #[derive(Debug)]
@@ -26,6 +61,8 @@ pub struct CompilerContext {
     pub meta: ProgramMetaData,
     /// Whether to compile without the standard library.
     pub no_stdlib: bool,
+    /// String interner for the compiler.
+    pub intern: RefCell<DefaultStringInterner>,
 }
 
 impl CompilerContext {
@@ -37,6 +74,7 @@ impl CompilerContext {
             source,
             meta: ProgramMetaData::default(),
             no_stdlib: false,
+            intern: RefCell::new(DefaultStringInterner::new()),
         }
     }
 }
@@ -97,6 +135,42 @@ impl CompilerContext {
     #[must_use]
     pub fn type_map_mut(&mut self) -> &mut TypeMap {
         &mut self.meta.type_map
+    }
+
+    /// Intern a string and get its symbol, or just get the symbol if already interned.
+    #[inline]
+    #[must_use]
+    pub fn intern(&self, string: impl AsRef<str>) -> IdentSymbol {
+        self.intern.borrow_mut().get_or_intern(string.as_ref())
+    }
+
+    /// Intern a string and get its symbol, or just get the symbol if already interned.
+    #[inline]
+    #[must_use]
+    pub fn intern_spanned_ident(&self, i: &crate::ast::SpannedIdent) -> SpannedSymbol {
+        let symbol = self.intern(i.str());
+        SpannedSymbol {
+            symbol,
+            span: i.span,
+        }
+    }
+
+    /// Resolve a symbol into a string, returning `None` if not found.
+    #[inline]
+    #[must_use]
+    pub fn resolve_sym_checked(&self, symbol: impl Into<IdentSymbol>) -> Option<String> {
+        self.intern
+            .borrow()
+            .resolve(symbol.into())
+            .map(std::string::ToString::to_string)
+    }
+
+    /// Resolve a symbol into a string, or returning `"Unresolved Symbol"` if not found.
+    #[inline]
+    #[must_use]
+    pub fn resolve_sym(&self, symbol: impl Into<IdentSymbol>) -> String {
+        self.resolve_sym_checked(symbol)
+            .unwrap_or_else(|| "Unresolved Symbol".to_string())
     }
 }
 

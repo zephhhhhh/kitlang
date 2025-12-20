@@ -38,6 +38,8 @@ log = { version = "0.4.29", optional = true }
 simplelog = { version = "0.12.2", optional = true }
 console_log = { version = "1.0", features = ["color"], optional = true }
 
+string-interner = "0.19.0"
+
 kitlang-macros = { path = "crates/kitlang-macros" }
 
 [workspace]

@@ -843,17 +843,15 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     return;
                 };
 
-                let Some(method_def) = self
-                    .ctx
-                    .meta()
-                    .find_ty_method_owner_def(obj_ty, ident.str())
+                let call_str = self.ctx.resolve_sym(ident);
+                let Some(method_def) = self.ctx.meta().find_ty_method_owner_def(obj_ty, &call_str)
                 else {
                     push_lower_err!(
                         self,
                         hlir,
                         *hir_id,
                         "Failed to find method `{}` for type `{:?}`",
-                        ident.str(),
+                        call_str,
                         self.ctx.meta().type_name(obj_ty.clone())
                     );
                     return;
@@ -910,13 +908,14 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                             .type_registry()
                             .get_from_type_id(*type_id)
                             .expect("Type exists.");
-                        let Some(field_index) = to_access.find_field_index(ident.str()) else {
+                        let field_name = self.ctx.resolve_sym(*ident);
+                        let Some(field_index) = to_access.find_field_index(&field_name) else {
                             push_lower_err!(
                                 self,
                                 hlir,
                                 *hir_id,
                                 "Failed to find field index for `{}`",
-                                ident.str()
+                                field_name
                             );
                             return;
                         };

@@ -535,14 +535,15 @@ impl TypeChecker<'_> {
 
                 match expr_ty {
                     Type::Resolved(t) => {
+                        let call_str = self.ctx.resolve_sym(ident);
                         let Some(method_def) =
-                            self.ctx.meta.find_ty_method_owner_def(&expr_ty, ident.str())
+                            self.ctx.meta.find_ty_method_owner_def(&expr_ty, &call_str)
                         else {
                             return Err(type_fail!(
                                 hlir,
                                 expr.id,
                                 "Unable to resolve method '{}' for type {}",
-                                ident.str(),
+                                call_str,
                                 self.type_name(t)
                             ));
                         };
@@ -603,7 +604,7 @@ impl TypeChecker<'_> {
                             .type_registry()
                             .get_from_type_id(type_id)
                             .expect("Type exists");
-                        type_info.get_field_by_ident(ident.str()).map_or_else(
+                        type_info.get_field_by_ident(&self.ctx.resolve_sym(*ident)).map_or_else(
                             || Err(type_fail!(hlir, *hir_id, "Can't find field '{:?}'", ident)),
                             |field| Ok(field.ty.clone()),
                         )

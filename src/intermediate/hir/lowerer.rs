@@ -667,7 +667,7 @@ impl HLIRLowerer<'_> {
                 }
                 Ok(ExprKind::MethodCall(
                     target_expr,
-                    method_call.method_ident.clone(),
+                    self.ctx.intern_spanned_ident(&method_call.method_ident),
                     arg_ids,
                 ))
             }
@@ -678,7 +678,7 @@ impl HLIRLowerer<'_> {
             }
             ast::ExpressionKind::FieldAccess(expression, ident) => {
                 let target_expr = self.lower_expression(expression, owner_node)?;
-                Ok(ExprKind::FieldAccess(target_expr, ident.clone()))
+                Ok(ExprKind::FieldAccess(target_expr, self.ctx.intern(ident.str())))
             }
             ast::ExpressionKind::StructInit(struct_initialisation) => {
                 let mut field_inits = Vec::new();

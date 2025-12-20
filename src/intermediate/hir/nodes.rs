@@ -1,5 +1,6 @@
 use ::std::fmt::{Debug, Display};
 
+use crate::compiler::{IdentSymbol, SpannedSymbol};
 use crate::intermediate::hir::{DefId, HirId, LocalDefId, OwnerDefId};
 
 use crate::ast::{
@@ -931,11 +932,11 @@ pub enum ExprKind {
     /// Call(`target`: `HIRNode::Expr`, `args`: `Vec<HIRNode::Expr>`)
     Call(HirId, Vec<HirId>),
     /// Method Call(`target`: `HIRNode::Expr`, `method_name`: Ident, `args`: `Vec<HIRNode::Expr>`)
-    MethodCall(HirId, SpannedIdent, Vec<HirId>),
+    MethodCall(HirId, SpannedSymbol, Vec<HirId>),
     /// Index(`target`: `HIRNode::Expr`, `index`: `HIRNode::Expr`)
     Index(HirId, HirId),
     /// Field Access(`target`: `HIRNode::Expr`, `field_name`: Ident)
-    FieldAccess(HirId, Ident),
+    FieldAccess(HirId, IdentSymbol),
     /// Struct Initialisation
     StructInit(StructInitialisation),
     /// Path
