@@ -1,3 +1,15 @@
+//! Provides an interface for interacting with the Kitlang compiler and toolchain.
+//!
+//! This module provides the main [`Compiler`] struct and provides a shared context for the different stages to use
+//! during the parsing and lowering process.
+//!
+//! # Example
+//!
+//! ```
+//! let mut compiler = Compiler::new("fn main() -> i32 { 1 }");
+//! let mir = compiler.compile_to_mir()?;
+//! ```
+
 use crate::KitlangResult;
 use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::resolver::{Namespace, TypeRegistry};
@@ -210,10 +222,39 @@ impl Compiler {
         let source_string = self.context.source();
         Ok(if self.profile_stages {
             crate::profiling::print_execution_named("Parse", || {
-                crate::parser::parse_from_tokens(crate::lexer::tokenise_stripped(&source_string), &mut self.context)
+                crate::parser::parse_from_tokens(
+                    crate::lexer::tokenise_stripped(&source_string),
+                    &mut self.context,
+                )
             })
         } else {
-            crate::parser::parse_from_tokens(crate::lexer::tokenise_stripped(&source_string), &mut self.context)
+            crate::parser::parse_from_tokens(
+                crate::lexer::tokenise_stripped(&source_string),
+                &mut self.context,
+            )
+        }?)
+    }
+
+    /// Compile the provided source code up to the HIR stage, without doing any resolution.
+    /// # Note
+    /// This function does not do any name resolution or type checking, and will produce a HIR
+    /// that will contain unresolved names and types.
+    /// If this is not desired, use `compile_to_hir` instead.
+    /// # Errors
+    /// This function will return an error if any part of the AST cannot be lowered properly.
+    /// The returned error will contain a diagnostic message indicating the nature and location of any failures,
+    /// as well as which stage of lowering it occurred in.
+    /// # Returns
+    /// * `Ok(HLIR)` - The lowered HIR if successful.
+    /// * `Err(KitlangError)` - An error indicating what went wrong during lowering
+    pub fn compile_to_hir_no_resolve(&mut self) -> KitlangResult<crate::intermediate::hir::HLIR> {
+        let ast = self.parse_ast()?;
+        Ok(if self.profile_stages {
+            crate::profiling::print_execution_named("Lower to HIR (No resolve)", || {
+                crate::intermediate::hir::lower_ast_to_hir(&ast, &mut self.context)
+            })
+        } else {
+            crate::intermediate::hir::lower_ast_to_hir(&ast, &mut self.context)
         }?)
     }
 
@@ -231,10 +272,7 @@ impl Compiler {
         let ast = self.parse_ast()?;
         Ok(if self.profile_stages {
             crate::profiling::print_execution_named("Lower to HIR", || {
-                crate::intermediate::hir::parse_ast_to_hir_processed_with(
-                    &ast,
-                    &mut self.context,
-                )
+                crate::intermediate::hir::parse_ast_to_hir_processed_with(&ast, &mut self.context)
             })
         } else {
             crate::intermediate::hir::parse_ast_to_hir_processed_with(&ast, &mut self.context)
