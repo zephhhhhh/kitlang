@@ -538,6 +538,30 @@ pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
     lowerer::lower_ast_to_hir(ast)
 }
 
+/// Lower the output of the parser state to HIR, using a provided metadata structure.
+/// # Note
+/// Unlike `lower_ast_to_hir`, this function does do all HIR processing.
+/// (Type checking, resolution, etc).
+/// # Errors
+/// This function will return an error if any part of the AST cannot be lowered properly.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures,
+/// as well as which stage of lowering it occurred in.
+pub fn parse_ast_to_hir_processed_with(
+    ast: &ASTRoot,
+    meta_data: &mut ProgramMetaData,
+) -> LowerResult<HLIR> {
+    let mut hlir = lower_ast_to_hir(ast)?;
+
+    // Resolution..
+    resolve_paths(&mut hlir, meta_data)
+        .map_err(|e| LoweringErrorKind::ResolverError(e).with_no_span())?;
+
+    // Type checking..
+    run_type_checker(&mut hlir, meta_data)?;
+
+    Ok(hlir)
+}
+
 /// Lower the output of the parser state to HIR.
 /// # Note
 /// Unlike `lower_ast_to_hir`, this function does do all HIR processing.
@@ -547,19 +571,13 @@ pub fn lower_ast_to_hir(ast: &ASTRoot) -> LowerResult<HLIR> {
 /// The returned error will contain a diagnostic message indicating the nature and location of any failures,
 /// as well as which stage of lowering it occurred in.
 pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData, HLIR)> {
-    let mut hlir = lower_ast_to_hir(ast)?;
     let mut meta_data = ProgramMetaData {
         namespace: Namespace::default_root_definition(),
         type_registry: TypeRegistry::default(),
-        type_map: TypeMap::default(),
+        type_map: TypeMap::new(),
     };
 
-    // Resolution..
-    resolve_paths(&mut hlir, &mut meta_data)
-        .map_err(|e| LoweringErrorKind::ResolverError(e).with_no_span())?;
-
-    // Type checking..
-    run_type_checker(&mut hlir, &mut meta_data)?;
+    let hlir = parse_ast_to_hir_processed_with(ast, &mut meta_data)?;
 
     Ok((meta_data, hlir))
 }

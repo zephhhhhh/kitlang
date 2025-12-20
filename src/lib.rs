@@ -16,6 +16,7 @@
 use thiserror::Error;
 
 pub mod ast;
+pub mod compiler;
 pub mod intermediate;
 pub mod interpreter;
 pub mod lexer;
@@ -145,15 +146,18 @@ pub fn execute_source_string(
     native_functions: crate::interpreter::mir_interpreter::RegisterNativeFns,
     time_execution: bool,
 ) -> KitlangResult<crate::interpreter::mir_interpreter::Value> {
+    use crate::compiler::Compiler;
     use crate::interpreter::mir_interpreter::execute_mir;
 
-    let (meta_data, mir) = if time_execution {
-        crate::profiling::print_execution_named("Parse", || parse_source_string_to_mir(source))
-    } else {
-        parse_source_string_to_mir(source)
-    }?;
+    let mut compiler = Compiler::new(source).profile_stages(time_execution);
+    let mir = compiler.compile_to_mir()?;
 
-    execute_mir(mir, &meta_data, native_functions, time_execution)
+    execute_mir(
+        mir,
+        compiler.context.meta(),
+        native_functions,
+        time_execution,
+    )
 }
 
 /// Execute a given kitlang source code string with the MIR interpreter, using the provided native functions.
@@ -170,17 +174,20 @@ pub fn execute_source_string_no_std(
     native_functions: crate::interpreter::mir_interpreter::RegisterNativeFns,
     time_execution: bool,
 ) -> KitlangResult<crate::interpreter::mir_interpreter::Value> {
+    use crate::compiler::Compiler;
     use crate::interpreter::mir_interpreter::execute_mir_no_intrinsics;
 
-    let (meta_data, mir) = if time_execution {
-        crate::profiling::print_execution_named("Parse", || {
-            parse_source_string_to_mir_no_std(source)
-        })
-    } else {
-        parse_source_string_to_mir_no_std(source)
-    }?;
+    let mut compiler = Compiler::new(source)
+        .profile_stages(time_execution)
+        .no_stdlib(true);
+    let mir = compiler.compile_to_mir()?;
 
-    execute_mir_no_intrinsics(mir, &meta_data, native_functions, time_execution)
+    execute_mir_no_intrinsics(
+        mir,
+        compiler.context.meta(),
+        native_functions,
+        time_execution,
+    )
 }
 
 /// Call this function to initialise logging, if the `logging` feature is enabled.
