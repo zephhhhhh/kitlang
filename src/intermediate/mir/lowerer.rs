@@ -12,7 +12,6 @@ use crate::intermediate::hir::{HLIR, HirId, LoweringError, LoweringErrorKind, Ow
 
 use crate::compiler::CompilerContext;
 
-
 use crate::intermediate::mir::{
     BasicBlock, BasicBlockId, BlockExitKind, Body, CastKind, ExitDirective, LocalDefinition,
     LocalId, LocalInfo, MIR, Operand, RValue,
@@ -1221,14 +1220,9 @@ pub fn lower_hir_to_mir(hlir: &HLIR, ctx: &CompilerContext) -> LowerResult<MIR> 
             if func.native {
                 native_function_links.insert(i, func.ident.string());
             } else {
-                match HIRToMIRFuncLowerer::from_func_id(hlir, ctx, i) {
-                    Ok(body) => {
-                        bodies.insert(i, body);
-                    }
-                    Err(e) => {
-                        return Err(e.first().expect("Is error").clone());
-                    }
-                }
+                let body = HIRToMIRFuncLowerer::from_func_id(hlir, ctx, i)
+                    .map_err(|e| LoweringErrorKind::LoweringErrors(e).with_no_span())?;
+                bodies.insert(i, body);
             }
         }
     }
