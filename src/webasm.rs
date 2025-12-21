@@ -7,7 +7,7 @@ use kitlang_macros::kitlang_native_fn;
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "logging")]
-use log::*;
+use log::error;
 
 thread_local! {
     static PRINT_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
@@ -57,14 +57,6 @@ pub fn set_input_callback(cb: js_sys::Function) {
     });
 }
 
-/// Returns the KitTy corresponding to the given return value string, if valid.
-/// (Used primarily for differentiating between JS numbers being interpreted as an integer or float in kitlang)
-#[inline]
-#[must_use]
-fn return_value_type(ret_val: &str) -> Option<KitTy> {
-    KitTy::from_primitive_ty_str(ret_val)
-}
-
 fn add_native_functions(interpreter: &mut Interpreter) {
     register_native_functions(interpreter);
 
@@ -83,7 +75,7 @@ fn add_native_functions(interpreter: &mut Interpreter) {
                         }
                     }
                     Err(e) => {
-                        error!("Error calling native JS function: {:?}", e);
+                        error!("Error calling native JS function: {e:?}");
                         None
                     }
                 }
@@ -101,14 +93,24 @@ fn internal_execute_source_string(source: &str, time_execution: bool) -> Result<
     }
 }
 
-/// Parses and executes the given Kitlang source code string, returning the result as a JsValue.
+/// Parses and executes the given Kitlang source code string, returning the result as a [`JsValue`].
+/// # Returns
+/// * `Ok(JsValue)` - The result of the execution as a [`JsValue`].
+/// * `Err(JsValue)` - An error message as a [`JsValue`] `string` if execution failed.
+/// # Errors
+/// If there was an error during parsing or execution, the error message is formatted and converted to a javascript string.
 #[wasm_bindgen]
 pub fn wasm_execute_source_string(source: &str, time_execution: bool) -> Result<JsValue, JsValue> {
     internal_execute_source_string(source, time_execution)
 }
 
 /// Parses and executes the given Kitlang source code string, with registered native functions,
-/// returning the result as a JsValue.
+/// returning the result as a [`JsValue`].
+/// # Returns
+/// * `Ok(JsValue)` - The result of the execution as a [`JsValue`].
+/// * `Err(JsValue)` - An error message as a [`JsValue`] `string` if execution failed.
+/// # Errors
+/// If there was an error during parsing or execution, the error message is formatted and converted to a javascript string.
 #[wasm_bindgen]
 pub fn wasm_execute_source_string_with_native_fns(
     source: &str,
@@ -141,6 +143,7 @@ fn register_native_functions(interpreter: &mut Interpreter) {
 
 /// Converts a [`Value`] into a [`JsValue`].
 fn to_js_value(value: &Value) -> JsValue {
+    #[allow(clippy::cast_precision_loss)]
     match value {
         Value::Integer(i) => JsValue::from_f64(*i as f64),
         Value::UnsignedInteger(i) => JsValue::from_f64(*i as f64),
@@ -154,6 +157,7 @@ fn to_js_value(value: &Value) -> JsValue {
 
 /// Converts a [`JsValue`] into a [`Value`], with expected types.
 fn from_js_value_expected(value: &JsValue, expected: KitTy) -> Value {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     match expected {
         KitTy::Int(..) => {
             if let Some(f) = value.as_f64() {
@@ -187,6 +191,7 @@ fn from_js_value_expected(value: &JsValue, expected: KitTy) -> Value {
 }
 
 /// Converts a [`JsValue`] into a [`Value`].
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn from_js_value(value: &JsValue) -> Value {
     if value.is_string()
         && let Some(s) = value.as_string()
@@ -197,21 +202,20 @@ fn from_js_value(value: &JsValue) -> Value {
     if value.is_instance_of::<js_sys::Number>()
         && let Some(f) = value.as_f64()
     {
-        if f.fract() == 0.0 {
-            return Value::Integer(f as i64);
+        return if f.fract() == 0.0 {
+            Value::Integer(f as i64)
         } else {
-            return Value::Float(f);
-        }
+            Value::Float(f)
+        };
     }
 
     if value.is_instance_of::<js_sys::Boolean>() {
-        return value
+        value
             .as_bool()
-            .map(Value::Boolean)
-            .unwrap_or(Value::Boolean(false));
+            .map_or(Value::Boolean(false), Value::Boolean)
+    } else {
+        Value::Unit
     }
-
-    Value::Unit
 }
 
 // Native functions for interacting with the browser.
