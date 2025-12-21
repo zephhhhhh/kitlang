@@ -22,6 +22,7 @@ use crate::intermediate::type_check::TypeMap;
 
 use crate::token::Token;
 
+// String interning..
 pub type IdentSymbol = string_interner::symbol::SymbolU32;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -51,6 +52,27 @@ impl From<SpannedSymbol> for IdentSymbol {
         val.symbol
     }
 }
+
+pub trait SymbolExt {
+    fn resolve_str(&self, context: &CompilerContext) -> String;
+}
+
+impl SymbolExt for IdentSymbol {
+    #[inline]
+    fn resolve_str(&self, context: &CompilerContext) -> String {
+        context.resolve_sym(*self)
+    }
+}
+
+impl SymbolExt for SpannedSymbol {
+    #[inline]
+    fn resolve_str(&self, context: &CompilerContext) -> String {
+        context.resolve_sym(self.symbol)
+    }
+}
+
+
+// Compiler context stuff..
 
 /// A context structure for the compiler, holds state relevant to the compilation process.
 #[derive(Debug)]
