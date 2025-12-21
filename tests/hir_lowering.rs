@@ -1,5 +1,6 @@
 mod common;
 
+use common::*;
 use kitlang::{
     ast::{BinaryOpKind, Literal, Mutability, Ty, UnaryOpKind, Visibility},
     intermediate::{
@@ -10,7 +11,6 @@ use kitlang::{
         types::{KitFloat, KitInt, KitTy},
     },
 };
-use common::*;
 
 // Test verification macros..
 

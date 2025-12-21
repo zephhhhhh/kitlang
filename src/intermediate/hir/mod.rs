@@ -10,8 +10,8 @@
 //! program metadata ([`ProgramMetaData`]), and utilities for lowering, [traversing](crate::intermediate::hir::visitor),
 //! and manipulating the HIR.
 
-pub mod lowerer;
 pub mod errors;
+pub mod lowerer;
 pub mod nodes;
 pub mod visitor;
 
@@ -20,8 +20,8 @@ use ::std::fmt::Debug;
 use crate::ast::{ASTRoot, IdentPath, SourceSpan};
 
 use crate::intermediate::hir::errors::LowerResult;
-use crate::intermediate::hir::nodes::{HirNode, Item, OwningNode, OwningNodeKind, Type};
 pub use crate::intermediate::hir::errors::{LoweringError, LoweringErrorKind};
+use crate::intermediate::hir::nodes::{HirNode, Item, OwningNode, OwningNodeKind, Type};
 
 use crate::intermediate::resolver::{ADTTypeInfo, Namespace, TypeRegistry, resolve_paths};
 use crate::intermediate::type_check::{TypeMap, run_type_checker};

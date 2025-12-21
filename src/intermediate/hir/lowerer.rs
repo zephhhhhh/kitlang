@@ -678,7 +678,10 @@ impl HLIRLowerer<'_> {
             }
             ast::ExpressionKind::FieldAccess(expression, ident) => {
                 let target_expr = self.lower_expression(expression, owner_node)?;
-                Ok(ExprKind::FieldAccess(target_expr, self.ctx.intern(ident.str())))
+                Ok(ExprKind::FieldAccess(
+                    target_expr,
+                    self.ctx.intern(ident.str()),
+                ))
             }
             ast::ExpressionKind::StructInit(struct_initialisation) => {
                 let mut field_inits = Vec::new();
@@ -811,7 +814,10 @@ pub fn lower_ast_to_hir(ast: &ast::ASTRoot, ctx: &mut CompilerContext) -> LowerR
     let mut hir = HLIR::default();
 
     {
-        let mut lowerer = HLIRLowerer { hlir: &mut hir, ctx };
+        let mut lowerer = HLIRLowerer {
+            hlir: &mut hir,
+            ctx,
+        };
         lowerer.build_hir_representation(ast)?;
     }
 

@@ -244,7 +244,10 @@ pub(crate) struct Parser<'a, 'b> {
 impl<'a, 'b> Parser<'a, 'b> {
     #[inline]
     #[must_use]
-    pub const fn from_cursor(token_cursor: TokenCursor<'b>, context: &'a mut CompilerContext) -> Self {
+    pub const fn from_cursor(
+        token_cursor: TokenCursor<'b>,
+        context: &'a mut CompilerContext,
+    ) -> Self {
         Self {
             context,
             cursor: token_cursor,
@@ -948,7 +951,10 @@ impl Parser<'_, '_> {
 /// This function will return an error if any part of parsing the token stream fails.
 /// The returned error will contain information about where in the source code the error occurred,
 /// and a message about the nature of the error.
-pub fn parse_from_tokens(tokens: impl Iterator<Item = Token>, ctx: &mut CompilerContext) -> PResult<ASTRoot> {
+pub fn parse_from_tokens(
+    tokens: impl Iterator<Item = Token>,
+    ctx: &mut CompilerContext,
+) -> PResult<ASTRoot> {
     // TODO: Probably try a method to not collect the iterator in the future, this is easier for
     // now though.
     let token_list = tokens.collect::<Vec<Token>>();

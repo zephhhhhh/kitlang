@@ -604,10 +604,12 @@ impl TypeChecker<'_> {
                             .type_registry()
                             .get_from_type_id(type_id)
                             .expect("Type exists");
-                        type_info.get_field_by_ident(&self.ctx.resolve_sym(*ident)).map_or_else(
-                            || Err(type_fail!(hlir, *hir_id, "Can't find field '{:?}'", ident)),
-                            |field| Ok(field.ty.clone()),
-                        )
+                        type_info
+                            .get_field_by_ident(&self.ctx.resolve_sym(*ident))
+                            .map_or_else(
+                                || Err(type_fail!(hlir, *hir_id, "Can't find field '{:?}'", ident)),
+                                |field| Ok(field.ty.clone()),
+                            )
                     }
                     Type::Unresolved(t) => Err(type_fail!(
                         hlir,

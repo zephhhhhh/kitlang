@@ -1,10 +1,10 @@
 mod common;
 
+use common::*;
 use kitlang::ast::{
     ASTRoot, BinaryOpKind, Block, Expression, ExpressionKind, FunctionReturnTy, Item, ItemKind,
     Literal, LocalKind, Mutability, StatementKind, Ty, UnaryOpKind, Visibility,
 };
-use common::*;
 
 // Helper functions/macros..
 
