@@ -6,9 +6,12 @@
 //! The main API for this module are the `tokenise` and `tokenise_stripped` functions, which return iterators that will lazily
 //! parse tokens from the source string, with `tokenise_stripped` ignoring comments and documentation tokens.
 
-use std::str::Chars;
+use std::{ops::Range, str::Chars};
 
-use crate::token::{Keyword, LiteralKind, Punctuation, Token, TokenKind};
+use crate::{
+    ast::SourceSpan,
+    token::{Keyword, LiteralKind, Punctuation, Token, TokenKind},
+};
 
 /// Iterator over a character sequence, supports peeking and reading from the sequence.
 #[derive(Debug)]
@@ -23,6 +26,8 @@ pub struct CodeCursor<'a> {
 
 /// End of file.
 pub(crate) const EOF_CHAR: char = '\0';
+/// Char used to escape characters in string literals.
+pub(crate) const ESCAPE_CHAR: char = '\\';
 
 /// Type used to describe an index of a [`CodeCursor`].
 pub type CodeCursorIndex = u32;
@@ -350,7 +355,7 @@ impl<'a> Lexer<'a> {
         let Some(first_char) = self.cursor.peek_opt() else {
             let pos = self.cursor.position();
             self.cursor.consume();
-            return Some(Token::new(TokenKind::Eof, pos, pos));
+            return Some(Token::new(TokenKind::Eof, (pos, pos)));
         };
 
         match first_char {
@@ -411,8 +416,7 @@ impl Lexer<'_> {
                 if self.cursor.consume_expect_str("///").is_none() {
                     return Some(Token::new(
                         TokenKind::InvalidDocumentation(total_doc_str),
-                        pos,
-                        self.cursor.position(),
+                        (pos, self.cursor.position()),
                     ));
                 }
             } else {
@@ -436,8 +440,7 @@ impl Lexer<'_> {
 
         Some(Token::new(
             TokenKind::Documentation(total_doc_str.trim().to_string()),
-            pos,
-            last_line_end_pos,
+            (pos, last_line_end_pos),
         ))
     }
 
@@ -459,8 +462,7 @@ impl Lexer<'_> {
 
         Some(Token::new(
             TokenKind::Comment(comment_value.trim().to_string()),
-            pos,
-            end,
+            (pos, end),
         ))
     }
 
@@ -482,7 +484,7 @@ impl Lexer<'_> {
 
         let kind = TokenKind::BlockComment(comment_value.trim().to_string());
 
-        Some(Token::new(kind, pos, end))
+        Some(Token::new(kind, (pos, end)))
     }
 
     /// Parses a punctuation symbol from the cursor.
@@ -491,7 +493,7 @@ impl Lexer<'_> {
     fn punctuation(&mut self) -> Option<Token> {
         let pos = self.cursor.position();
         let punct = Punctuation::from_char(self.cursor.consume()?)?;
-        Some(Token::new(punct, pos, pos + 1))
+        Some(Token::new(punct, (pos, pos + 1)))
     }
 
     /// Parses an identifier from the cursor.
@@ -510,7 +512,7 @@ impl Lexer<'_> {
             TokenKind::Keyword,
         );
 
-        Token::new(kind, pos, end_pos)
+        Token::new(kind, (pos, end_pos))
     }
 
     /// Parses a numeric literal from the cursor.
@@ -589,7 +591,7 @@ impl Lexer<'_> {
                 .map(LiteralKind::Integer)?
         };
 
-        Some(Token::new(literal, pos, val_end))
+        Some(Token::new(literal, (pos, val_end)))
     }
 
     /// Parses a string literal from the cursor.
@@ -598,28 +600,75 @@ impl Lexer<'_> {
     fn string_literal(&mut self) -> Option<Token> {
         let pos = self.cursor.position();
         self.cursor.consume_expect(&['"'])?;
+        let literal_start_pos = self.cursor.position();
 
         let val_pos = self.cursor.position();
-        // TODO: Parse escape sequences.
-        self.cursor.consume_while(|c| c != '"');
+        let mut prev_char = ESCAPE_CHAR;
+
+        // This check just ensure that we don't stop reading the current
+        // string until we find an unescaped `"` character.
+        // The actual escaping of the string is done below after we have the full
+        // raw string.
+        self.cursor.consume_while(|c| {
+            let should_consume = c != '"' || prev_char == ESCAPE_CHAR;
+            prev_char = c;
+            should_consume
+        });
         let val_end = self.cursor.position();
 
         if self.cursor.consume_expect(&['"']).is_none() {
             return Some(Token::new(
                 TokenKind::InvalidLiteral(self.substr(val_pos, val_end).to_string()),
-                pos,
-                val_end,
+                (pos, val_end),
             ));
         }
 
         let end_pos = self.cursor.position();
+        let literal_span = SourceSpan::new(pos, end_pos);
         let string_value = self.substr(val_pos, val_end);
 
-        Some(Token::new(
-            TokenKind::StringLiteral(string_value.to_string()),
-            pos,
-            end_pos,
-        ))
+        match unescape_string(string_value) {
+            Err(range) => {
+                let bad_escape_sequence =
+                    &string_value[(range.start as usize)..(range.end as usize)];
+                Some(Token::new(
+                    TokenKind::InvalidEscapeSequence(
+                        bad_escape_sequence.to_string(),
+                        SourceSpan::new(
+                            literal_start_pos + range.start,
+                            literal_start_pos + range.end,
+                        ),
+                    ),
+                    literal_span,
+                ))
+            }
+            Ok(unescaped) => Some(Token::new(
+                TokenKind::StringLiteral(unescaped),
+                literal_span,
+            )),
+        }
+    }
+}
+
+fn unescape_string(input: &str) -> Result<String, Range<u32>> {
+    let mut result = String::with_capacity(input.len());
+    let mut error: Option<Range<u32>> = None;
+
+    rustc_literal_escaper::unescape_str(input, |char_range, res| match res {
+        Ok(c) => result.push(c),
+        Err(_) =>
+        {
+            #[allow(clippy::cast_possible_truncation)]
+            if error.is_none() {
+                error = Some(char_range.start as u32..char_range.end as u32);
+            }
+        }
+    });
+
+    if let Some(e) = error {
+        Err(e)
+    } else {
+        Ok(result)
     }
 }
 

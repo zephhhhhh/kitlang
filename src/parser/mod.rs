@@ -100,8 +100,8 @@ impl TokenCursor<'_> {
     #[must_use]
     pub fn get_current_source_end(&self) -> u32 {
         self.get(self.position()).map_or_else(
-            || self.tokens.last().map_or(0, |token| token.end),
-            |token| token.end,
+            || self.tokens.last().map_or(0, |token| token.span.end),
+            |token| token.span.end,
         )
     }
 
@@ -110,8 +110,8 @@ impl TokenCursor<'_> {
     #[must_use]
     pub fn get_current_source_start(&self) -> u32 {
         self.get(self.position()).map_or_else(
-            || self.tokens.last().map_or(0, |token| token.start),
-            |token| token.start,
+            || self.tokens.last().map_or(0, |token| token.span.start),
+            |token| token.span.start,
         )
     }
 
@@ -120,7 +120,7 @@ impl TokenCursor<'_> {
     #[must_use]
     pub fn get_previous_source_start(&self) -> u32 {
         self.get(self.position().saturating_sub(1))
-            .map_or_else(|| self.get_current_source_start(), |token| token.start)
+            .map_or_else(|| self.get_current_source_start(), |token| token.span.start)
     }
 
     /// Returns the end of the previous token.
@@ -128,7 +128,7 @@ impl TokenCursor<'_> {
     #[must_use]
     pub fn get_previous_source_end(&self) -> u32 {
         self.get(self.position().saturating_sub(1))
-            .map_or_else(|| self.get_current_source_end(), |token| token.end)
+            .map_or_else(|| self.get_current_source_end(), |token| token.span.end)
     }
 
     /// Returns a range that represents the start token.
@@ -137,7 +137,7 @@ impl TokenCursor<'_> {
     pub fn first_span(&self) -> Range<u32> {
         self.tokens
             .first()
-            .map_or(0..0, |token| token.start..token.end)
+            .map_or(0..0, |token| token.span.start..token.span.end)
     }
 
     /// Returns a range that represents the end of the file.
@@ -146,7 +146,7 @@ impl TokenCursor<'_> {
     pub fn eof_span(&self) -> Range<u32> {
         self.tokens
             .last()
-            .map_or(0..0, |token| token.start..token.end)
+            .map_or(0..0, |token| token.span.start..token.span.end)
     }
 
     /// Returns a range that represents the current token index.
@@ -154,7 +154,7 @@ impl TokenCursor<'_> {
     #[must_use]
     pub fn current_span(&self) -> Range<u32> {
         self.get(self.position())
-            .map_or_else(|| self.eof_span(), |token| token.start..token.end)
+            .map_or_else(|| self.eof_span(), |token| token.span.start..token.span.end)
     }
 
     /// Returns a range that represents the full file of tokens.
@@ -168,7 +168,7 @@ impl TokenCursor<'_> {
         let Some(last_token) = self.tokens.last() else {
             return self.eof_span();
         };
-        (first_token.start)..(last_token.end)
+        (first_token.span.start)..(last_token.span.end)
     }
 }
 

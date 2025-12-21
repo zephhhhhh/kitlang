@@ -11,8 +11,10 @@ pub type PResult<T> = Result<T, ParseError>;
 
 #[derive(Error, Debug, Clone, PartialEq, PartialOrd)]
 pub enum ParseErrorKind {
-    #[error("Invalid string literal")]
-    InvalidStringLiteral,
+    #[error("Invalid string literal: {0}")]
+    InvalidStringLiteral(String),
+    #[error("Invalid escape sequence: '{0}'")]
+    InvalidEscapeSequence(String),
     #[error("Invalid identifier: {0}")]
     InvalidIdentifier(String),
     #[error("Invalid literal: {0}")]

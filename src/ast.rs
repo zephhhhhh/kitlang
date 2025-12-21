@@ -86,13 +86,13 @@ impl<T: Into<u32>> From<Range<T>> for SourceSpan {
 
 impl From<Token> for SourceSpan {
     fn from(value: Token) -> Self {
-        Self::new(value.start, value.end)
+        value.span
     }
 }
 
 impl From<&Token> for SourceSpan {
     fn from(value: &Token) -> Self {
-        Self::new(value.start, value.end)
+        value.span
     }
 }
 

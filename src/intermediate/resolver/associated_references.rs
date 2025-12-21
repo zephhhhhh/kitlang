@@ -170,36 +170,36 @@ impl<'a> AssociatedReferenceMapper<'a> {
             let Some(item_namespace) = namespace.get_mut(&ident) else {
                 continue;
             };
+
             let mut next_path = current_path.clone();
             next_path.push(&ident);
-            if let NamespaceKind::Use(use_path) = &item_namespace.kind {
-                let target_path = use_path.rebase_from_path(current_path);
 
-                if let Some(target_namespace) = root_namespace.find_definition(&target_path) {
-                    let mut cloned = target_namespace.clone();
-                    cloned.ident.clone_from(&item_namespace.ident);
-                    cloned.vis = item_namespace.vis;
-                    cloned.local = item_namespace.local;
-                    cloned.id = target_namespace.id;
-                    *item_namespace = cloned;
-
-                    Self::resolve_uses_in_namespace(
-                        root_namespace,
-                        item_namespace,
-                        &next_path,
-                        errors,
-                    );
-                } else {
-                    errors.push(resolve_err!(
-                        no_span,
-                        "Failed to resolve use path `{:?}` within namespace `{:?}`",
-                        target_path,
-                        current_path
-                    ));
-                }
-            } else {
+            let NamespaceKind::Use(use_path) = &item_namespace.kind else {
                 Self::resolve_uses_in_namespace(root_namespace, item_namespace, &next_path, errors);
-            }
+                continue;
+            };
+
+            let target_path = use_path.rebase_from_path(current_path);
+
+            let Some(target_namespace) = root_namespace.find_definition(&target_path) else {
+                errors.push(resolve_err!(
+                    no_span,
+                    "Failed to resolve use path `{:?}` within namespace `{:?}`",
+                    target_path,
+                    current_path
+                ));
+                continue;
+            };
+
+            let mut cloned = target_namespace.clone();
+            cloned.ident.clone_from(&item_namespace.ident);
+            cloned.vis = item_namespace.vis;
+            cloned.local = item_namespace.local;
+            cloned.id = target_namespace.id;
+
+            *item_namespace = cloned;
+
+            Self::resolve_uses_in_namespace(root_namespace, item_namespace, &next_path, errors);
         }
     }
 
@@ -232,9 +232,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
             &mut resolve_use_errors,
         );
 
-        if !resolve_use_errors.is_empty() {
-            self.errors.extend(resolve_use_errors);
-        }
+        self.errors.extend(resolve_use_errors);
 
         // Resolve references..
         self.reset_path();

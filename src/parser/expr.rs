@@ -132,7 +132,10 @@ impl Parser<'_, '_> {
 
         let token = self.peek_at(0)?;
         let atom = match &token.kind {
-            TokenKind::StringLiteral(_) | TokenKind::Literal(_) => self.parse_literal(),
+            TokenKind::InvalidLiteral(..) | TokenKind::InvalidEscapeSequence(..) => {
+                self.invalid_literal()
+            }
+            TokenKind::StringLiteral(..) | TokenKind::Literal(..) => self.parse_literal(),
             TokenKind::Keyword(kw) => match kw {
                 Keyword::True | Keyword::False => self.parse_literal(),
                 Keyword::If => self.parse_if(),
@@ -278,6 +281,22 @@ impl Parser<'_, '_> {
             statements,
             self.finish_span(span_start),
         )))
+    }
+
+    fn invalid_literal(&mut self) -> PResult<Box<Expression>> {
+        let token = self.peek()?.clone();
+        self.cursor.advance();
+
+        match &token.kind {
+            TokenKind::InvalidLiteral(err_str) => {
+                Err(ParseErrorKind::InvalidStringLiteral(err_str.to_owned()).with_span(token))
+            }
+            TokenKind::InvalidEscapeSequence(err_str, err_span) => {
+                Err(ParseErrorKind::InvalidEscapeSequence(err_str.to_owned())
+                    .with_span(err_span.to_owned()))
+            }
+            _ => Err(ParseErrorKind::UnexpectedToken(token.kind.clone()).with_span(token)),
+        }
     }
 
     fn parse_literal(&mut self) -> PResult<Box<Expression>> {

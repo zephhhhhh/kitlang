@@ -38,6 +38,8 @@ log = { version = "0.4.29", optional = true }
 simplelog = { version = "0.12.2", optional = true }
 console_log = { version = "1.0", features = ["color"], optional = true }
 
+rustc-literal-escaper = "0.0.5"
+
 kitlang-macros = { path = "crates/kitlang-macros" }
 
 [workspace]

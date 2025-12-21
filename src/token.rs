@@ -10,6 +10,8 @@
 
 use ::std::fmt::{Debug, Display};
 
+use crate::ast::SourceSpan;
+
 // Implemented with a macro for flexibility and for it to be more declarative.
 macro_rules! define_punctuation {
     (
@@ -200,6 +202,7 @@ pub enum TokenKind {
 
     InvalidIdent(String),
     InvalidLiteral(String),
+    InvalidEscapeSequence(String, SourceSpan),
     InvalidDocumentation(String),
 
     Unknown,
@@ -307,30 +310,28 @@ impl TokenKind {
 #[derive(Clone, PartialEq, PartialOrd)]
 pub struct Token {
     pub kind: TokenKind,
-    pub start: u32,
-    pub end: u32,
+    pub span: SourceSpan,
 }
 
 impl Token {
     #[inline]
     #[must_use]
     pub fn from_kind(kind: TokenKind) -> Self {
-        Self::new(kind, 0, 0)
+        Self::new(kind, SourceSpan::null_span())
     }
 
     #[inline]
     #[must_use]
-    pub const fn new_raw(kind: TokenKind, start: u32, end: u32) -> Self {
-        Self { kind, start, end }
+    pub const fn new_raw(kind: TokenKind, span: SourceSpan) -> Self {
+        Self { kind, span }
     }
 
     #[inline]
     #[must_use]
-    pub fn new(kind: impl Into<TokenKind>, start: u32, end: u32) -> Self {
+    pub fn new(kind: impl Into<TokenKind>, span: impl Into<SourceSpan>) -> Self {
         Self {
             kind: kind.into(),
-            start,
-            end,
+            span: span.into(),
         }
     }
 }
@@ -340,7 +341,7 @@ impl Debug for Token {
         write!(
             f,
             "Token{{ {}..{} | {:?} }}",
-            self.start, self.end, self.kind
+            self.span.start, self.span.end, self.kind
         )
     }
 }
