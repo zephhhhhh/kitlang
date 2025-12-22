@@ -238,7 +238,7 @@ impl KitTy {
             ASTTy::Type(spanned_ident_path) => {
                 Self::from_primitive_ty_str(spanned_ident_path.path.path_stem())
             }
-            ASTTy::Infer | ASTTy::This(_) => None,
+            ASTTy::Infer | ASTTy::This(..) | ASTTy::Tuple(..) => None,
             a => {
                 error!("KitTy conversion not implemented for: {a:?}");
                 None

@@ -756,15 +756,10 @@ impl InterpreterState {
                 }
                 BlockExitKind::Branch(operand, true_block, false_block) => {
                     let condition = match operand {
-                        Operand::Copy(local_id) => match local_id {
-                            AssignTarget::Local(local_id) => {
-                                self.execution_frame()?.local(*local_id)?.bool()?
-                            }
-                            AssignTarget::Field(local_id, field_index) => self
-                                .execution_frame()?
-                                .field_access(*local_id, *field_index)?
-                                .bool()?,
-                        },
+                        Operand::Copy(at) => {
+                            let value = self.perform_deref(*at).clone();
+                            value.bool()?
+                        }
                         Operand::Literal(Literal::Boolean(b)) => *b,
                         _ => {
                             error!("Invalid branch operand type! {operand:?}");
