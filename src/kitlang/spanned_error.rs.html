@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/spanned_error.rs`."><title>spanned_error.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-80aa586b.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="kitlang" data-themes="" data-resource-suffix="" data-rustdoc-version="1.94.0-nightly (24139cf84 2025-12-20)" data-channel="nightly" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-3e30299d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-ffcac47a.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">kitlang/</div>spanned_error.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! Provides utilities for building formatted error messages with source code context and highlights.
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/spanned_error.rs`."><title>spanned_error.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-80aa586b.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="kitlang" data-themes="" data-resource-suffix="" data-rustdoc-version="1.94.0-nightly (a6525d526 2025-12-21)" data-channel="nightly" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-3e30299d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-ffcac47a.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">kitlang/</div>spanned_error.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! Provides utilities for building formatted error messages with source code context and highlights.
 <a href=#2 id=2 data-nosnippet>2</a>//!
 <a href=#3 id=3 data-nosnippet>3</a>//! This module is used throughout the compiler to format different errors that may occur, that include
 <a href=#4 id=4 data-nosnippet>4</a>//! source code snippets and highlighting of the exact location of the error, along with messages that
@@ -268,51 +268,51 @@
 <a href=#268 id=268 data-nosnippet>268</a>    <span class="doccomment">/// Generates the final fully formatted output from `self`.
 <a href=#269 id=269 data-nosnippet>269</a>    </span><span class="attr">#[must_use]
 <a href=#270 id=270 data-nosnippet>270</a>    </span><span class="kw">pub fn </span>generate_output(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; String {
-<a href=#271 id=271 data-nosnippet>271</a>        <span class="kw">let </span>max_line_no_len = <span class="self">self
-<a href=#272 id=272 data-nosnippet>272</a>            </span>.lines
-<a href=#273 id=273 data-nosnippet>273</a>            .iter()
-<a href=#274 id=274 data-nosnippet>274</a>            .map(SpannedErrorLine::line_number_string_len)
-<a href=#275 id=275 data-nosnippet>275</a>            .max()
-<a href=#276 id=276 data-nosnippet>276</a>            .unwrap_or(<span class="number">1</span>);
-<a href=#277 id=277 data-nosnippet>277</a>        <span class="kw">let </span>blank_prefix = <span class="self">Self</span>::get_blank_prefix(max_line_no_len);
-<a href=#278 id=278 data-nosnippet>278</a>
-<a href=#279 id=279 data-nosnippet>279</a>        <span class="kw">let </span><span class="kw-2">mut </span>final_output = String::new();
+<a href=#271 id=271 data-nosnippet>271</a>        <span class="kw">let </span>has_no_span = <span class="self">self</span>.error_span.is_null_span();
+<a href=#272 id=272 data-nosnippet>272</a>
+<a href=#273 id=273 data-nosnippet>273</a>        <span class="kw">let </span>max_line_no_len = <span class="self">self
+<a href=#274 id=274 data-nosnippet>274</a>            </span>.lines
+<a href=#275 id=275 data-nosnippet>275</a>            .iter()
+<a href=#276 id=276 data-nosnippet>276</a>            .map(SpannedErrorLine::line_number_string_len)
+<a href=#277 id=277 data-nosnippet>277</a>            .max()
+<a href=#278 id=278 data-nosnippet>278</a>            .unwrap_or(<span class="number">1</span>);
+<a href=#279 id=279 data-nosnippet>279</a>        <span class="kw">let </span>blank_prefix = <span class="self">Self</span>::get_blank_prefix(max_line_no_len);
 <a href=#280 id=280 data-nosnippet>280</a>
-<a href=#281 id=281 data-nosnippet>281</a>        <span class="kw">for </span>header_line <span class="kw">in </span><span class="kw-2">&amp;</span><span class="self">self</span>.header_lines {
-<a href=#282 id=282 data-nosnippet>282</a>            final_output += header_line;
-<a href=#283 id=283 data-nosnippet>283</a>        }
-<a href=#284 id=284 data-nosnippet>284</a>
-<a href=#285 id=285 data-nosnippet>285</a>        <span class="kw">if </span><span class="self">self</span>.show_location
-<a href=#286 id=286 data-nosnippet>286</a>            &amp;&amp; <span class="kw">let </span><span class="prelude-val">Some</span>(first_line) = <span class="self">self</span>.lines.first()
-<a href=#287 id=287 data-nosnippet>287</a>        {
-<a href=#288 id=288 data-nosnippet>288</a>            <span class="kw">let </span>file_name = <span class="self">self
-<a href=#289 id=289 data-nosnippet>289</a>                </span>.file_name
-<a href=#290 id=290 data-nosnippet>290</a>                .as_ref()
-<a href=#291 id=291 data-nosnippet>291</a>                .map(|f| <span class="macro">format!</span>(<span class="string">"{f}:"</span>))
-<a href=#292 id=292 data-nosnippet>292</a>                .unwrap_or_default();
-<a href=#293 id=293 data-nosnippet>293</a>            <span class="kw">let </span>line = first_line.line_number;
-<a href=#294 id=294 data-nosnippet>294</a>            <span class="kw">let </span>char_index = <span class="self">self
-<a href=#295 id=295 data-nosnippet>295</a>                </span>.error_span
-<a href=#296 id=296 data-nosnippet>296</a>                .start
-<a href=#297 id=297 data-nosnippet>297</a>                .saturating_sub(first_line.line_start_global_index)
-<a href=#298 id=298 data-nosnippet>298</a>                .saturating_add(<span class="number">1</span>);
-<a href=#299 id=299 data-nosnippet>299</a>            <span class="attr">#[cfg(feature = <span class="string">"colour"</span>)]
-<a href=#300 id=300 data-nosnippet>300</a>            </span>{
-<a href=#301 id=301 data-nosnippet>301</a>                <span class="kw">let _ </span>= <span class="macro">writeln!</span>(
-<a href=#302 id=302 data-nosnippet>302</a>                    final_output,
-<a href=#303 id=303 data-nosnippet>303</a>                    <span class="string">"{prefix_color}  --&gt; {color_reset}{file_name}{line}:{char_index}"
-<a href=#304 id=304 data-nosnippet>304</a>                </span>);
-<a href=#305 id=305 data-nosnippet>305</a>            }
-<a href=#306 id=306 data-nosnippet>306</a>            <span class="attr">#[cfg(not(feature = <span class="string">"colour"</span>))]
-<a href=#307 id=307 data-nosnippet>307</a>            </span>{
-<a href=#308 id=308 data-nosnippet>308</a>                <span class="kw">let _ </span>= <span class="macro">writeln!</span>(final_output, <span class="string">"  --&gt; {file_name}{line}:{char_index}"</span>);
-<a href=#309 id=309 data-nosnippet>309</a>            }
-<a href=#310 id=310 data-nosnippet>310</a>        }
-<a href=#311 id=311 data-nosnippet>311</a>
-<a href=#312 id=312 data-nosnippet>312</a>        <span class="kw">if </span><span class="self">self</span>.error_span.is_null_span() {
-<a href=#313 id=313 data-nosnippet>313</a>            final_output += <span class="kw-2">&amp;</span>blank_prefix;
-<a href=#314 id=314 data-nosnippet>314</a>            final_output += <span class="string">"\n"</span>;
-<a href=#315 id=315 data-nosnippet>315</a>        } <span class="kw">else </span>{
+<a href=#281 id=281 data-nosnippet>281</a>        <span class="kw">let </span><span class="kw-2">mut </span>final_output = String::new();
+<a href=#282 id=282 data-nosnippet>282</a>
+<a href=#283 id=283 data-nosnippet>283</a>        <span class="kw">for </span>header_line <span class="kw">in </span><span class="kw-2">&amp;</span><span class="self">self</span>.header_lines {
+<a href=#284 id=284 data-nosnippet>284</a>            final_output += header_line;
+<a href=#285 id=285 data-nosnippet>285</a>        }
+<a href=#286 id=286 data-nosnippet>286</a>
+<a href=#287 id=287 data-nosnippet>287</a>        <span class="kw">if </span><span class="self">self</span>.show_location
+<a href=#288 id=288 data-nosnippet>288</a>            &amp;&amp; !has_no_span
+<a href=#289 id=289 data-nosnippet>289</a>            &amp;&amp; <span class="kw">let </span><span class="prelude-val">Some</span>(first_line) = <span class="self">self</span>.lines.first()
+<a href=#290 id=290 data-nosnippet>290</a>        {
+<a href=#291 id=291 data-nosnippet>291</a>            <span class="kw">let </span>file_name = <span class="self">self
+<a href=#292 id=292 data-nosnippet>292</a>                </span>.file_name
+<a href=#293 id=293 data-nosnippet>293</a>                .as_ref()
+<a href=#294 id=294 data-nosnippet>294</a>                .map(|f| <span class="macro">format!</span>(<span class="string">"{f}:"</span>))
+<a href=#295 id=295 data-nosnippet>295</a>                .unwrap_or_default();
+<a href=#296 id=296 data-nosnippet>296</a>            <span class="kw">let </span>line = first_line.line_number;
+<a href=#297 id=297 data-nosnippet>297</a>            <span class="kw">let </span>char_index = <span class="self">self
+<a href=#298 id=298 data-nosnippet>298</a>                </span>.error_span
+<a href=#299 id=299 data-nosnippet>299</a>                .start
+<a href=#300 id=300 data-nosnippet>300</a>                .saturating_sub(first_line.line_start_global_index)
+<a href=#301 id=301 data-nosnippet>301</a>                .saturating_add(<span class="number">1</span>);
+<a href=#302 id=302 data-nosnippet>302</a>            <span class="attr">#[cfg(feature = <span class="string">"colour"</span>)]
+<a href=#303 id=303 data-nosnippet>303</a>            </span>{
+<a href=#304 id=304 data-nosnippet>304</a>                <span class="kw">let _ </span>= <span class="macro">writeln!</span>(
+<a href=#305 id=305 data-nosnippet>305</a>                    final_output,
+<a href=#306 id=306 data-nosnippet>306</a>                    <span class="string">"{prefix_color}  --&gt; {color_reset}{file_name}{line}:{char_index}"
+<a href=#307 id=307 data-nosnippet>307</a>                </span>);
+<a href=#308 id=308 data-nosnippet>308</a>            }
+<a href=#309 id=309 data-nosnippet>309</a>            <span class="attr">#[cfg(not(feature = <span class="string">"colour"</span>))]
+<a href=#310 id=310 data-nosnippet>310</a>            </span>{
+<a href=#311 id=311 data-nosnippet>311</a>                <span class="kw">let _ </span>= <span class="macro">writeln!</span>(final_output, <span class="string">"  --&gt; {file_name}{line}:{char_index}"</span>);
+<a href=#312 id=312 data-nosnippet>312</a>            }
+<a href=#313 id=313 data-nosnippet>313</a>        }
+<a href=#314 id=314 data-nosnippet>314</a>
+<a href=#315 id=315 data-nosnippet>315</a>        <span class="kw">if </span>!<span class="self">self</span>.error_span.is_null_span() {
 <a href=#316 id=316 data-nosnippet>316</a>            <span class="kw">if </span><span class="self">self</span>.pad_around_source_view {
 <a href=#317 id=317 data-nosnippet>317</a>                final_output += <span class="kw-2">&amp;</span>blank_prefix;
 <a href=#318 id=318 data-nosnippet>318</a>                final_output += <span class="string">"\n"</span>;
