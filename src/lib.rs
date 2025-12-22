@@ -52,7 +52,7 @@ pub enum KitlangError {
     #[error("Execution ended unexpectedly.")]
     ExecutionEndedUnexpectedly,
     /// Indicates that the entry point 'main' function could not be found when trying to execute.
-    #[error("Failed to find entry point 'main' function.")]
+    #[error("Failed to find entry point `main` function.")]
     FailedToFindEntryPoint,
 }
 

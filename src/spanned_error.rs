@@ -268,6 +268,8 @@ impl SpannedErrorBuilder {
     /// Generates the final fully formatted output from `self`.
     #[must_use]
     pub fn generate_output(&self) -> String {
+        let has_no_span = self.error_span.is_null_span();
+
         let max_line_no_len = self
             .lines
             .iter()
@@ -283,6 +285,7 @@ impl SpannedErrorBuilder {
         }
 
         if self.show_location
+            && !has_no_span
             && let Some(first_line) = self.lines.first()
         {
             let file_name = self
@@ -309,10 +312,7 @@ impl SpannedErrorBuilder {
             }
         }
 
-        if self.error_span.is_null_span() {
-            final_output += &blank_prefix;
-            final_output += "\n";
-        } else {
+        if !self.error_span.is_null_span() {
             if self.pad_around_source_view {
                 final_output += &blank_prefix;
                 final_output += "\n";

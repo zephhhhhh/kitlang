@@ -1052,6 +1052,9 @@ pub fn execute_mir(
 // Compiler intrinsics implementations..
 
 mod intrinsics {
+    #[cfg(not(feature = "webasm"))]
+    use std::io::Write;
+
     use crate::interpreter::mir_interpreter::Interpreter;
     use crate::register_native_fn;
     use kitlang_macros::kitlang_native_fn;
@@ -1079,7 +1082,14 @@ mod intrinsics {
 
         #[cfg(not(feature = "webasm"))]
         {
-            register_native_fn!(interpreter, print, println);
+            register_native_fn!(
+                interpreter,
+                print,
+                println,
+                read_line,
+                input,
+                input_placeholder
+            );
         }
     }
 
@@ -1150,10 +1160,48 @@ mod intrinsics {
     #[kitlang_native_fn]
     fn print(s: String) {
         print!("{s}");
+        std::io::stdout().flush().expect("Failed to flush.");
     }
     #[cfg(not(feature = "webasm"))]
     #[kitlang_native_fn]
     fn println(s: String) {
         println!("{s}");
+    }
+
+    #[cfg(not(feature = "webasm"))]
+    #[kitlang_native_fn]
+    fn read_line() -> String {
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
+        input.trim_end().to_string()
+    }
+    #[cfg(not(feature = "webasm"))]
+    #[kitlang_native_fn]
+    fn input(prompt: String) -> String {
+        print!("{prompt}");
+        std::io::stdout().flush().expect("Failed to flush.");
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
+        input.trim_end().to_string()
+    }
+    #[cfg(not(feature = "webasm"))]
+    #[kitlang_native_fn]
+    fn input_placeholder(prompt: String, default: String) -> String {
+        let mut input = String::new();
+        print!("{prompt}");
+        std::io::stdout().flush().expect("Failed to flush.");
+        std::io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line.");
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            default
+        } else {
+            trimmed.to_string()
+        }
     }
 }

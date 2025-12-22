@@ -136,7 +136,14 @@ pub fn init_logging() {
 }
 
 fn register_native_functions(interpreter: &mut Interpreter) {
-    register_native_fn!(interpreter, print, println, input, input_placeholder);
+    register_native_fn!(
+        interpreter,
+        print,
+        println,
+        input,
+        input_placeholder,
+        read_line
+    );
 }
 
 // Value conversions
@@ -237,6 +244,19 @@ fn println(s: String) {
                 .unwrap();
         }
     });
+}
+#[kitlang_native_fn]
+fn read_line() -> String {
+    let mut result = String::new();
+    INPUT.with(|slot| {
+        if let Some(cb) = &*slot.borrow()
+            && let Ok(js_value) = cb.call2(&JsValue::NULL, &JsValue::NULL, &JsValue::NULL)
+            && let Some(s) = js_value.as_string()
+        {
+            result = s;
+        }
+    });
+    result
 }
 #[kitlang_native_fn]
 fn input(s: String) -> String {

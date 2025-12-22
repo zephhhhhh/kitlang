@@ -120,7 +120,7 @@ impl TypeChecker<'_> {
     #[must_use]
     pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
         match ty.into() {
-            Type::Unresolved(ty) => ty.get_type_ident(),
+            Type::Unresolved(ty) => Some(ty.get_type_ident()),
             Type::Resolved(KitTy::Abstract(ty_id)) => {
                 let abs_ty = self.meta.type_registry.get_from_type_id(ty_id)?;
                 let type_path = abs_ty.defined_in.extend_ident(&abs_ty.type_ident.ident);

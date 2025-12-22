@@ -390,6 +390,11 @@ impl Parser<'_, '_> {
             let unit_start_span = self.begin_span();
             self.cursor.advance_by(2);
             Ty::Unit(self.finish_span(unit_start_span))
+        } else if self.check_kind(Keyword::ThisTy) {
+            // 'Self' type.
+            let self_span_start = self.begin_span();
+            self.cursor.advance();
+            Ty::This(self.finish_span(self_span_start))
         } else {
             Ty::new(self.parse_spanned_path()?)
         };

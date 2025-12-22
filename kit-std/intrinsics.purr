@@ -4,6 +4,10 @@ native global fn is_empty(s: string) -> bool;
 native global fn print(s: string);
 native global fn println(s: string);
 
+native global fn read_line() -> string;
+native global fn input(s: string) -> string;
+native global fn input_placeholder(s: string, default: string) -> string;
+
 native global fn i64_to_string(i: i64) -> string;
 native global fn string_to_i64(s: string) -> i64;
 native global fn u64_to_string(u: u64) -> string;

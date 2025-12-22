@@ -92,6 +92,48 @@ impl TypeResolver<'_> {
         Ok(())
     }
 
+    /// Resolve a type from the given AST type.
+    /// This function attempts to find the type definition in the current [`Namespace`] context.
+    /// If the path is root relative, it will be resolved from the root namespace, otherwise it will be
+    /// resolved relative to the current module path.
+    /// # Returns
+    /// * `Ok(TypeID)` if the type was resolved successfully.
+    /// * `Err(ResolverError)` if the type could not be resolved.
+    /// # Errors
+    /// This function will return an error if the type definition could not be found, describing the failure reason.
+    fn resolve_ast_type(&mut self, ty: &Ty) -> ResolveResult<KitTy> {
+        match ty {
+            Ty::Type(type_path) => Ok(KitTy::Abstract(self.resolve_type_id(&type_path.path)?)),
+            Ty::Unit(_) => Ok(KitTy::Unit),
+            Ty::This(span) => {
+                if let Some(impl_ty) = &self.current_impl {
+                    match impl_ty {
+                        Type::Resolved(t) => Ok(*t),
+                        Type::Unresolved(_) => Err(resolve_err!(
+                            on_span,
+                            *span,
+                            "Current impl type is still unresolved in `{}`",
+                            self.current_path()
+                        )),
+                    }
+                } else {
+                    Err(resolve_err!(
+                        on_span,
+                        *span,
+                        "Could not resolve type of `self` as there is no current impl in `{}`",
+                        self.current_path()
+                    ))
+                }
+            }
+            unk => Err(resolve_err!(
+                no_span,
+                "Cannot resolve type for unsupported AST type variant `{:?}` in `{}`",
+                unk,
+                self.current_path()
+            )),
+        }
+    }
+
     /// Resolve a type from the given identifier path.
     /// This function attempts to find the type definition in the current [`Namespace`] context.
     /// If the path is root relative, it will be resolved from the root namespace, otherwise it will be
@@ -101,7 +143,7 @@ impl TypeResolver<'_> {
     /// * `Err(ResolverError)` if the type could not be resolved.
     /// # Errors
     /// This function will return an error if the type definition could not be found, describing the failure reason.
-    fn resolve_type(&self, path: &IdentPath) -> ResolveResult<TypeID> {
+    fn resolve_type_id(&self, path: &IdentPath) -> ResolveResult<TypeID> {
         let final_path = path.rebase_from_path(
             &self
                 .meta
@@ -168,16 +210,29 @@ impl TypeResolver<'_> {
 
 impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     fn visit_expr_mut(&mut self, expr: &mut Expr, hlir: &mut HLIRDisjointMut<'_>) {
-        if let ExprKind::StructInit(struct_init) = &mut expr.kind
-            && let RefPath::Unresolved(ty_path) = &struct_init.ty_path
-        {
-            match self.resolve_type(&ty_path.path) {
-                Ok(type_id) => {
-                    struct_init.ty_path =
-                        RefPath::Resolved(ty_path.clone(), ResolvedID::TypeDef(type_id));
+        match &mut expr.kind {
+            ExprKind::StructInit(struct_init) => {
+                if let RefPath::Unresolved(ty_path) = &struct_init.ty_path {
+                    match self.resolve_type_id(&ty_path.path) {
+                        Ok(type_id) => {
+                            struct_init.ty_path =
+                                RefPath::Resolved(ty_path.clone(), ResolvedID::TypeDef(type_id));
+                        }
+                        Err(e) => self.errors.push(e),
+                    }
                 }
-                Err(e) => self.errors.push(e),
             }
+            ExprKind::Cast(_, cast_ty) => {
+                if let Type::Unresolved(ty) = cast_ty {
+                    match self.resolve_ast_type(ty) {
+                        Ok(resolved_ty) => {
+                            *cast_ty = Type::Resolved(resolved_ty);
+                        }
+                        Err(e) => self.errors.push(e),
+                    }
+                }
+            }
+            _ => {}
         }
 
         self.super_expr_mut(expr, hlir);
@@ -198,62 +253,48 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
         self.super_function_mut(function, hlir);
 
         for (i, arg) in function.sig.parameters.iter_mut().enumerate() {
-            match arg {
-                Type::Unresolved(Ty::Type(type_path)) => match self.resolve_type(type_path) {
-                    Ok(type_id) => {
-                        *arg = Type::Resolved(KitTy::Abstract(type_id));
+            if let Type::Unresolved(ty) = arg {
+                match self.resolve_ast_type(ty) {
+                    Ok(resolved_ty) => {
+                        *arg = Type::Resolved(resolved_ty);
                     }
-                    Err(e) => self.errors.push(e),
-                },
-                Type::Unresolved(Ty::This(sp)) => {
-                    if let Some(impl_ty) = &self.current_impl {
-                        *arg = impl_ty.clone();
-                    } else {
+                    Err(e) => {
+                        self.errors.push(e);
                         push_resolve_err!(
                             self,
                             on_span,
-                            *sp,
-                            "Could not resolve type of `self` function argument in `{}`",
+                            ty.get_span_or(function.sig.span),
+                            "Could not resolve type `{}` of function argument `{}` in `{}`",
+                            ty.get_type_ident(),
+                            function
+                                .sig
+                                .parameter_idents
+                                .get(i)
+                                .cloned()
+                                .unwrap_or_else(|| "??".to_string()),
                             self.current_path()
                         );
                     }
                 }
-                _ => {}
-            }
-            if let Type::Unresolved(Ty::Type(type_path)) = arg {
-                if let Ok(type_id) = self.resolve_type(type_path) {
-                    *arg = Type::Resolved(KitTy::Abstract(type_id));
-                } else {
-                    push_resolve_err!(
-                        self,
-                        on_span,
-                        type_path.span,
-                        "Could not resolve type `{}` of function argument `{}` in `{}`",
-                        type_path.path,
-                        function
-                            .sig
-                            .parameter_idents
-                            .get(i)
-                            .cloned()
-                            .unwrap_or_else(|| "??".to_string()),
-                        self.current_path()
-                    );
-                }
             }
         }
 
-        if let Type::Unresolved(Ty::Type(type_path)) = &function.sig.output {
-            if let Ok(type_id) = self.resolve_type(type_path) {
-                function.sig.output = Type::Resolved(KitTy::Abstract(type_id));
-            } else {
-                push_resolve_err!(
-                    self,
-                    on_span,
-                    type_path.span,
-                    "Could not resolve type `{}` in function return type of `{}`",
-                    type_path.path,
-                    self.current_path()
-                );
+        if let Type::Unresolved(ty) = &function.sig.output {
+            match self.resolve_ast_type(ty) {
+                Ok(resolved_ty) => {
+                    function.sig.output = Type::Resolved(resolved_ty);
+                }
+                Err(e) => {
+                    self.errors.push(e);
+                    push_resolve_err!(
+                        self,
+                        on_span,
+                        ty.get_span_or(function.sig.span),
+                        "Could not resolve type `{}` in function return type of `{}`",
+                        ty.get_type_ident(),
+                        self.current_path()
+                    );
+                }
             }
         }
 
@@ -267,10 +308,14 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
         hlir: &mut HLIRDisjointMut<'_>,
     ) {
         self.super_let_statement_mut(id, let_statement, hlir);
-        if let Type::Unresolved(Ty::Type(type_path)) = &let_statement.ty {
-            match self.resolve_type(&type_path.path) {
-                Ok(type_id) => {
-                    let_statement.ty = Type::Resolved(KitTy::Abstract(type_id));
+        if let_statement.ty.is_infer() {
+            return;
+        }
+
+        if let Type::Unresolved(ty) = &let_statement.ty {
+            match self.resolve_ast_type(ty) {
+                Ok(resolved_ty) => {
+                    let_statement.ty = Type::Resolved(resolved_ty);
                 }
                 Err(e) => {
                     self.errors.push(e);
@@ -282,7 +327,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
     fn visit_struct_mut(&mut self, structure: &mut Struct, hlir: &mut HLIRDisjointMut<'_>) {
         self.push_to_current_path(structure.ident.str());
         let current_struct_path = self.current_path().clone();
-        let current_struct_type = match self.resolve_type(&current_struct_path) {
+        let current_struct_type = match self.resolve_type_id(&current_struct_path) {
             Ok(t) => t,
             Err(e) => {
                 self.errors.push(e);
@@ -293,20 +338,19 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
 
         for field_id in &structure.fields {
             if let Some(field) = hlir.get_hir_node_mut_as::<StructField>(*field_id) {
-                let resolved_type = if let Type::Unresolved(Ty::Type(type_path)) = &field.ty {
-                    match self.resolve_type(&type_path.path) {
-                        Ok(type_id) => Some(type_id),
+                let resolved_type = match &field.ty {
+                    Type::Unresolved(ty) => match self.resolve_ast_type(ty) {
+                        Ok(resolved_ty) => Some(resolved_ty),
                         Err(e) => {
                             self.errors.push(e);
                             None
                         }
-                    }
-                } else {
-                    None
+                    },
+                    Type::Resolved(_) => None,
                 };
 
                 if let Some(type_id) = resolved_type {
-                    field.ty = Type::Resolved(KitTy::Abstract(type_id));
+                    field.ty = Type::Resolved(type_id);
 
                     let struct_info = self
                         .meta
@@ -315,7 +359,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                         .expect("Has to exist.");
                     if let Some(field_info) = struct_info.get_field_by_ident_mut(field.ident.str())
                     {
-                        field_info.ty = Type::Resolved(KitTy::Abstract(type_id));
+                        field_info.ty = Type::Resolved(type_id);
                     } else {
                         push_resolve_err!(
                             self,

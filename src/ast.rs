@@ -827,19 +827,31 @@ impl Ty {
         Self::Type(src)
     }
 
-    /// Returns the underlying type, if possible.
+    /// Returns the underlying type as a string.
     /// I.e.
     /// *   `Ty::Ref(Ty::Type(i32), Mutability::Mutable)`, returns `Some("i32")`.
     /// *   `Ty::Infer`, returns `None`.
     /// *   `Ty::This`, returns `None`, since we need to have context about it to deduce the type.
     #[inline]
     #[must_use]
-    pub fn get_type_ident(&self) -> Option<String> {
+    pub fn get_type_ident(&self) -> String {
         match self {
-            Self::Unit(_) => Some("()".to_string()),
-            Self::Type(t) => Some(t.to_string()),
+            Self::Unit(_) => "()".to_string(),
+            Self::Type(t) => t.to_string(),
             Self::Ref(ty, _, _) | Self::Array(ty, _) => ty.get_type_ident(),
-            Self::Infer | Self::This(..) | Self::Tuple(..) => None, // TODO: Tuple?
+            Self::Tuple(tys, _) => {
+                let mut repr = "(".to_string();
+                for (i, ty) in tys.iter().enumerate() {
+                    if i > 0 {
+                        repr.push_str(", ");
+                    }
+                    repr.push_str(&ty.get_type_ident());
+                }
+                repr.push(')');
+                repr
+            }
+            Self::Infer => "Deduced".to_string(),
+            Self::This(..) => "Self".to_string(),
         }
     }
 
@@ -856,6 +868,13 @@ impl Ty {
             | Self::Array(_, s)
             | Self::Tuple(_, s) => Some(*s), // TODO: ?
         }
+    }
+
+    /// Returns the span of the type specifier, or a provided default if not available.
+    #[inline]
+    #[must_use]
+    pub fn get_span_or(&self, default: SourceSpan) -> SourceSpan {
+        self.get_span().unwrap_or(default)
     }
 }
 

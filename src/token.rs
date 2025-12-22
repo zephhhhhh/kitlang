@@ -156,6 +156,7 @@ define_keywords!(
     (Struct, "struct"),
     (Impl, "impl"),
     (This, "self"),
+    (ThisTy, "Self"),
     (True, "true"),
     (False, "false"),
     (Larissa, "larissa")
