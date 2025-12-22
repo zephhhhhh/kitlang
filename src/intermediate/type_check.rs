@@ -300,7 +300,9 @@ impl TypeChecker<'_> {
         expr_id: HirId,
         hlir: &mut HLIRDisjointMut<'_>,
     ) -> TypeResult<Type> {
-        let return_type = self.eval_expr_type_by_id(expr_id, hlir)?;
+        let expected_return = self.current_expected_return();
+        let return_type =
+            self.eval_expr_type_by_id_continued(expr_id, hlir, expected_return.as_ref())?;
         self.validate_return_value(expr_id, return_type, hlir)
     }
 
@@ -376,7 +378,7 @@ impl TypeChecker<'_> {
     }
 
     /// Evaluates the type of an expression by its [`HirId`], updating the type map accordingly.
-    /// Also returns whether the expression is a literal.
+    /// Accepts an expected type to guide type inference.
     /// # Returns
     /// * `Ok((Type, is_literal))` if the expression type is successfully evaluated.
     /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
@@ -401,6 +403,25 @@ impl TypeChecker<'_> {
                 "Node is not an expression, but rather `{:?}`",
                 node
             ))
+        }
+    }
+
+    /// Evaluates the type of an expression by its [`HirId`], updating the type map accordingly.
+    /// Optionally, accepts an expected type to guide type inference.
+    /// # Returns
+    /// * `Ok((Type, is_literal))` if the expression type is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
+    #[inline]
+    fn eval_expr_type_by_id_continued(
+        &mut self,
+        id: HirId,
+        hlir: &mut HLIRDisjointMut<'_>,
+        expected: Option<&Type>,
+    ) -> TypeResult<Type> {
+        if let Some(expected) = expected {
+            self.eval_expr_type_by_id_expected(id, hlir, expected)
+        } else {
+            self.eval_expr_type_by_id(id, hlir)
         }
     }
 
@@ -436,7 +457,7 @@ impl TypeChecker<'_> {
             }
             ExprKind::BinaryOp(binary_op_kind, hir_id, hir_id1) => {
                 let lhs = self.eval_expr_type_by_id(*hir_id, hlir)?;
-                let rhs = self.eval_expr_type_by_id(*hir_id1, hlir)?;
+                let rhs = self.eval_expr_type_by_id_expected(*hir_id1, hlir, &lhs)?;
                 let lhs_r = self.resolved_type(*hir_id, &lhs, hlir)?;
                 let rhs_r = self.resolved_type(*hir_id1, &rhs, hlir)?;
 
@@ -487,7 +508,8 @@ impl TypeChecker<'_> {
                 let if_block_ty = self.eval_block_type_by_id(*hir_id1, hlir)?;
 
                 if let Some(else_block_id) = hir_id2 {
-                    let else_block_ty = self.eval_expr_type_by_id(*else_block_id, hlir)?;
+                    let else_block_ty =
+                        self.eval_expr_type_by_id_expected(*else_block_id, hlir, &if_block_ty)?;
                     if else_block_ty == if_block_ty {
                         Ok(if_block_ty)
                     } else {
@@ -521,7 +543,7 @@ impl TypeChecker<'_> {
             }
             ExprKind::Assign(hir_id, hir_id1) => {
                 let lhs = self.eval_expr_type_by_id(*hir_id, hlir)?;
-                let rhs = self.eval_expr_type_by_id(*hir_id1, hlir)?;
+                let rhs = self.eval_expr_type_by_id_expected(*hir_id1, hlir, &lhs)?;
                 let assign_target = self.resolved_type(*hir_id, &lhs, hlir)?;
                 let value_type = self.resolved_type(*hir_id1, &rhs, hlir)?;
 
@@ -743,7 +765,6 @@ impl TypeChecker<'_> {
                     .fields
                     .iter()
                     .map(|si| {
-                        let init_type = self.eval_expr_type_by_id(si.expr, hlir)?;
                         let expected_type = struct_adt
                             .get_field_by_ident(si.ident.str())
                             .ok_or_else(|| {
@@ -757,6 +778,8 @@ impl TypeChecker<'_> {
                             })?
                             .ty
                             .clone();
+                        let init_type =
+                            self.eval_expr_type_by_id_expected(si.expr, hlir, &expected_type)?;
 
                         if init_type != expected_type {
                             return Err(type_fail!(
@@ -975,8 +998,8 @@ impl TypeChecker<'_> {
 
         let is_inferring = self.should_infer && let_statement.ty.is_infer();
 
-        let init_ty = self.eval_expr_type_by_id(init_expr_id, hlir).map_err(|e| {
-            if is_inferring {
+        let init_ty = if is_inferring {
+            self.eval_expr_type_by_id(init_expr_id, hlir).map_err(|e| {
                 type_fail!(
                     hlir,
                     id,
@@ -984,10 +1007,10 @@ impl TypeChecker<'_> {
                     let_statement.ident.str(),
                     e.reason
                 )
-            } else {
-                e
-            }
-        })?;
+            })?
+        } else {
+            self.eval_expr_type_by_id_expected(init_expr_id, hlir, &let_statement.ty)?
+        };
 
         if is_inferring {
             let_statement.ty = init_ty;
@@ -1021,6 +1044,7 @@ impl TypeChecker<'_> {
         &mut self,
         statement: &mut Statement,
         _parent_block: &Block,
+        expected: Option<&Type>,
         hlir: &mut HLIRDisjointMut<'_>,
     ) -> TypeResult<Type> {
         match &mut statement.kind {
@@ -1032,7 +1056,9 @@ impl TypeChecker<'_> {
                 self.eval_owner_def(*owner_def_id, hlir)?;
                 Ok(Type::unit())
             }
-            StatementKind::Expr(expr_id) => self.eval_expr_type_by_id(*expr_id, hlir),
+            StatementKind::Expr(expr_id) => {
+                self.eval_expr_type_by_id_continued(*expr_id, hlir, expected)
+            }
             StatementKind::Semi(expr_id) => {
                 self.eval_expr_type_by_id(*expr_id, hlir)?;
                 Ok(Type::unit())
@@ -1105,16 +1131,26 @@ impl TypeChecker<'_> {
     ) -> TypeResult<Type> {
         let statement_count = block.statements.len();
         for (i, statement_id) in block.statements.iter().enumerate() {
+            let last_statement = i.saturating_add(1) == statement_count;
+            let is_return_stmt = Self::is_id_return_statement(*statement_id, hlir)?;
             let statement = statement_mut_by_id(*statement_id, hlir)?;
-            match self.eval_statement_type(statement, block, hlir) {
+            let should_validate = block.root_block && !is_return_stmt;
+
+            let expected_ty = if last_statement && should_validate {
+                let expected_return = self.current_expected_return().expect("Not in function?");
+                Some(expected_return)
+            } else {
+                None
+            };
+
+            match self.eval_statement_type(statement, block, expected_ty.as_ref(), hlir) {
                 Ok(final_ty) => {
-                    if i.saturating_add(1) == statement_count {
-                        // Validate..
-                        let is_return_stmt = Self::is_id_return_statement(*statement_id, hlir)?;
-                        if block.root_block && !is_return_stmt {
-                            return self.validate_return_value(*statement_id, final_ty, hlir);
+                    if last_statement {
+                        return if should_validate {
+                            self.validate_return_value(*statement_id, final_ty, hlir)
+                        } else {
+                            Ok(final_ty)
                         }
-                        return Ok(final_ty);
                     }
                 }
                 Err(e) => self.errors.push(e),
