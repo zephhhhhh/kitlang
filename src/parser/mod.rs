@@ -376,6 +376,27 @@ impl Parser<'_, '_> {
         }
     }
 
+    /// Parse a tuple type from the current cursor position.
+    /// (Ty, Ty, ...)
+    /// # Notes
+    /// Must be verified the type being parsed is _NOT_ a unit type `()` by the caller.
+    pub fn parse_tuple_ty(&mut self) -> PResult<Ty> {
+        let span_start = self.begin_span();
+        self.expect_kind(Punctuation::OpenParen)?;
+
+        let mut tuple_types = vec![Box::new(self.parse_ty()?)];
+
+        while self.check_kind_advance(Punctuation::Comma) {
+            if self.check_kind(Punctuation::CloseParen) {
+                break;
+            }
+            tuple_types.push(Box::new(self.parse_ty()?));
+        }
+
+        self.expect_kind(Punctuation::CloseParen)?;
+        Ok(Ty::Tuple(tuple_types, self.finish_span(span_start)))
+    }
+
     /// Parse a [`Ty`] from the current cursor position.
     /// # Notes
     /// Always expects atleast one `Identifier`.
@@ -383,20 +404,22 @@ impl Parser<'_, '_> {
         let span_start = self.begin_span();
         let ref_type = self.parse_ref_and_refmut()?;
 
-        let root_type = if self.check_kind(Punctuation::OpenParen)
-            && self.check_kind_at(1, Punctuation::CloseParen)
-        {
-            // Unit type '()'.
-            let unit_start_span = self.begin_span();
-            self.cursor.advance_by(2);
-            Ty::Unit(self.finish_span(unit_start_span))
-        } else if self.check_kind(Keyword::ThisTy) {
-            // 'Self' type.
-            let self_span_start = self.begin_span();
-            self.cursor.advance();
-            Ty::This(self.finish_span(self_span_start))
-        } else {
-            Ty::new(self.parse_spanned_path()?)
+        let root_type = match self.peek()?.kind {
+            TokenKind::Punctuation(Punctuation::OpenBracket) => {
+                if self.check_kind_at(1, Punctuation::CloseParen) {
+                    let unit_start_span = self.begin_span();
+                    self.cursor.advance_by(2);
+                    Ty::Unit(self.finish_span(unit_start_span))
+                } else {
+                    self.parse_tuple_ty()?
+                }
+            }
+            TokenKind::Keyword(Keyword::ThisTy) => {
+                let self_span_start = self.begin_span();
+                self.cursor.advance();
+                Ty::This(self.finish_span(self_span_start))
+            }
+            _ => Ty::new(self.parse_spanned_path()?),
         };
 
         if ref_type.is_ref() {

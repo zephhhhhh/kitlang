@@ -532,7 +532,7 @@ impl TypeChecker<'_> {
                     .map(|id| Ok((self.eval_expr_type_by_id(*id, hlir)?, *id)))
                     .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
 
-                match expr_ty {
+                match &expr_ty {
                     Type::Resolved(t) => {
                         let Some(method_def) =
                             self.meta.find_ty_method_owner_def(&expr_ty, ident.str())
@@ -605,6 +605,28 @@ impl TypeChecker<'_> {
                         type_info.get_field_by_ident(ident.str()).map_or_else(
                             || Err(type_fail!(hlir, *hir_id, "Can't find field '{:?}'", ident)),
                             |field| Ok(field.ty.clone()),
+                        )
+                    }
+                    Type::Resolved(KitTy::Tuple(tys)) => {
+                        let index: usize = ident.str().parse().map_err(|_| {
+                            type_fail!(
+                                hlir,
+                                *hir_id,
+                                "Tuple field access must be by index, found: '{}'",
+                                ident.str()
+                            )
+                        })?;
+                        tys.get(index).map_or_else(
+                            || {
+                                Err(type_fail!(
+                                    hlir,
+                                    *hir_id,
+                                    "Tuple index out of bounds. Index: '{}', length: '{}'",
+                                    index,
+                                    tys.len()
+                                ))
+                            },
+                            |ty| Ok(Type::Resolved(ty.clone())),
                         )
                     }
                     Type::Unresolved(t) => Err(type_fail!(
@@ -736,7 +758,7 @@ impl TypeChecker<'_> {
                 let expr_type = self.eval_expr_type_by_id(*hir_id, hlir)?;
                 let expr_type_r = self.resolved_type(*hir_id, &expr_type, hlir)?;
 
-                let target_type_r = *target_type.resolved().ok_or_else(|| {
+                let target_type_r = target_type.resolved().ok_or_else(|| {
                     type_fail!(
                         hlir,
                         expr.id,
@@ -745,7 +767,7 @@ impl TypeChecker<'_> {
                     )
                 })?;
 
-                expr_type_r.cast_result_type(&target_type_r).map_or_else(
+                expr_type_r.cast_result_type(target_type_r).map_or_else(
                     || {
                         Err(type_fail!(
                             hlir,
@@ -809,12 +831,56 @@ impl TypeChecker<'_> {
 
                 Ok(Type::unit())
             }
-            unk @ ExprKind::Index(..) => Err(type_fail!(
-                hlir,
-                expr.id,
-                "Error unknown expression type: {:?}",
-                unk
-            )),
+            ExprKind::Tuple(element_ids) => {
+                let mut element_types = Vec::new();
+                for element_id in element_ids {
+                    match self.eval_expr_type_by_id(*element_id, hlir)? {
+                        Type::Unresolved(t) => {
+                            return Err(type_fail!(
+                                hlir,
+                                *element_id,
+                                "Tuple element has unresolved type: {}",
+                                self.type_name(t)
+                            ));
+                        }
+                        Type::Resolved(t) => element_types.push(t),
+                    }
+                }
+                // TODO: Create a proper tuple type representation
+                Ok(Type::Resolved(KitTy::Tuple(element_types)))
+            }
+            ExprKind::Index(_target_expr_id, index_expr_id) => {
+                // let target_type = self.eval_expr_type_by_id(*target_expr_id, hlir)?;
+                let index_type = self.eval_expr_type_by_id(*index_expr_id, hlir)?;
+                // let target_type_r = self.resolved_type(*target_expr_id, &target_type, hlir)?;
+                let index_type_r = self.resolved_type(*index_expr_id, &index_type, hlir)?;
+
+                if !index_type_r.is_int() && !index_type_r.is_uint() {
+                    return Err(type_fail!(
+                        hlir,
+                        *index_expr_id,
+                        "Index expression must be of integer type, found: `{}`",
+                        self.type_name(index_type)
+                    ));
+                }
+
+                todo!()
+                // match target_type_r {
+                //     // Soon..
+                //     // KitTy::String => Ok(Type::Resolved(KitTy::Char)),
+                //     _ => Err(type_fail!(
+                //         hlir,
+                //         *target_expr_id,
+                //         "Type `{}` is not indexable.",
+                //         self.type_name(target_type)
+                //     )),
+                // }
+            } // unk @ ExprKind::Index(..) => Err(type_fail!(
+              //     hlir,
+              //     expr.id,
+              //     "Error unknown expression type: {:?}",
+              //     unk
+              // )),
         }
     }
 

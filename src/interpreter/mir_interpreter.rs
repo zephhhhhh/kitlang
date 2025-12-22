@@ -65,6 +65,7 @@ pub enum Value {
     Boolean(bool),
     Ref(AssignTarget),
     ADT(ADTValueKind),
+    Tuple(Vec<Value>),
 }
 
 impl Value {
@@ -81,12 +82,6 @@ impl Value {
 
     #[inline]
     #[must_use]
-    pub const fn is_unit(&self) -> bool {
-        matches!(self, Self::Unit)
-    }
-
-    #[inline]
-    #[must_use]
     pub fn repr_string(&self) -> String {
         match self {
             Self::Unit => "()".to_string(),
@@ -97,6 +92,10 @@ impl Value {
             Self::Boolean(b) => b.to_string(),
             Self::Ref(at) => format!("{at:?}"),
             Self::ADT(kind) => kind.to_string(),
+            Self::Tuple(vals) => {
+                let elements: Vec<String> = vals.iter().map(Value::repr_string).collect();
+                format!("({})", elements.join(", "))
+            }
         }
     }
 
@@ -193,6 +192,7 @@ impl Value {
             },
             Self::Ref(_) => todo!(),
             Self::ADT(_) => todo!(),
+            Self::Tuple(_) => todo!(),
         }
     }
 
@@ -200,6 +200,7 @@ impl Value {
     /// # Panics
     /// Panics if the values are either `Ref` or `ADT` variants as they are not yet implemented.
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn perform_binary_op(&self, rhs: &Self, op: BinaryOpKind) -> Option<Self> {
         const fn perform_int_op(lhs: i64, rhs: i64, op: BinaryOpKind) -> Option<Value> {
             match op {
@@ -306,6 +307,7 @@ impl Value {
             Self::Boolean(b) => perform_bool_op(*b, rhs.bool()?, op),
             Self::Ref(_) => panic!("Cannot perform binary op on reference values!"),
             Self::ADT(_) => panic!("Cannot perform binary op on ADT values!"),
+            Self::Tuple(_) => panic!("Cannot perform binary op on Tuple values!"),
         }
     }
 
@@ -321,17 +323,12 @@ impl Value {
 
     #[inline]
     #[must_use]
-    pub const fn is_reference(&self) -> bool {
-        matches!(self, Self::Ref(_))
-    }
-
-    #[inline]
-    #[must_use]
     pub fn field(&self, index: usize) -> Option<&Self> {
         match self {
             Self::ADT(adtvalue_kind) => match adtvalue_kind {
                 ADTValueKind::Struct(values) => values.get(index),
             },
+            Self::Tuple(vals) => vals.get(index),
             _ => None,
         }
     }
@@ -343,8 +340,35 @@ impl Value {
             Self::ADT(adtvalue_kind) => match adtvalue_kind {
                 ADTValueKind::Struct(values) => values.get_mut(index),
             },
+            Self::Tuple(vals) => vals.get_mut(index),
             _ => None,
         }
+    }
+}
+
+impl Value {
+    #[inline]
+    #[must_use]
+    pub const fn is_unit(&self) -> bool {
+        matches!(self, Self::Unit)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn is_reference(&self) -> bool {
+        matches!(self, Self::Ref(_))
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn is_adt(&self) -> bool {
+        matches!(self, Self::ADT(_))
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn is_tuple(&self) -> bool {
+        matches!(self, Self::Tuple(_))
     }
 }
 
@@ -431,8 +455,7 @@ impl ExecutionFrame {
     #[inline]
     #[must_use]
     pub fn field_access(&self, id: LocalId, field_index: usize) -> Option<&Value> {
-        self.value(self.perform_deref(AssignTarget::Local(id)))?
-            .field(field_index)
+        self.value(self.perform_deref(AssignTarget::Local(id)))?.field(field_index)
     }
 
     #[inline]
@@ -804,6 +827,13 @@ impl InterpreterState {
             RValue::Cast(operand, cast_kind) => {
                 let value = self.eval_operand(operand);
                 self.perform_cast(&value, *cast_kind)
+            }
+            RValue::Tuple(vals) => {
+                let tuple_values = vals
+                    .iter()
+                    .map(|o| self.eval_operand(o))
+                    .collect::<Vec<_>>();
+                Some(Value::Tuple(tuple_values))
             }
         }
     }

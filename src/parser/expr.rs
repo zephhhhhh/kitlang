@@ -196,8 +196,23 @@ impl Parser<'_, '_> {
     fn parse_parens_expr(&mut self) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::OpenParen)?;
         let expr = self.parse_expression()?;
-        self.expect_kind(Punctuation::CloseParen)?;
-        Ok(expr)
+
+        // Here, if we encounter a comma, we parse a tuple expression.
+        if self.check_kind(Punctuation::Comma) {
+            let mut elements = vec![expr];
+            while self.check_kind_advance(Punctuation::Comma) {
+                let next_element = self.parse_expression()?;
+                elements.push(next_element);
+            }
+            self.expect_kind(Punctuation::CloseParen)?;
+            Ok(Expression::new_boxed(
+                ExpressionKind::Tuple(elements),
+                self.finish_span(self.begin_span()),
+            ))
+        } else {
+            self.expect_kind(Punctuation::CloseParen)?;
+            Ok(expr)
+        }
     }
 
     fn parse_range_expr_continued(
@@ -475,7 +490,6 @@ impl Parser<'_, '_> {
     ) -> PResult<Box<Expression>> {
         self.expect_kind(Keyword::As)?;
         let target_type = self.parse_ty()?;
-
         Ok(Expression::new_boxed(
             ExpressionKind::Cast(lhs, target_type),
             self.finish_span(span_start),
@@ -622,7 +636,24 @@ impl Parser<'_, '_> {
         span_start: u32,
     ) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::Dot)?;
-        let member_name = self.expect_ident()?;
+
+        let member_token = self.peek()?.clone();
+        let member_name = match member_token.kind {
+            TokenKind::Ident(ident) => {
+                self.cursor.advance();
+                ident.clone()
+            },
+            TokenKind::Literal(LiteralKind::Integer(i)) => {
+                self.cursor.advance();
+                i.to_string()
+            }
+            _ => {
+                return Err(ParseError::new(
+                    ParseErrorKind::ExpectedIdentifier(member_token.kind.clone()),
+                    member_token,
+                ));
+            }
+        };
 
         Ok(Expression::new_boxed(
             ExpressionKind::FieldAccess(lhs, member_name.into()),

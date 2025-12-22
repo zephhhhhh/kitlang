@@ -896,6 +896,47 @@ impl HIRToMIRFuncLowerer<'_> {
         self.state.last_block_target = Some(call_result_slot.into());
     }
 
+    fn lower_tuple_index(
+        &mut self,
+        hlir: &HLIR,
+        expr_id: HirId,
+        target_local: AssignTarget,
+        tuple_tys: &[KitTy],
+        index_ident: &str,
+    ) {
+        let index: usize = if let Ok(i) = index_ident.parse() {
+            i
+        } else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Failed to parse tuple index `{}`.",
+                index_ident
+            );
+            return;
+        };
+
+        if index >= tuple_tys.len() {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Tuple index `{}` out of bounds (max `{}`).",
+                index,
+                tuple_tys.len().saturating_sub(1)
+            );
+            return;
+        }
+
+        let target_local_id = target_local.local_expect();
+        let local = self.new_temp_local_with_mut(self.get_mutability_of_local(target_local_id));
+        self.builder_mut_expect().push_local_assign(
+            local,
+            RValue::refer(AssignTarget::Field(target_local_id, index)),
+        );
+    }
+
     fn lower_field_access(
         &mut self,
         hlir: &HLIR,
@@ -908,11 +949,15 @@ impl HIRToMIRFuncLowerer<'_> {
             return;
         };
 
-        let Some(Type::Resolved(KitTy::Abstract(type_id))) =
-            self.program_meta_data.type_map.get(&target_id)
-        else {
-            push_lower_err!(self, hlir, target_id, "Target is not abstract.");
-            return;
+        let type_id = match self.program_meta_data.type_map.get(&target_id) {
+            Some(Type::Resolved(KitTy::Abstract(type_id))) => type_id,
+            Some(Type::Resolved(KitTy::Tuple(tys))) => {
+                return self.lower_tuple_index(hlir, expr_id, target_local, tys, field_name);
+            }
+            _ => {
+                push_lower_err!(self, hlir, target_id, "Target is not abstract.");
+                return;
+            }
         };
 
         let to_access = self
@@ -1112,7 +1157,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
             ExprKind::MethodCall(hir_id, ident, args) => {
                 self.lower_method_call(hlir, expr.id, *hir_id, ident.str(), args);
             }
-            // ExprKind::Index(hir_id, hir_id1) => {},
+            // ExprKind::Index(hir_id, hir_id1) => {}
             ExprKind::FieldAccess(hir_id, ident) => {
                 self.lower_field_access(hlir, expr.id, *hir_id, ident.str());
             }
@@ -1211,13 +1256,32 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     push_lower_err!(self, hlir, *target, "Failed to resolve target cast type");
                     return;
                 };
-                let Some(cast_kind) = CastKind::from_type(*resolved_type) else {
+                let Some(cast_kind) = CastKind::from_type(resolved_type) else {
                     push_lower_err!(self, hlir, *target, "Failed to get valid target cast type");
                     return;
                 };
                 let local = self.new_temp_local();
                 self.builder_mut_expect()
                     .push_local_assign(local, RValue::Cast(Operand::Copy(lhs_local), cast_kind));
+            }
+            ExprKind::Tuple(t) => {
+                let mut element_values = Vec::with_capacity(t.len());
+                for element_expr_id in t {
+                    if let Some(element_local) = self.visit_expr_assigned(*element_expr_id, hlir) {
+                        element_values.push(Operand::Copy(element_local));
+                    } else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *element_expr_id,
+                            "Failed to eval tuple element expression."
+                        );
+                        return;
+                    }
+                }
+                let tuple_local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(tuple_local, RValue::Tuple(element_values));
             }
             _ => {}
         }

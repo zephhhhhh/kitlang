@@ -700,6 +700,13 @@ impl HLIRLowerer<'_> {
                 let end_id = self.lower_expression(end_expr, owner_node)?;
                 Ok(ExprKind::Range(start_id, end_id, *inclusive))
             }
+            ast::ExpressionKind::Tuple(expressions) => {
+                let mut element_ids = Vec::new();
+                for element_expr in expressions {
+                    element_ids.push(self.lower_expression(element_expr, owner_node)?);
+                }
+                Ok(ExprKind::Tuple(element_ids))
+            }
         }?;
 
         let hir_expr = Expr {

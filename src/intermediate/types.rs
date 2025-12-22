@@ -203,7 +203,7 @@ impl KitFloat {
 ///
 /// Primitive types are represented directly, while user-defined types are represented
 /// by their `TypeID`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum KitTy {
     /// Unit type
     Unit,
@@ -221,7 +221,8 @@ pub enum KitTy {
     String,
     /// User-defined / abstract types, denoted by their `TypeID`.
     Abstract(TypeID),
-    // TODO: Array, Tuple..
+    /// Tuple type..
+    Tuple(Vec<KitTy>), // TODO: Array, Tuple..
 }
 
 impl KitTy {
@@ -315,7 +316,7 @@ impl KitTy {
     /// Returns the bit width of type.
     #[inline]
     #[must_use]
-    pub const fn bit_width(&self) -> u64 {
+    pub fn bit_width(&self) -> u64 {
         match self {
             Self::Int(kit_int) => kit_int.bit_width(),
             Self::UInt(kit_uint) => kit_uint.bit_width(),
@@ -325,24 +326,25 @@ impl KitTy {
             Self::Char => 32,
             Self::String => 192,
             Self::Abstract(_) => 64,
+            Self::Tuple(i) => i.iter().map(KitTy::bit_width).sum(),
         }
     }
 
     /// Returns the byte width of the type.
     #[inline]
     #[must_use]
-    pub const fn byte_count(&self) -> u64 {
+    pub fn byte_count(&self) -> u64 {
         self.bit_width() / 8
     }
 
     /// Returns the largest width between types.
     #[inline]
     #[must_use]
-    pub const fn largest_width(&self, other: &Self) -> Self {
+    pub fn largest_width(&self, other: &Self) -> Self {
         if self.bit_width() > other.bit_width() {
-            *self
+            self.clone()
         } else {
-            *other
+            other.clone()
         }
     }
 }
@@ -371,6 +373,10 @@ impl KitTy {
             Self::Unit | Self::Char | Self::String => None,
             Self::Abstract(_) => {
                 warn!("Tried to do abstract result type for unary.");
+                None
+            }
+            Self::Tuple(..) => {
+                warn!("Tried to do tuple result type for unary.");
                 None
             }
         }
@@ -537,7 +543,11 @@ impl KitTy {
             Self::Char => char_result_type(other, op_kind),
             Self::String => string_result_type(other, op_kind),
             Self::Abstract(_) => {
-                warn!("Tried to do abstract result type.");
+                warn!("Tried to do abstract binary result type.");
+                None
+            }
+            Self::Tuple(..) => {
+                warn!("Tried to do tuple binary result type.");
                 None
             }
         }
@@ -549,7 +559,7 @@ impl KitTy {
     #[must_use]
     pub fn cast_result_type(&self, target: &Self) -> Option<Self> {
         if self == target {
-            return Some(*target);
+            return Some(target.clone());
         }
         match (self, target) {
             // Allow casting between same kinds..
@@ -558,7 +568,9 @@ impl KitTy {
                 Self::Int(_) | Self::UInt(_) | Self::Float(_) | Self::Boolean,
                 Self::Int(_) | Self::UInt(_),
             )
-            | (Self::Float(_) | Self::Int(_) | Self::UInt(_), Self::Float(_)) => Some(*target),
+            | (Self::Float(_) | Self::Int(_) | Self::UInt(_), Self::Float(_)) => {
+                Some(target.clone())
+            }
             // Disallow other casts for now..
             _ => None,
         }
@@ -644,7 +656,7 @@ impl KitTy {
             Self::Boolean => Some("bool".into()),
             Self::Char => Some("char".into()),
             Self::String => Some("string".into()),
-            Self::Abstract(_) => None,
+            Self::Abstract(_) | Self::Tuple(..) => None,
         }
     }
 }

@@ -712,6 +712,16 @@ impl Ident {
     pub fn str(&self) -> &str {
         &self.0
     }
+
+    /// Returns true if the identifier starts with a number.
+    #[inline]
+    #[must_use]
+    pub fn starts_with_number(&self) -> bool {
+        self.0
+            .chars()
+            .next()
+            .is_some_and(|first_char| first_char.is_ascii_digit())
+    }
 }
 
 impl<T: AsRef<str>> From<T> for Ident {
@@ -1153,6 +1163,10 @@ pub enum ExpressionKind {
     Cast(Box<Expression>, Ty),
     /// A range expression.
     Range(Box<Expression>, Box<Expression>, bool),
+    /// A tuple expression with multiple elements.
+    /// # Kit Example
+    /// `(1, 2, 3)`, `(x, y, name)`.
+    Tuple(Vec<Box<Expression>>),
 }
 
 impl ExpressionKind {
@@ -1239,6 +1253,7 @@ impl Debug for ExpressionKind {
                 .field(arg1)
                 .field(arg2)
                 .finish(),
+            Self::Tuple(arg0) => f.debug_tuple("Tuple").field(arg0).finish(),
         }
     }
 }

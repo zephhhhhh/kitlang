@@ -108,7 +108,7 @@ impl TypeResolver<'_> {
             Ty::This(span) => {
                 if let Some(impl_ty) = &self.current_impl {
                     match impl_ty {
-                        Type::Resolved(t) => Ok(*t),
+                        Type::Resolved(t) => Ok(t.clone()),
                         Type::Unresolved(_) => Err(resolve_err!(
                             on_span,
                             *span,
@@ -350,7 +350,7 @@ impl HLIRVisitorMut<'_> for TypeResolver<'_> {
                 };
 
                 if let Some(type_id) = resolved_type {
-                    field.ty = Type::Resolved(type_id);
+                    field.ty = Type::Resolved(type_id.clone());
 
                     let struct_info = self
                         .meta

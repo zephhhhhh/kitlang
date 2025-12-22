@@ -144,11 +144,11 @@ pub enum CastKind {
 impl CastKind {
     #[inline]
     #[must_use]
-    pub const fn from_type(ty: KitTy) -> Option<Self> {
+    pub const fn from_type(ty: &KitTy) -> Option<Self> {
         match ty {
-            KitTy::Int(int_kind) => Some(Self::Int(int_kind)),
-            KitTy::UInt(uint_kind) => Some(Self::UInt(uint_kind)),
-            KitTy::Float(float_kind) => Some(Self::Float(float_kind)),
+            KitTy::Int(int_kind) => Some(Self::Int(*int_kind)),
+            KitTy::UInt(uint_kind) => Some(Self::UInt(*uint_kind)),
+            KitTy::Float(float_kind) => Some(Self::Float(*float_kind)),
             _ => None,
         }
     }
@@ -167,6 +167,7 @@ pub enum RValue {
     UnaryOp(UnaryOpKind, Operand),
     Increment(Operand),
     ADT(ADTKind, Vec<Operand>),
+    Tuple(Vec<Operand>),
     Cast(Operand, CastKind),
 }
 
@@ -193,6 +194,17 @@ impl Debug for RValue {
             }
             Self::Cast(operand, target_type) => {
                 write!(f, "Cast({operand:?} as {target_type:?})")
+            }
+            Self::Tuple(operands) => {
+                write!(f, "Tuple(")?;
+                for (i, operand) in operands.iter().enumerate() {
+                    if i == 0 {
+                        write!(f, "{operand:?}")?;
+                    } else {
+                        write!(f, ", {operand:?}")?;
+                    }
+                }
+                write!(f, ")")
             }
         }
     }

@@ -186,6 +186,11 @@ pub trait HLIRVisitor {
                 self.visit_expr_by_id(*min_id, hlir);
                 self.visit_expr_by_id(*max_id, hlir);
             }
+            ExprKind::Tuple(element_ids) => {
+                for element_id in element_ids {
+                    self.visit_expr_by_id(*element_id, hlir);
+                }
+            }
             ExprKind::For(enclosing_id, _, iterable_id, _) => {
                 self.visit_block_by_id(*enclosing_id, hlir);
                 self.visit_expr_by_id(*iterable_id, hlir);
@@ -607,6 +612,11 @@ pub trait HLIRVisitorMut<'a> {
             ExprKind::For(enclosing_id, _, iterable_id, _) => {
                 self.visit_block_by_id_mut(*enclosing_id, hlir);
                 self.visit_expr_by_id_mut(*iterable_id, hlir);
+            }
+            ExprKind::Tuple(element_ids) => {
+                for element_id in element_ids {
+                    self.visit_expr_by_id_mut(*element_id, hlir);
+                }
             }
             _ => {}
         }

@@ -161,7 +161,7 @@ impl From<KitTy> for Type {
 
 impl From<&KitTy> for Type {
     fn from(value: &KitTy) -> Self {
-        Self::Resolved(*value)
+        Self::Resolved(value.clone())
     }
 }
 
@@ -950,6 +950,8 @@ pub enum ExprKind {
     Cast(HirId, Type),
     /// Range expression, start, end, (`inclusive`: `bool`)
     Range(HirId, HirId, bool),
+    /// Tuple expression with multiple elements
+    Tuple(Vec<HirId>),
 }
 
 /// An expression in HIR, containing its kind and source span.
