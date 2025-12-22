@@ -9,13 +9,13 @@ native global fn input(s: string) -> string;
 native global fn input_placeholder(s: string, default: string) -> string;
 
 native global fn i64_to_string(i: i64) -> string;
-native global fn string_to_i64(s: string) -> i64;
+native global fn string_to_i64(s: string) -> (i64, bool);
 native global fn u64_to_string(u: u64) -> string;
-native global fn string_to_u64(s: string) -> u64;
+native global fn string_to_u64(s: string) -> (u64, bool);
 native global fn f64_to_string(f: f64) -> string;
-native global fn string_to_f64(s: string) -> f64;
+native global fn string_to_f64(s: string) -> (f64, bool);
 native global fn bool_to_string(f: bool) -> string;
-native global fn string_to_bool(s: string) -> bool;
+native global fn string_to_bool(s: string) -> (bool, bool);
 
 native global fn i64_sqrt(i: i64) -> i64;
 native global fn u64_sqrt(u: u64) -> u64;

@@ -362,7 +362,36 @@ impl TypeChecker<'_> {
             .ok_or_else(|| type_fail!(no_span, "Failed to get expr node."))?;
 
         if let HirNode::Expr(expr) = node {
-            let expr_ty = self.eval_expr_type(expr, hlir)?;
+            let expr_ty = self.eval_expr_type(expr, hlir, None)?;
+            self.meta.type_map.insert(id, expr_ty.clone());
+            Ok(expr_ty)
+        } else {
+            Err(type_fail!(
+                on_span,
+                node.span(),
+                "Node is not an expression, but rather `{:?}`",
+                node
+            ))
+        }
+    }
+
+    /// Evaluates the type of an expression by its [`HirId`], updating the type map accordingly.
+    /// Also returns whether the expression is a literal.
+    /// # Returns
+    /// * `Ok((Type, is_literal))` if the expression type is successfully evaluated.
+    /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
+    fn eval_expr_type_by_id_expected(
+        &mut self,
+        id: HirId,
+        hlir: &mut HLIRDisjointMut<'_>,
+        expected: &Type,
+    ) -> TypeResult<Type> {
+        let node = hlir
+            .get_hir_node_mut(id)
+            .ok_or_else(|| type_fail!(no_span, "Failed to get expr node."))?;
+
+        if let HirNode::Expr(expr) = node {
+            let expr_ty = self.eval_expr_type(expr, hlir, Some(expected))?;
             self.meta.type_map.insert(id, expr_ty.clone());
             Ok(expr_ty)
         } else {
@@ -381,15 +410,30 @@ impl TypeChecker<'_> {
     /// * `Ok(Type)` if the expression type is successfully evaluated.
     /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
     #[allow(clippy::too_many_lines)]
-    fn eval_expr_type(&mut self, expr: &Expr, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
+    fn eval_expr_type(
+        &mut self,
+        expr: &Expr,
+        hlir: &mut HLIRDisjointMut<'_>,
+        expected: Option<&Type>,
+    ) -> TypeResult<Type> {
         match &expr.kind {
             ExprKind::Block(block_id) => self.eval_block_type_by_id(*block_id, hlir),
-            ExprKind::Literal(literal) => match literal {
-                Literal::String(_) => Ok(KitTy::String.into()),
-                Literal::Float(_) => Ok(KitTy::Float(KitFloat::F32).into()),
-                Literal::Integer(_) => Ok(KitTy::Int(KitInt::I32).into()),
-                Literal::Boolean(_) => Ok(KitTy::Boolean.into()),
-            },
+            ExprKind::Literal(literal) => {
+                let expected_kit = expected.and_then(|e| e.resolved());
+                match literal {
+                    Literal::String(_) => Ok(KitTy::String.into()),
+                    Literal::Float(_) => match expected_kit {
+                        Some(KitTy::Float(f)) => Ok(KitTy::Float(*f).into()),
+                        _ => Ok(KitTy::Float(KitFloat::F32).into()),
+                    },
+                    Literal::Integer(_) => match expected_kit {
+                        Some(KitTy::Int(i)) => Ok(KitTy::Int(*i).into()),
+                        Some(KitTy::UInt(u)) => Ok(KitTy::UInt(*u).into()),
+                        _ => Ok(KitTy::Int(KitInt::I32).into()),
+                    },
+                    Literal::Boolean(_) => Ok(KitTy::Boolean.into()),
+                }
+            }
             ExprKind::BinaryOp(binary_op_kind, hir_id, hir_id1) => {
                 let lhs = self.eval_expr_type_by_id(*hir_id, hlir)?;
                 let rhs = self.eval_expr_type_by_id(*hir_id1, hlir)?;
@@ -493,32 +537,39 @@ impl TypeChecker<'_> {
                     ))
                 }
             }
-            ExprKind::Call(hir_id, hir_ids) => {
+            ExprKind::Call(hir_id, arg_ids) => {
                 let (func_return_type, func_args) =
                     Self::get_func_sig_by_call_expr_id(*hir_id, hlir)?;
-                let user_params = hir_ids
-                    .iter()
-                    .map(|id| Ok((self.eval_expr_type_by_id(*id, hlir)?, *id)))
-                    .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
 
-                if user_params.len() != func_args.len() {
+                if arg_ids.len() != func_args.len() {
                     return Err(type_fail!(
                         hlir,
                         expr.id,
                         "Function argument count mismatch. Expected: `{}`, supplied: `{}`",
                         func_args.len(),
-                        user_params.len()
+                        arg_ids.len()
                     ));
                 }
 
-                for (expected, (provided, prov_id)) in func_args.iter().zip(user_params.iter()) {
-                    if expected != provided {
+                let user_params = arg_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| {
+                        Ok((
+                            self.eval_expr_type_by_id_expected(*id, hlir, &func_args[i])?,
+                            *id,
+                        ))
+                    })
+                    .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
+
+                for (expected, (prov_ty, prov_id)) in func_args.iter().zip(user_params.iter()) {
+                    if expected != prov_ty {
                         return Err(type_fail!(
                             hlir,
                             *prov_id,
                             "Function parameter type mismatch. Expected `{}`, found: `{}`",
                             self.type_name(expected.clone()),
-                            self.type_name(provided.clone())
+                            self.type_name(prov_ty.clone())
                         ));
                     }
                 }
@@ -527,10 +578,6 @@ impl TypeChecker<'_> {
             }
             ExprKind::MethodCall(hir_id, ident, arg_ids) => {
                 let expr_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
-                let user_params = arg_ids
-                    .iter()
-                    .map(|id| Ok((self.eval_expr_type_by_id(*id, hlir)?, *id)))
-                    .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
 
                 match &expr_ty {
                     Type::Resolved(t) => {
@@ -546,30 +593,50 @@ impl TypeChecker<'_> {
                             ));
                         };
 
-                        let node = hlir.nonmut_ref().owning_node(method_def).expect("Exists");
-                        let Some(func) = node.hir_function_ref() else {
-                            return Err(type_fail!(
-                                hlir,
-                                *hir_id,
-                                "Can't find func def '{:?}'",
-                                ident
-                            ));
+                        let (func_params, func_output) = {
+                            let Some(func) = hlir
+                                .nonmut_ref()
+                                .owning_node(method_def)
+                                .expect("Exists")
+                                .hir_function_ref()
+                            else {
+                                return Err(type_fail!(
+                                    hlir,
+                                    *hir_id,
+                                    "Can't find func def '{:?}'",
+                                    ident
+                                ));
+                            };
+                            assert!(func.is_method, "Func is not a method?");
+                            (func.sig.parameters.clone(), func.sig.output.clone())
                         };
 
-                        assert!(func.is_method, "Func is not a method?");
-
-                        if func.sig.parameters.len() != user_params.len().wrapping_add(1) {
+                        if func_params.len() != arg_ids.len().wrapping_add(1) {
                             return Err(type_fail!(
                                 on_span,
                                 ident.span,
                                 "Method called with incorrect number of arguments! Expected: `{}`, supplied: `{}`",
-                                func.sig.parameters.len().saturating_sub(1),
-                                user_params.len(),
+                                func_params.len().saturating_sub(1),
+                                arg_ids.len(),
                             ));
                         }
 
-                        let arg_compare_iter =
-                            func.sig.parameters.iter().skip(1).zip(user_params.iter());
+                        let user_params = arg_ids
+                            .iter()
+                            .enumerate()
+                            .map(|(i, id)| {
+                                Ok((
+                                    self.eval_expr_type_by_id_expected(
+                                        *id,
+                                        hlir,
+                                        &func_params[i.wrapping_add(1)],
+                                    )?,
+                                    *id,
+                                ))
+                            })
+                            .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
+
+                        let arg_compare_iter = func_params.iter().skip(1).zip(user_params.iter());
                         for (expected, (provided, prov_id)) in arg_compare_iter {
                             if expected != provided {
                                 return Err(type_fail!(
@@ -582,7 +649,7 @@ impl TypeChecker<'_> {
                             }
                         }
 
-                        Ok(func.sig.output.clone())
+                        Ok(func_output.clone())
                     }
                     Type::Unresolved(t) => Err(type_fail!(
                         hlir,

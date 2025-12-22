@@ -136,7 +136,7 @@ impl Parser<'_, '_> {
                 self.invalid_literal()
             }
             TokenKind::StringLiteral(..) | TokenKind::Literal(..) => self.parse_literal(),
-            TokenKind::Keyword(kw) => match kw {
+            TokenKind::Keyword(kw) if *kw != Keyword::ThisTy => match kw {
                 Keyword::True | Keyword::False => self.parse_literal(),
                 Keyword::If => self.parse_if(),
                 Keyword::While => self.parse_while(),
@@ -153,7 +153,9 @@ impl Parser<'_, '_> {
                     ));
                 }
             },
-            TokenKind::Ident(_) | TokenKind::Punctuation(Punctuation::Colon) => {
+            TokenKind::Ident(_)
+            | TokenKind::Punctuation(Punctuation::Colon)
+            | TokenKind::Keyword(Keyword::ThisTy) => {
                 let span_start = self.begin_span();
                 let path = self.parse_spanned_path()?;
                 // FIXME: REALLY HACKY

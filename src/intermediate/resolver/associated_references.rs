@@ -725,7 +725,15 @@ impl HLIRVisitorMut<'_> for AssociatedReferenceMapper<'_> {
     fn visit_path_mut(&mut self, id: HirId, path: &mut RefPath, _hlir: &mut HLIRDisjointMut<'_>) {
         if !path.is_resolved() {
             let ident_path = path.ident_path();
-            match self.search_for_definition(ident_path, self.current_path()) {
+            let search_result = if ident_path.starts_with_self() {
+                let mut new_self_path = self.current_path().clone();
+                new_self_path.pop();
+                let new_ident_path = ident_path.replace_first_with(new_self_path.segments());
+                self.search_for_definition(&new_ident_path, self.current_path())
+            } else {
+                self.search_for_definition(ident_path, self.current_path())
+            };
+            match search_result {
                 Ok(resolved) => {
                     path.resolve_to(resolved);
                 }

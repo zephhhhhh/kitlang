@@ -1147,32 +1147,34 @@ mod intrinsics {
         x.to_string()
     }
     #[kitlang_native_fn]
-    fn string_to_i64(s: String) -> i64 {
-        s.parse::<i64>().unwrap_or(0)
+    fn string_to_i64(s: String) -> (i64, bool) {
+        s.parse::<i64>().map(|v| (v, true)).unwrap_or((0, false))
     }
     #[kitlang_native_fn]
     fn f64_to_string(x: f64) -> String {
         x.to_string()
     }
     #[kitlang_native_fn]
-    fn string_to_f64(s: String) -> f64 {
-        s.parse::<f64>().unwrap_or(0.0)
+    fn string_to_f64(s: String) -> (f64, bool) {
+        s.parse::<f64>().map(|v| (v, true)).unwrap_or((0.0, false))
     }
     #[kitlang_native_fn]
     fn u64_to_string(x: u64) -> String {
         x.to_string()
     }
     #[kitlang_native_fn]
-    fn string_to_u64(s: String) -> u64 {
-        s.parse::<u64>().unwrap_or(0)
+    fn string_to_u64(s: String) -> (u64, bool) {
+        s.parse::<u64>().map(|v| (v, true)).unwrap_or((0, false))
     }
     #[kitlang_native_fn]
     fn bool_to_string(x: bool) -> String {
         x.to_string()
     }
     #[kitlang_native_fn]
-    fn string_to_bool(s: String) -> bool {
-        s.parse::<bool>().unwrap_or(false)
+    fn string_to_bool(s: String) -> (bool, bool) {
+        s.parse::<bool>()
+            .map(|v| (v, true))
+            .unwrap_or((false, false))
     }
     #[kitlang_native_fn]
     fn is_empty(s: String) -> bool {

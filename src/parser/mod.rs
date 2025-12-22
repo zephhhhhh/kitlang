@@ -320,6 +320,24 @@ impl Parser<'_, '_> {
         }
     }
 
+    pub fn parse_path_segment(&mut self) -> PResult<String> {
+        let token = self.peek()?.clone();
+        match token.kind {
+            TokenKind::Ident(ref ident_value) => {
+                self.cursor.advance();
+                Ok(ident_value.clone())
+            }
+            TokenKind::Keyword(Keyword::ThisTy) => {
+                self.cursor.advance();
+                Ok("Self".to_string())
+            }
+            k => Err(ParseError::new(
+                ParseErrorKind::ExpectedIdentifier(k),
+                self.cursor.current_span(),
+            )),
+        }
+    }
+
     /// Parse a 'path' (I.e. `std::math::powf`) from the current cursor position,
     /// into a path segment representation.
     /// # Notes
@@ -330,7 +348,7 @@ impl Parser<'_, '_> {
         let mut path_segments = IdentPathSegments::new();
         let root_relative = self.parse_double_colon(path_start)?;
 
-        path_segments.push(self.expect_ident()?);
+        path_segments.push(self.parse_path_segment()?);
 
         while !self.cursor.is_end() {
             if !self.parse_double_colon(path_start)? {
@@ -342,7 +360,7 @@ impl Parser<'_, '_> {
                 break;
             }
 
-            path_segments.push(self.expect_ident()?);
+            path_segments.push(self.parse_path_segment()?);
         }
 
         Ok(IdentPath::from_segments(path_segments, root_relative))

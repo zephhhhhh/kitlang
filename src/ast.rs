@@ -363,6 +363,7 @@ impl IdentPath {
             .all(|(a, b)| a == b)
     }
 
+    /// Return the number of matching segments between `self` and `other` from the start of the path.
     #[inline]
     #[must_use]
     pub fn matching_segment_count(&self, other: &Self) -> usize {
@@ -371,6 +372,29 @@ impl IdentPath {
             .zip(other.segments().iter())
             .take_while(|(a, b)| a == b)
             .count()
+    }
+
+    /// Returns `true` if the first segment is `Self`.
+    #[inline]
+    #[must_use]
+    pub fn starts_with_self(&self) -> bool {
+        self.segments.first().is_some_and(|s| *s == "Self")
+    }
+
+    /// Replaces the first segment with the provided segments.
+    #[inline]
+    #[must_use]
+    pub fn replace_first_with(&self, new_first: &[IdentPathSegment]) -> Self {
+        let mut new_segments = Vec::new();
+        new_segments.extend_from_slice(new_first);
+        if self.segments.len() > 1 {
+            new_segments.extend_from_slice(&self.segments[1..]);
+        }
+
+        Self {
+            segments: new_segments,
+            root_relative: self.root_relative,
+        }
     }
 }
 
@@ -1367,6 +1391,36 @@ impl Debug for Literal {
             Self::Integer(arg0) => write!(f, "Integer({arg0})"),
             Self::Boolean(arg0) => write!(f, "Boolean({arg0})"),
         }
+    }
+}
+
+impl Literal {
+    /// Returns `true` if the literal is an integer.
+    #[inline]
+    #[must_use]
+    pub fn is_int(&self) -> bool {
+        matches!(self, Self::Integer(_))
+    }
+
+    /// Returns `true` if the literal is a float.
+    #[inline]
+    #[must_use]
+    pub fn is_float(&self) -> bool {
+        matches!(self, Self::Float(_))
+    }
+
+    /// Returns `true` if the literal is a boolean.
+    #[inline]
+    #[must_use]
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Self::Boolean(_))
+    }
+
+    /// Returns `true` if the literal is a string.
+    #[inline]
+    #[must_use]
+    pub fn is_string(&self) -> bool {
+        matches!(self, Self::String(_))
     }
 }
 

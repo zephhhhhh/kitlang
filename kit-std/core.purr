@@ -1,89 +1,180 @@
 // @lang
 impl i8 { 
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
-    pub fn from_string(s: string) -> i8 { string_to_i64(s) as i8 }
-    pub fn sqrt(self) -> i8 { i64_sqrt(self as i64) as i8 }
-    pub fn abs(self) -> i8 { i64_abs(self as i64) as i8 }
+    pub fn from_string(s: string) -> (Self, bool) { 
+        let result = string_to_i64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = i8::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
+    pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
 }
 // @lang
 impl i16 { 
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
-    pub fn from_string(s: string) -> i16 { string_to_i64(s) as i16 }
-    pub fn sqrt(self) -> i16 { i64_sqrt(self as i64) as i16 }
-    pub fn abs(self) -> i16 { i64_abs(self as i64) as i16 }
+    pub fn from_string(s: string) -> (Self, bool) { 
+        let result = string_to_i64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = i16::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
+    pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
 }
 // @lang
 impl i32 { 
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
-    pub fn from_string(s: string) -> i32 { string_to_i64(s) as i32 }
-    pub fn sqrt(self) -> i32 { i64_sqrt(self as i64) as i32 }
-    pub fn abs(self) -> i32 { i64_abs(self as i64) as i32 }
+    pub fn from_string(s: string) -> (Self, bool) { 
+        let result = string_to_i64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = i32::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
+    pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
 }
 // @lang
 impl i64 { 
     pub fn to_string(self) -> string { i64_to_string(self) }
-    pub fn from_string(s: string) -> i64 { string_to_i64(s) }
-    pub fn sqrt(self) -> i64 { i64_sqrt(self) }
-    pub fn abs(self) -> i64 { i64_abs(self) }
+    pub fn from_string(s: string) -> (Self, bool) { string_to_i64(s) }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = i64::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { i64_sqrt(self) }
+    pub fn abs(self) -> Self { i64_abs(self) }
 }
 // @lang
 impl i128 { 
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
-    pub fn from_string(s: string) -> i128 { string_to_i64(s) as i128 }
-    pub fn sqrt(self) -> i128 { i64_sqrt(self as i64) as i128 }
-    pub fn abs(self) -> i128 { i64_abs(self as i64) as i128 }
+    pub fn from_string(s: string) -> (Self, bool) {
+        let result = string_to_i64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = i128::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
+    pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
 }
 
 // @lang
 impl u8 { 
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
-    pub fn from_string(s: string) -> u8 { string_to_u64(s) as u8 }
-    pub fn sqrt(self) -> u8 { u64_sqrt(self as u64) as u8 }
+    pub fn from_string(s: string) -> (Self, bool) {
+        let result = string_to_u64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = u8::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
 }
 // @lang
 impl u16 { 
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
-    pub fn from_string(s: string) -> u16 { string_to_u64(s) as u16 }
-    pub fn sqrt(self) -> u16 { u64_sqrt(self as u64) as u16 }
+    pub fn from_string(s: string) -> (Self, bool) {
+        let result = string_to_u64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = u16::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
 }
 // @lang
 impl u32 { 
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
-    pub fn from_string(s: string) -> u32 { string_to_u64(s) as u32 }
-    pub fn sqrt(self) -> u32 { u64_sqrt(self as u64) as u32 }
+    pub fn from_string(s: string) -> (Self, bool) {
+        let result = string_to_u64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = u32::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
 }
 // @lang
 impl u64 { 
     pub fn to_string(self) -> string { u64_to_string(self) }
-    pub fn from_string(s: string) -> u64 { string_to_u64(s) }
-    pub fn sqrt(self) -> u64 { u64_sqrt(self) }
+    pub fn from_string(s: string) -> (Self, bool) { string_to_u64(s) }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = u64::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { u64_sqrt(self) }
 }
 // @lang
 impl u128 { 
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
-    pub fn from_string(s: string) -> u128 { string_to_u64(s) as u128 }
-    pub fn sqrt(self) -> u128 { u64_sqrt(self as u64) as u128 }
+    pub fn from_string(s: string) -> (Self, bool) {
+        let result = string_to_u64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = u128::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
 }
 
 // @lang
 impl f32 {
     pub fn to_string(self) -> string { f64_to_string(self as f64) }
-    pub fn from_string(s: string) -> f32 { string_to_f64(s) as f32 }
-    pub fn sqrt(self) -> f32 { f64_sqrt(self as f64) as f32 }
-    pub fn abs(self) -> f32 { f64_abs(self as f64) as f32 }
+    pub fn from_string(s: string) -> (Self, bool) {
+        let result = string_to_f64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = f32::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { f64_sqrt(self as f64) as Self }
+    pub fn abs(self) -> Self { f64_abs(self as f64) as Self }
 }
 // @lang
 impl f64 {
     pub fn to_string(self) -> string { f64_to_string(self) }
-    pub fn from_string(s: string) -> f64 { string_to_f64(s) }
-    pub fn sqrt(self) -> f64 { f64_sqrt(self) }
-    pub fn abs(self) -> f64 { f64_abs(self) }
+    pub fn from_string(s: string) -> (Self, bool) { string_to_f64(s) }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = f64::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
+
+    pub fn sqrt(self) -> Self { f64_sqrt(self) }
+    pub fn abs(self) -> Self { f64_abs(self) }
 }
 
 // @lang
 impl bool {
     pub fn to_string(self) -> string { bool_to_string(self) }
-    pub fn from_string(s: string) -> bool { string_to_bool(s) }
+    pub fn from_string(s: string) -> (Self, bool) { string_to_bool(s) }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let result = bool::from_string(s);
+        if result.1 { result.0 } else { default }
+    }
 }
 
 // @lang
