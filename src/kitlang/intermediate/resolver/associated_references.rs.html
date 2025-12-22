@@ -725,32 +725,40 @@
 <a href=#725 id=725 data-nosnippet>725</a>    <span class="kw">fn </span>visit_path_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>, id: HirId, path: <span class="kw-2">&amp;mut </span>RefPath, _hlir: <span class="kw-2">&amp;mut </span>HLIRDisjointMut&lt;<span class="lifetime">'_</span>&gt;) {
 <a href=#726 id=726 data-nosnippet>726</a>        <span class="kw">if </span>!path.is_resolved() {
 <a href=#727 id=727 data-nosnippet>727</a>            <span class="kw">let </span>ident_path = path.ident_path();
-<a href=#728 id=728 data-nosnippet>728</a>            <span class="kw">match </span><span class="self">self</span>.search_for_definition(ident_path, <span class="self">self</span>.current_path()) {
-<a href=#729 id=729 data-nosnippet>729</a>                <span class="prelude-val">Ok</span>(resolved) =&gt; {
-<a href=#730 id=730 data-nosnippet>730</a>                    path.resolve_to(resolved);
-<a href=#731 id=731 data-nosnippet>731</a>                }
-<a href=#732 id=732 data-nosnippet>732</a>                <span class="prelude-val">Err</span>(ResolutionFailure::Inaccessible) =&gt; {
-<a href=#733 id=733 data-nosnippet>733</a>                    <span class="self">self</span>.resolution_failures.push((
-<a href=#734 id=734 data-nosnippet>734</a>                        id,
-<a href=#735 id=735 data-nosnippet>735</a>                        path.spanned_ident_path().clone(),
-<a href=#736 id=736 data-nosnippet>736</a>                        ResolutionFailure::Inaccessible,
-<a href=#737 id=737 data-nosnippet>737</a>                    ));
-<a href=#738 id=738 data-nosnippet>738</a>                }
-<a href=#739 id=739 data-nosnippet>739</a>                <span class="kw">_ </span>=&gt; {}
-<a href=#740 id=740 data-nosnippet>740</a>            }
-<a href=#741 id=741 data-nosnippet>741</a>        }
-<a href=#742 id=742 data-nosnippet>742</a>    }
-<a href=#743 id=743 data-nosnippet>743</a>
-<a href=#744 id=744 data-nosnippet>744</a>    <span class="kw">fn </span>visit_impl_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>, impl_info: <span class="kw-2">&amp;mut </span>Impl, hlir: <span class="kw-2">&amp;mut </span>HLIRDisjointMut&lt;<span class="lifetime">'_</span>&gt;) {
-<a href=#745 id=745 data-nosnippet>745</a>        <span class="kw">let </span>impl_path = impl_info.self_ty.rebase_from_path(<span class="self">self</span>.current_path());
-<a href=#746 id=746 data-nosnippet>746</a>        <span class="self">self</span>.with_pushed_path(impl_path, |this| this.super_impl_mut(impl_info, hlir));
-<a href=#747 id=747 data-nosnippet>747</a>    }
-<a href=#748 id=748 data-nosnippet>748</a>}
-<a href=#749 id=749 data-nosnippet>749</a>
-<a href=#750 id=750 data-nosnippet>750</a><span class="kw">pub fn </span>resolve_associated_references(
-<a href=#751 id=751 data-nosnippet>751</a>    hlir: <span class="kw-2">&amp;mut </span>HLIR,
-<a href=#752 id=752 data-nosnippet>752</a>    meta_data: <span class="kw-2">&amp;mut </span>ProgramMetaData,
-<a href=#753 id=753 data-nosnippet>753</a>) -&gt; ResolveResult&lt;()&gt; {
-<a href=#754 id=754 data-nosnippet>754</a>    AssociatedReferenceMapper::new(meta_data).map_references(hlir)
-<a href=#755 id=755 data-nosnippet>755</a>}
+<a href=#728 id=728 data-nosnippet>728</a>            <span class="kw">let </span>search_result = <span class="kw">if </span>ident_path.starts_with_self() {
+<a href=#729 id=729 data-nosnippet>729</a>                <span class="kw">let </span><span class="kw-2">mut </span>new_self_path = <span class="self">self</span>.current_path().clone();
+<a href=#730 id=730 data-nosnippet>730</a>                new_self_path.pop();
+<a href=#731 id=731 data-nosnippet>731</a>                <span class="kw">let </span>new_ident_path = ident_path.replace_first_with(new_self_path.segments());
+<a href=#732 id=732 data-nosnippet>732</a>                <span class="self">self</span>.search_for_definition(<span class="kw-2">&amp;</span>new_ident_path, <span class="self">self</span>.current_path())
+<a href=#733 id=733 data-nosnippet>733</a>            } <span class="kw">else </span>{
+<a href=#734 id=734 data-nosnippet>734</a>                <span class="self">self</span>.search_for_definition(ident_path, <span class="self">self</span>.current_path())
+<a href=#735 id=735 data-nosnippet>735</a>            };
+<a href=#736 id=736 data-nosnippet>736</a>            <span class="kw">match </span>search_result {
+<a href=#737 id=737 data-nosnippet>737</a>                <span class="prelude-val">Ok</span>(resolved) =&gt; {
+<a href=#738 id=738 data-nosnippet>738</a>                    path.resolve_to(resolved);
+<a href=#739 id=739 data-nosnippet>739</a>                }
+<a href=#740 id=740 data-nosnippet>740</a>                <span class="prelude-val">Err</span>(ResolutionFailure::Inaccessible) =&gt; {
+<a href=#741 id=741 data-nosnippet>741</a>                    <span class="self">self</span>.resolution_failures.push((
+<a href=#742 id=742 data-nosnippet>742</a>                        id,
+<a href=#743 id=743 data-nosnippet>743</a>                        path.spanned_ident_path().clone(),
+<a href=#744 id=744 data-nosnippet>744</a>                        ResolutionFailure::Inaccessible,
+<a href=#745 id=745 data-nosnippet>745</a>                    ));
+<a href=#746 id=746 data-nosnippet>746</a>                }
+<a href=#747 id=747 data-nosnippet>747</a>                <span class="kw">_ </span>=&gt; {}
+<a href=#748 id=748 data-nosnippet>748</a>            }
+<a href=#749 id=749 data-nosnippet>749</a>        }
+<a href=#750 id=750 data-nosnippet>750</a>    }
+<a href=#751 id=751 data-nosnippet>751</a>
+<a href=#752 id=752 data-nosnippet>752</a>    <span class="kw">fn </span>visit_impl_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>, impl_info: <span class="kw-2">&amp;mut </span>Impl, hlir: <span class="kw-2">&amp;mut </span>HLIRDisjointMut&lt;<span class="lifetime">'_</span>&gt;) {
+<a href=#753 id=753 data-nosnippet>753</a>        <span class="kw">let </span>impl_path = impl_info.self_ty.rebase_from_path(<span class="self">self</span>.current_path());
+<a href=#754 id=754 data-nosnippet>754</a>        <span class="self">self</span>.with_pushed_path(impl_path, |this| this.super_impl_mut(impl_info, hlir));
+<a href=#755 id=755 data-nosnippet>755</a>    }
+<a href=#756 id=756 data-nosnippet>756</a>}
+<a href=#757 id=757 data-nosnippet>757</a>
+<a href=#758 id=758 data-nosnippet>758</a><span class="kw">pub fn </span>resolve_associated_references(
+<a href=#759 id=759 data-nosnippet>759</a>    hlir: <span class="kw-2">&amp;mut </span>HLIR,
+<a href=#760 id=760 data-nosnippet>760</a>    meta_data: <span class="kw-2">&amp;mut </span>ProgramMetaData,
+<a href=#761 id=761 data-nosnippet>761</a>) -&gt; ResolveResult&lt;()&gt; {
+<a href=#762 id=762 data-nosnippet>762</a>    AssociatedReferenceMapper::new(meta_data).map_references(hlir)
+<a href=#763 id=763 data-nosnippet>763</a>}
 </code></pre></div></section></main></body></html>
