@@ -405,7 +405,7 @@ impl Parser<'_, '_> {
         let ref_type = self.parse_ref_and_refmut()?;
 
         let root_type = match self.peek()?.kind {
-            TokenKind::Punctuation(Punctuation::OpenBracket) => {
+            TokenKind::Punctuation(Punctuation::OpenParen) => {
                 if self.check_kind_at(1, Punctuation::CloseParen) {
                     let unit_start_span = self.begin_span();
                     self.cursor.advance_by(2);

@@ -125,6 +125,20 @@ impl TypeResolver<'_> {
                     ))
                 }
             }
+            Ty::Tuple(tys, _) => {
+                let resolved_tys = tys
+                    .iter()
+                    .map(|t| {
+                        // Try from primitive first, then resolve normally if failed.
+                        if let Some(resolved_ty) = KitTy::try_from_ast_ty(t) {
+                            Ok(resolved_ty)
+                        } else {
+                            self.resolve_ast_type(t)
+                        }
+                    })
+                    .collect::<ResolveResult<Vec<KitTy>>>()?;
+                Ok(KitTy::Tuple(resolved_tys))
+            }
             unk => Err(resolve_err!(
                 no_span,
                 "Cannot resolve type for unsupported AST type variant `{:?}` in `{}`",

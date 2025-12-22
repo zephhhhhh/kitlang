@@ -642,7 +642,7 @@ impl Parser<'_, '_> {
             TokenKind::Ident(ident) => {
                 self.cursor.advance();
                 ident.clone()
-            },
+            }
             TokenKind::Literal(LiteralKind::Integer(i)) => {
                 self.cursor.advance();
                 i.to_string()

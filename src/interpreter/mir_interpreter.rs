@@ -421,6 +421,29 @@ impl From<()> for Value {
     }
 }
 
+// Implement conversions from a tuple to a Value::Tuple.. (upto 8 elements)
+macro_rules! impl_tuple_from {
+    ($($t:ident : $idx:tt),+) => {
+        impl<$($t),+> From<($($t,)+)> for Value
+        where
+            $($t: Into<Value>,)+
+        {
+            fn from(value: ($($t,)+)) -> Self {
+                Self::Tuple(vec![$(value.$idx.into(),)+])
+            }
+        }
+    };
+}
+
+impl_tuple_from!(T1: 0);
+impl_tuple_from!(T1: 0, T2: 1);
+impl_tuple_from!(T1: 0, T2: 1, T3: 2);
+impl_tuple_from!(T1: 0, T2: 1, T3: 2, T4: 3);
+impl_tuple_from!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4);
+impl_tuple_from!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5);
+impl_tuple_from!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6);
+impl_tuple_from!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6, T8: 7);
+
 #[derive(Debug, Clone)]
 pub struct ExecutionFrame {
     pub locals: Vec<Value>,
@@ -455,7 +478,8 @@ impl ExecutionFrame {
     #[inline]
     #[must_use]
     pub fn field_access(&self, id: LocalId, field_index: usize) -> Option<&Value> {
-        self.value(self.perform_deref(AssignTarget::Local(id)))?.field(field_index)
+        self.value(self.perform_deref(AssignTarget::Local(id)))?
+            .field(field_index)
     }
 
     #[inline]

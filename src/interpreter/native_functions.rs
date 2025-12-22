@@ -90,3 +90,30 @@ impl_extract!(f32, Float, |f: &f64| *f as f32, 0.0);
 impl_extract!(f64, Float, |f: &f64| *f, 0.0);
 
 impl_extract!(bool, Boolean, |b: &bool| *b, false);
+
+macro_rules! impl_extract_tuple {
+    ($($t:ident : $idx:tt),+) => {
+        impl<$($t: ExtractValue),+> ExtractValue for ($($t,)+) {
+            fn extract(value: &MIRValue) -> Self {
+                if let MIRValue::Tuple(elements) = value {
+                    ($(
+                        $t::extract(elements.get($idx).unwrap_or(&MIRValue::Unit)),
+                    )+)
+                } else {
+                    ($(
+                        $t::extract(&MIRValue::Unit),
+                    )+)
+                }
+            }
+        }
+    };
+}
+
+impl_extract_tuple!(T1: 0);
+impl_extract_tuple!(T1: 0, T2: 1);
+impl_extract_tuple!(T1: 0, T2: 1, T3: 2);
+impl_extract_tuple!(T1: 0, T2: 1, T3: 2, T4: 3);
+impl_extract_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4);
+impl_extract_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5);
+impl_extract_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6);
+impl_extract_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6, T8: 7);
