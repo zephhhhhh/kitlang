@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"macro":["impl_extract","impl_native_fn_interface"],"trait":["ExtractValue","IntoMIRKitlangFn","IntoMIRReturn"],"type":["KitlangMIRNativeFn"]};
+window.SIDEBAR_ITEMS = {"macro":["impl_extract","impl_extract_tuple","impl_native_fn_interface"],"trait":["ExtractValue","IntoMIRKitlangFn","IntoMIRReturn"],"type":["KitlangMIRNativeFn"]};

@@ -405,7 +405,7 @@
 <a href=#405 id=405 data-nosnippet>405</a>        <span class="kw">let </span>ref_type = <span class="self">self</span>.parse_ref_and_refmut()<span class="question-mark">?</span>;
 <a href=#406 id=406 data-nosnippet>406</a>
 <a href=#407 id=407 data-nosnippet>407</a>        <span class="kw">let </span>root_type = <span class="kw">match </span><span class="self">self</span>.peek()<span class="question-mark">?</span>.kind {
-<a href=#408 id=408 data-nosnippet>408</a>            TokenKind::Punctuation(Punctuation::OpenBracket) =&gt; {
+<a href=#408 id=408 data-nosnippet>408</a>            TokenKind::Punctuation(Punctuation::OpenParen) =&gt; {
 <a href=#409 id=409 data-nosnippet>409</a>                <span class="kw">if </span><span class="self">self</span>.check_kind_at(<span class="number">1</span>, Punctuation::CloseParen) {
 <a href=#410 id=410 data-nosnippet>410</a>                    <span class="kw">let </span>unit_start_span = <span class="self">self</span>.begin_span();
 <a href=#411 id=411 data-nosnippet>411</a>                    <span class="self">self</span>.cursor.advance_by(<span class="number">2</span>);
