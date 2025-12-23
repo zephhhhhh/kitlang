@@ -16,6 +16,8 @@
 
 use std::collections::HashMap;
 
+use itertools::Itertools;
+
 use crate::ast::{Literal, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
@@ -144,6 +146,12 @@ impl TypeChecker<'_> {
                 let type_path = abs_ty.defined_in.extend_ident(&abs_ty.type_ident.ident);
                 Some(type_path.to_string())
             }
+            Type::Resolved(KitTy::Tuple(ts)) => Some(format!(
+                "({})",
+                ts.iter()
+                    .map(|t| self.type_name(Type::Resolved(t.clone())))
+                    .join(", ")
+            )),
             Type::Resolved(kit_ty) => kit_ty.to_type_str(),
         }
     }

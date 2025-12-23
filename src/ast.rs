@@ -14,6 +14,8 @@
 use ::std::fmt::{Debug, Display};
 use ::std::ops::Range;
 
+use itertools::Itertools;
+
 use crate::token::Token;
 
 /// This is the output of the `Parser` stage.
@@ -874,15 +876,7 @@ impl Ty {
             Self::Type(t) => t.to_string(),
             Self::Ref(ty, _, _) | Self::Array(ty, _) => ty.get_type_ident(),
             Self::Tuple(tys, _) => {
-                let mut repr = "(".to_string();
-                for (i, ty) in tys.iter().enumerate() {
-                    if i > 0 {
-                        repr.push_str(", ");
-                    }
-                    repr.push_str(&ty.get_type_ident());
-                }
-                repr.push(')');
-                repr
+                format!("({})", tys.iter().map(|ty| ty.get_type_ident()).join(", "))
             }
             Self::Infer => "Deduced".to_string(),
             Self::This(..) => "Self".to_string(),
@@ -1565,15 +1559,10 @@ impl BindingPattern {
         match &self {
             BindingPattern::Variable(ident, _) => ident.str().to_string(),
             BindingPattern::Tuple(t, _) => {
-                let mut repr = "(".to_string();
-                for (i, pat) in t.iter().enumerate() {
-                    if i > 0 {
-                        repr.push_str(", ");
-                    }
-                    repr.push_str(&pat.pat_ident_str());
-                }
-                repr.push(')');
-                repr
+                format!(
+                    "({})",
+                    t.iter().map(BindingPattern::pat_ident_str).join(", ")
+                )
             }
         }
     }

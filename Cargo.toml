@@ -47,6 +47,7 @@ paste = "1.0.15"
 
 # Utilities..
 smolvec = "1.0.0"
+itertools = "0.14.0"
 
 [workspace]
 members = ["crates/kitlang-macros"]

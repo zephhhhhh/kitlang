@@ -9,6 +9,8 @@ use crate::ast::{
 };
 use crate::intermediate::resolver::TypeID;
 use crate::intermediate::types::KitTy;
+
+use itertools::Itertools;
 use paste::paste;
 
 // Owning nodes..
@@ -1196,19 +1198,14 @@ impl VarBinding {
         match &self.kind {
             BindingKind::Ident(ident) => ident.string(),
             BindingKind::Tuple(ids) => {
-                let mut repr = "(".to_string();
-                for (i, pat_id) in ids.iter().enumerate() {
-                    if i > 0 {
-                        repr.push_str(", ");
-                    }
-                    repr.push_str(
-                        &hlir
+                format!(
+                    "({})",
+                    ids.iter()
+                        .map(|pat_id| hlir
                             .binding_by_id(*pat_id)
-                            .map_or_else(|| "??var??".to_string(), |p| p.string_repr(hlir)),
-                    );
-                }
-                repr.push(')');
-                repr
+                            .map_or_else(|| "??var??".to_string(), |p| p.string_repr(hlir)))
+                        .join(", ")
+                )
             }
         }
     }
