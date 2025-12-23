@@ -6,8 +6,8 @@ impl i8 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = i8::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = i8::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
@@ -21,8 +21,8 @@ impl i16 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = i16::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = i16::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
@@ -36,8 +36,8 @@ impl i32 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = i32::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = i32::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
@@ -48,8 +48,8 @@ impl i64 {
     pub fn to_string(self) -> string { i64_to_string(self) }
     pub fn from_string(s: string) -> (Self, bool) { string_to_i64(s) }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = i64::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = i64::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { i64_sqrt(self) }
@@ -63,8 +63,8 @@ impl i128 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = i128::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = i128::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
@@ -79,8 +79,8 @@ impl u8 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = u8::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = u8::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
@@ -93,8 +93,8 @@ impl u16 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = u16::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = u16::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
@@ -107,8 +107,8 @@ impl u32 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = u32::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = u32::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
@@ -118,8 +118,8 @@ impl u64 {
     pub fn to_string(self) -> string { u64_to_string(self) }
     pub fn from_string(s: string) -> (Self, bool) { string_to_u64(s) }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = u64::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = u64::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { u64_sqrt(self) }
@@ -132,8 +132,8 @@ impl u128 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = u128::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = u128::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
@@ -147,8 +147,8 @@ impl f32 {
         (result.0 as Self, result.1)
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = f32::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = f32::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { f64_sqrt(self as f64) as Self }
@@ -159,8 +159,8 @@ impl f64 {
     pub fn to_string(self) -> string { f64_to_string(self) }
     pub fn from_string(s: string) -> (Self, bool) { string_to_f64(s) }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = f64::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = f64::from_string(s);
+        if err { default } else { v }
     }
 
     pub fn sqrt(self) -> Self { f64_sqrt(self) }
@@ -172,8 +172,8 @@ impl bool {
     pub fn to_string(self) -> string { bool_to_string(self) }
     pub fn from_string(s: string) -> (Self, bool) { string_to_bool(s) }
     pub fn from_string_or(s: string, default: Self) -> Self {
-        let result = bool::from_string(s);
-        if result.1 { result.0 } else { default }
+        let (v, err) = bool::from_string(s);
+        if err { default } else { v }
     }
 }
 
