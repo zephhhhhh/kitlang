@@ -1,5 +1,6 @@
 use crate::ast::{
-    Local, LocalKind, Mutability, Parameter, SourceSpan, SpannedIdent, Statement, StatementKind, Ty,
+    BindingPattern, Local, LocalKind, Parameter, SourceSpan, SpannedIdent, Statement,
+    StatementKind, Ty,
 };
 
 use crate::parser::Parser;
@@ -15,25 +16,23 @@ use crate::parser::TokenStream;
 #[derive(Debug, Clone)]
 pub struct VariablePattern {
     /// Variable name.
-    pub ident: SpannedIdent,
+    pub pattern: BindingPattern,
     /// Variable type.
     pub ty: Ty,
-    /// If the variable can be mutated.
-    pub mutable: Mutability,
     /// The span of bytes in the source string the declaration occupies.
     pub span: SourceSpan,
 }
 
 impl From<VariablePattern> for Parameter {
     fn from(value: VariablePattern) -> Self {
-        Self::new(value.ident, value.ty, value.mutable, value.span)
+        Self::new(value.pattern, value.ty, value.span)
     }
 }
 
 impl VariablePattern {
     #[inline]
     pub fn into_param(self) -> Parameter {
-        Parameter::new(self.ident, self.ty, self.mutable, self.span)
+        Parameter::new(self.pattern, self.ty, self.span)
     }
 }
 
@@ -71,7 +70,7 @@ impl Parser<'_, '_> {
         let ref_type = self.parse_ref_and_refmut()?;
 
         let var_ident_span = self.begin_span();
-        let (var_ident, var_type) = if self.check_kind_advance(Keyword::This) {
+        let (var_pat, var_type) = if self.check_kind_advance(Keyword::This) {
             let ident_span = self.finish_span(var_ident_span);
             let ty = if self.check_kind_advance(Punctuation::Colon) {
                 if ref_type.is_ref() {
@@ -93,7 +92,8 @@ impl Parser<'_, '_> {
                 Ty::This(ident_span)
             };
 
-            (SpannedIdent::new("self", ident_span), ty)
+            let self_spanned = SpannedIdent::new("self", ident_span);
+            (BindingPattern::Variable(self_spanned, mutable), ty)
         } else {
             if ref_type.is_ref() {
                 let token = self.peek()?;
@@ -106,25 +106,57 @@ impl Parser<'_, '_> {
                 ));
             }
 
-            let ident = self.expect_ident_spanned()?;
+            let pat = self.parse_binding()?;
             self.expect_kind(Punctuation::Colon)?;
             let ty = self.parse_ty()?;
 
-            (ident, ty)
+            (pat, ty)
         };
 
         Ok(VariablePattern {
-            ident: var_ident,
+            pattern: var_pat,
             ty: var_type,
-            mutable,
             span: self.finish_span(start_span),
         })
     }
 
+    pub fn parse_binding(&mut self) -> PResult<BindingPattern> {
+        let start_span = self.begin_span();
+
+        if self.check_kind_advance(Punctuation::OpenParen) {
+            // Tuple destructuring..
+            let mut patterns = Vec::new();
+            loop {
+                if self.check_kind_advance(Punctuation::CloseParen) {
+                    break;
+                }
+
+                let pattern = self.parse_binding()?;
+                patterns.push(pattern);
+
+                if self.check_kind_advance(Punctuation::Comma) {
+                    continue;
+                }
+
+                self.expect_kind(Punctuation::CloseParen)?;
+                break;
+            }
+
+            Ok(BindingPattern::Tuple(
+                patterns,
+                self.finish_span(start_span),
+            ))
+        } else {
+            let mutable = self.parse_mutability()?;
+            let ident = self.expect_ident_spanned()?;
+
+            Ok(BindingPattern::Variable(ident, mutable))
+        }
+    }
+
     pub fn parse_let_local(&mut self) -> PResult<Box<Local>> {
         self.expect_kind(Keyword::Let)?;
-        let mutable = self.parse_mutability()?;
-        let spanned_ident = self.expect_ident_spanned()?;
+        let pattern = self.parse_binding()?;
         let var_type = if self.check_kind_advance(Punctuation::Colon) {
             self.parse_ty()?
         } else {
@@ -137,10 +169,9 @@ impl Parser<'_, '_> {
         self.expect_kind(Punctuation::SemiColon)?;
 
         Ok(Local::new_boxed(
-            spanned_ident,
+            pattern,
             var_type,
             LocalKind::Initialise(expr),
-            mutable,
         ))
     }
 }

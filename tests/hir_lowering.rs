@@ -3,7 +3,7 @@ use kitlang::{
     intermediate::{
         hir::{
             HLIR, HirId, LocalDefId, OwnerDefId,
-            nodes::{Expr, ExprKind, HirNode, OwningNode, StatementKind, Type},
+            nodes::{BindingKind, Expr, ExprKind, HirNode, OwningNode, StatementKind, Type},
         },
         types::{KitFloat, KitInt, KitTy},
     },
@@ -70,6 +70,20 @@ macro_rules! wrap_and_parse_statement {
     ($test_src:literal) => {
         get_first_statement(&wrap_and_parse!(hir, $test_src)).clone()
     };
+}
+
+macro_rules! check_ident_pattern {
+    ($hlir:expr, $pattern_id:expr, $ident:expr, $muta:expr) => {{
+        let binding = $hlir
+            .binding_by_id($pattern_id)
+            .expect("Binding should exist.");
+        let BindingKind::Ident(found_ident) = &binding.kind else {
+            panic!("Expected binding kind to be Ident");
+        };
+
+        assert_eq!(found_ident.str(), $ident);
+        assert_eq!(binding.modifiers.mutable, $muta);
+    }};
 }
 
 // Helper getters..
@@ -500,10 +514,9 @@ fn lower_let_statement() {
 
     expect_match!(stmt, HirNode::Statement(stmt) => {
         expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
-            assert_eq!(let_stmt.ident.str(), "x");
-            assert_eq!(let_stmt.mutable, Mutability::Immutable);
-            assert!(let_stmt.initial_value.is_some());
+            check_ident_pattern!(hlir, let_stmt.binding, "x", Mutability::Immutable);
 
+            assert!(let_stmt.initial_value.is_some());
             expect_match!(get_hir_node(&hlir, let_stmt.initial_value.unwrap()), HirNode::Expr(expr) => {
                 expect_literal!(expr, Literal::Integer(13));
             }, "Expected initial value to be an expression");
@@ -518,10 +531,9 @@ fn lower_let_statement_mutable() {
 
     expect_match!(stmt, HirNode::Statement(stmt) => {
         expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
-            assert_eq!(let_stmt.ident.str(), "y");
-            assert_eq!(let_stmt.mutable, Mutability::Mutable);
-            assert!(let_stmt.initial_value.is_some());
+            check_ident_pattern!(hlir, let_stmt.binding, "y", Mutability::Mutable);
 
+            assert!(let_stmt.initial_value.is_some());
             expect_match!(get_hir_node(&hlir, let_stmt.initial_value.unwrap()), HirNode::Expr(expr) => {
                 expect_literal!(expr, Literal::Integer(10));
             }, "Expected initial value to be an expression");
@@ -536,7 +548,8 @@ fn lower_let_statement_with_type() {
 
     expect_match!(stmt, HirNode::Statement(stmt) => {
         expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
-            assert_eq!(let_stmt.ident.str(), "z");
+            check_ident_pattern!(hlir, let_stmt.binding, "z", Mutability::Immutable);
+
             let Type::Resolved(a) = &let_stmt.ty else {
                 panic!("Expected resolved type.");
             };
@@ -886,7 +899,7 @@ fn lower_function_with_self_param() {
 
 #[test]
 fn lower_multiple_statements() {
-    let hlir = wrap_and_parse!(hir, "let x = 1; let y = 2; x + y");
+    let hlir = wrap_and_parse!(hir, "let x = 1; let mut y = 2; x + y");
     let main_fn = get_main_function(&hlir);
     let func = main_fn.hir_function_ref().expect("Should be a function");
     let body = func.body.as_ref().expect("Function should have a body");
@@ -897,7 +910,8 @@ fn lower_multiple_statements() {
 
         expect_match!(get_hir_node(&hlir, block.statements[0]), HirNode::Statement(stmt) => {
             expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
-                assert_eq!(let_stmt.ident.str(), "x");
+                check_ident_pattern!(hlir, let_stmt.binding, "x", Mutability::Immutable);
+
                 expect_match!(get_hir_node(&hlir, let_stmt.initial_value.expect("Expected initial value")), HirNode::Expr(expr) => {
                     expect_literal!(expr, Literal::Integer(1));
                 }, "Expected initial value to be an expression");
@@ -906,7 +920,8 @@ fn lower_multiple_statements() {
 
         expect_match!(get_hir_node(&hlir, block.statements[1]), HirNode::Statement(stmt) => {
             expect_match!(&stmt.kind, StatementKind::Let(let_stmt) => {
-                assert_eq!(let_stmt.ident.str(), "y");
+                check_ident_pattern!(hlir, let_stmt.binding, "y", Mutability::Mutable);
+
                 expect_match!(get_hir_node(&hlir, let_stmt.initial_value.expect("Expected initial value")), HirNode::Expr(expr) => {
                     expect_literal!(expr, Literal::Integer(2));
                 }, "Expected initial value to be an expression");

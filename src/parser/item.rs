@@ -58,7 +58,7 @@ impl Parser<'_, '_> {
 
         let mut is_method = false;
         for (i, arg) in function_arguments.iter().enumerate() {
-            if arg.ident.str() == "self" {
+            if arg.is_self_param() {
                 if !from_impl_block {
                     return Err(ParseError::new(
                         ParseErrorKind::SelfMustBeUsedInAMethod,

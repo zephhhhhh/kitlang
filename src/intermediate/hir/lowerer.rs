@@ -31,16 +31,17 @@
 //!   owning node. These receive [`HirId`]s scoped to their owner, where a [`HirId`] is essentially
 //!   both an [`OwnerDefId`] and an index within that owning node's HIR node storage.
 
+use crate::KitSmallVec;
 use crate::ast::{self, SourceSpan, SpannedIdent, Visibility};
 
 use crate::intermediate::hir::errors::{LowerResult, lowering_err};
 use crate::intermediate::hir::nodes::{
-    Block, Constant, Enum, Expr, ExprKind, Function, FunctionBody, FunctionSig, HirNode, Impl,
-    Item, ItemKind, LetStatement, Module, ModuleIdent, ModuleSpan, OwningNode, OwningNodeKind,
-    Parameter, RefPath, Statement, StatementKind, Struct, StructField, StructFieldInit,
-    StructInitialisation, Type, UsePath,
+    BindingModifiers, Block, Constant, Enum, Expr, ExprKind, Function, FunctionBody, FunctionSig,
+    HirNode, Impl, Item, ItemKind, LetStatement, Module, ModuleIdent, ModuleSpan, OwningNode,
+    OwningNodeKind, Parameter, RefPath, Statement, StatementKind, Struct, StructField,
+    StructFieldInit, StructInitialisation, Type, UsePath, VarBinding,
 };
-use crate::intermediate::hir::{HLIR, HirId, LoweringError, LoweringErrorKind, OwnerDefId};
+use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 /// This struct is how we store and maintain the HLIR while we lower from AST to HIR.
 /// Contains all the logic for doing the lowering.
@@ -196,7 +197,12 @@ impl HLIRLowerer<'_> {
             is_method: f.is_method,
             is_global: f.is_global,
             sig: FunctionSig {
-                parameter_idents: f.sig.parameters.iter().map(|p| p.ident.string()).collect(),
+                parameter_idents: f
+                    .sig
+                    .parameters
+                    .iter()
+                    .map(|p| p.pattern.pat_ident_str())
+                    .collect(),
                 parameters: f
                     .sig
                     .parameters
@@ -217,15 +223,16 @@ impl HLIRLowerer<'_> {
 
         let mut param_ids = Vec::new();
         for param in &f.sig.parameters {
+            let binding_id = self.lower_pattern(&param.pattern, fn_node_id)?;
+
             let param_id = self.hlir.next_hir_id_on(fn_node_id);
             self.hlir.insert_hir_node(
                 fn_node_id,
                 HirNode::Param(Parameter {
                     id: param_id,
                     fn_id: fn_node_id,
-                    ident: param.ident.clone(),
+                    binding: binding_id,
                     span: param.span,
-                    mutable: param.mutable,
                 }),
             );
             param_ids.push(param_id);
@@ -514,11 +521,15 @@ impl HLIRLowerer<'_> {
         };
 
         let binding_id = {
+            let pattern_id = self.lower_pattern(
+                &ast::BindingPattern::Variable(binding.clone(), ast::Mutability::Mutable),
+                owner_node,
+            )?;
+
             let hir_statement = Statement {
                 id: self.hlir.next_hir_id_on(owner_node),
                 kind: StatementKind::Let(LetStatement {
-                    ident: binding.ident.clone(),
-                    mutable: ast::Mutability::Mutable,
+                    binding: pattern_id,
                     ty: Type::Unresolved(ast::Ty::Infer),
                     initial_value: Some(min),
                 }),
@@ -722,6 +733,56 @@ impl HLIRLowerer<'_> {
             .unwrap_or(HirId::PLACEHOLDER_ID))
     }
 
+    fn lower_pattern(
+        &mut self,
+        pattern: &ast::BindingPattern,
+        owner_node: OwnerDefId,
+    ) -> LowerResult<HirId> {
+        match &pattern {
+            ast::BindingPattern::Variable(ident, mutable) => {
+                let pattern_id = self.hlir.next_hir_id_on(owner_node);
+                let modifiers = BindingModifiers { mutable: *mutable };
+                let hir_pattern = VarBinding {
+                    id: pattern_id,
+                    span: pattern.span(),
+                    kind: crate::intermediate::hir::nodes::BindingKind::Ident(ident.clone()),
+                    modifiers,
+                };
+                self.hlir
+                    .insert_hir_node(owner_node, HirNode::Binding(hir_pattern))
+                    .ok_or_else(|| {
+                        lowering_err!(on_span, pattern.span(), "Failed to insert binding node!")
+                    })
+            }
+            ast::BindingPattern::Tuple(patterns, span) => {
+                let pattern_ids = patterns
+                    .iter()
+                    .map(|p| self.lower_pattern(p, owner_node))
+                    .collect::<LowerResult<KitSmallVec<HirId>>>()?;
+                let pattern_id = self.hlir.next_hir_id_on(owner_node);
+
+                let hir_pattern = VarBinding {
+                    id: pattern_id,
+                    span: *span,
+                    kind: crate::intermediate::hir::nodes::BindingKind::Tuple(pattern_ids),
+                    modifiers: BindingModifiers {
+                        mutable: ast::Mutability::Immutable,
+                    },
+                };
+
+                self.hlir
+                    .insert_hir_node(owner_node, HirNode::Binding(hir_pattern))
+                    .ok_or_else(|| {
+                        lowering_err!(
+                            on_span,
+                            pattern.span(),
+                            "Failed to insert tuple binding node!"
+                        )
+                    })
+            }
+        }
+    }
+
     /// Lowers a statement to HIR.
     fn lower_statement(
         &mut self,
@@ -737,11 +798,12 @@ impl HLIRLowerer<'_> {
                     None
                 };
 
+                let binding_id = self.lower_pattern(&local.pattern, owner_node)?;
+
                 let hir_statement = Statement {
                     id: self.hlir.next_hir_id_on(owner_node),
                     kind: StatementKind::Let(LetStatement {
-                        ident: local.ident.ident.clone(),
-                        mutable: local.mutable,
+                        binding: binding_id,
                         ty: Type::from_ast_ty(&local.ty),
                         initial_value: init_value,
                     }),

@@ -4,8 +4,8 @@ use crate::ast::{BinaryOpKind, Mutability};
 
 use crate::intermediate::hir::errors::{LowerResult, lowering_err, push_lower_err};
 use crate::intermediate::hir::nodes::{
-    Block, Expr, ExprKind, Function, HirNode, LetStatement, Parameter, RefPath, ResolvedID,
-    Statement, StatementKind, StructInitialisation, Type,
+    BindingKind, Block, Expr, ExprKind, Function, HirNode, LetStatement, Parameter, RefPath,
+    ResolvedID, Statement, StatementKind, StructInitialisation, Type,
 };
 use crate::intermediate::hir::visitor::HLIRVisitor;
 use crate::intermediate::hir::{
@@ -180,6 +180,8 @@ struct HIRToMIRFuncLowerer<'a> {
     pub func_owner_id: OwnerDefId,
     pub func_body_id: HirId,
 
+    pub param_bindings: Vec<(HirId, LocalId)>,
+
     pub lut: HashMap<HirId, LocalId>,
 
     pub block_stack: Vec<HIRToMIRBlockBuilder>,
@@ -200,6 +202,7 @@ impl<'a> HIRToMIRFuncLowerer<'a> {
             body: Body::new_empty(),
             func_owner_id: func_id,
             func_body_id: HirId::PLACEHOLDER_ID,
+            param_bindings: Vec::new(),
             lut: HashMap::new(),
             block_stack: Vec::new(),
             state: HIRToMIRFuncLowererState::default(),
@@ -382,14 +385,15 @@ impl HIRToMIRFuncLowerer<'_> {
                 if let Some(resolved_local) = self.lut.get(&hir_id).copied() {
                     if self.state.parse_assign_target {
                         self.state.assign_target = Some(resolved_local.into());
-                    } else {
-                        // let local = self.new_temp_local();
-                        // self.builder_mut_expect()
-                        //     .push_assign(local, RValue::Ref(resolved_local));
-                        debug!("Resolved local: {resolved_local:?} -> {hir_id:?}");
                     }
                 } else {
-                    push_lower_err!(self, hlir, hir_id, "Failed to resolve local variable.");
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        hir_id,
+                        "Failed to resolve local variable: `{:?}`",
+                        hir_id
+                    );
                 }
             }
             ResolvedID::Def(_def_id) => {}
@@ -582,7 +586,9 @@ impl HIRToMIRFuncLowerer<'_> {
 
             let final_false_block_id = self.emit_and_replace_block().unwrap();
 
-            if !self.update_goto_target(final_true_block_id, final_false_block_id.next()) {
+            if !self.update_goto_target(final_true_block_id, final_false_block_id.next())
+                && !self.body.is_block_exit_return(final_true_block_id)
+            {
                 push_lower_err!(
                     self,
                     hlir,
@@ -595,7 +601,9 @@ impl HIRToMIRFuncLowerer<'_> {
                 self.builder_mut_expect()
                     .push_local_assign(if_result_local, RValue::unit());
             }
-            if !self.update_goto_target(final_true_block_id, final_true_block_id.next()) {
+            if !self.update_goto_target(final_true_block_id, final_true_block_id.next())
+                && !self.body.is_block_exit_return(final_true_block_id)
+            {
                 push_lower_err!(self, hlir, if_expr_id, "Failed to update if goto block.");
             }
         }
@@ -1075,6 +1083,41 @@ impl HIRToMIRFuncLowerer<'_> {
             RValue::ADT(super::ADTKind::Struct(type_id), field_values),
         );
     }
+
+    fn lower_tuple_destructuring(&mut self, hlir: &HLIR, temp_local: LocalId, bind_ids: &[HirId]) {
+        for (index, bind_id) in bind_ids.iter().enumerate() {
+            let Some(binding) = hlir.binding_by_id(*bind_id) else {
+                push_lower_err!(
+                    self,
+                    hlir,
+                    *bind_id,
+                    "Failed to get binding for tuple destructuring."
+                );
+                continue;
+            };
+            match &binding.kind {
+                BindingKind::Ident(i) => {
+                    let local_id = self.body.push_local(LocalDefinition {
+                        mutable: binding.modifiers.mutable,
+                        info: LocalInfo::UserDeclared(i.ident.clone()),
+                    });
+                    self.lut.insert(*bind_id, local_id);
+                    self.builder_mut_expect().push_local_assign(
+                        local_id,
+                        RValue::refer(AssignTarget::Field(temp_local, index)),
+                    );
+                }
+                BindingKind::Tuple(ids) => {
+                    let destructure_local = self.new_temp_local_with_mut(binding.modifiers.mutable);
+                    self.builder_mut_expect().push_local_assign(
+                        destructure_local,
+                        RValue::refer(AssignTarget::Field(temp_local, index)),
+                    );
+                    self.lower_tuple_destructuring(hlir, destructure_local, ids);
+                }
+            }
+        }
+    }
 }
 
 impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
@@ -1287,23 +1330,59 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
         }
     }
 
-    fn visit_let_statement(&mut self, id: HirId, let_statement: &LetStatement, hlir: &HLIR) {
-        let local_id = self.body.push_local(LocalDefinition {
-            mutable: let_statement.mutable,
-            info: LocalInfo::UserDeclared(let_statement.ident.clone()),
-        });
-        self.lut.insert(id, local_id);
-        if let Some(init_id) = &let_statement.initial_value {
-            if let Some(target) = self.visit_expr_assigned(*init_id, hlir) {
+    fn visit_let_statement(&mut self, _id: HirId, let_statement: &LetStatement, hlir: &HLIR) {
+        let Some(HirNode::Binding(binding)) = hlir.get_hir_node(let_statement.binding) else {
+            push_lower_err!(
+                self,
+                hlir,
+                let_statement.binding,
+                "Let statement binding is not a binding!"
+            );
+            return;
+        };
+
+        match &binding.kind {
+            BindingKind::Ident(i) => {
+                let local_id = self.body.push_local(LocalDefinition {
+                    mutable: binding.modifiers.mutable,
+                    info: LocalInfo::UserDeclared(i.ident.clone()),
+                });
+                self.lut.insert(binding.id, local_id);
+
+                if let Some(init_id) = &let_statement.initial_value {
+                    if let Some(target) = self.visit_expr_assigned(*init_id, hlir) {
+                        self.builder_mut_expect()
+                            .push_local_assign(local_id, RValue::copy(target));
+                    } else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *init_id,
+                            "Failed to get let statement initial expression target"
+                        );
+                    }
+                }
+            }
+            BindingKind::Tuple(ids) => {
+                let temp_local_id = self.new_temp_local();
+
+                let Some(init_id) = &let_statement.initial_value else {
+                    return;
+                };
+                let Some(target) = self.visit_expr_assigned(*init_id, hlir) else {
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        *init_id,
+                        "Failed to get let statement initial expression target"
+                    );
+                    return;
+                };
+
                 self.builder_mut_expect()
-                    .push_local_assign(local_id, RValue::copy(target));
-            } else {
-                push_lower_err!(
-                    self,
-                    hlir,
-                    *init_id,
-                    "Failed to get let statement initial expression target"
-                );
+                    .push_local_assign(temp_local_id, RValue::copy(target));
+
+                self.lower_tuple_destructuring(hlir, temp_local_id, ids);
             }
         }
     }
@@ -1340,18 +1419,64 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
         self.super_block(block, hlir);
     }
 
-    fn visit_function_param(&mut self, parameter: &Parameter, _hlir: &HLIR) {
-        let param_local_id = self
-            .body
-            .push_param(parameter.mutable, parameter.ident.ident.clone());
-        self.lut.insert(parameter.id, param_local_id);
+    fn visit_function_param(&mut self, parameter: &Parameter, hlir: &HLIR) {
+        let Some(binding) = hlir.binding_by_id(parameter.binding) else {
+            push_lower_err!(
+                self,
+                hlir,
+                parameter.binding,
+                "Failed to get binding for function parameter."
+            );
+            return;
+        };
+
+        match &binding.kind {
+            BindingKind::Ident(i) => {
+                let param_local_id = self
+                    .body
+                    .push_param(binding.modifiers.mutable, i.ident.clone());
+                self.lut.insert(binding.id, param_local_id);
+            }
+            BindingKind::Tuple(..) => {
+                let param_local_id = self.body.push_param_for_binding(binding.modifiers.mutable);
+                self.lut.insert(binding.id, param_local_id);
+                self.param_bindings.push((binding.id, param_local_id));
+            }
+        }
     }
 
     fn visit_function(&mut self, function: &Function, hlir: &HLIR) {
         if function.owner_id == self.func_owner_id {
             self.state.parse_assign_target = true;
             self.create_block_builder();
-            self.super_function(function, hlir);
+
+            if let Some(func_body) = &function.body {
+                for param_id in &func_body.params {
+                    if let Some(HirNode::Param(param)) = hlir.get_hir_node(*param_id) {
+                        self.visit_function_param(param, hlir);
+                    }
+                }
+
+                for (binding_id, param_local) in std::mem::take(&mut self.param_bindings) {
+                    let Some(binding) = hlir.binding_by_id(binding_id) else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            binding_id,
+                            "Failed to get binding for function parameter binding."
+                        );
+                        continue;
+                    };
+                    if let BindingKind::Tuple(ids) = &binding.kind {
+                        self.lower_tuple_destructuring(hlir, param_local, ids);
+                    }
+                }
+
+                if let Some(HirNode::Block(func_block)) = hlir.get_hir_node(func_body.block) {
+                    self.visit_block(func_block, hlir);
+                }
+            }
+
             self.emit_final_block();
         }
     }

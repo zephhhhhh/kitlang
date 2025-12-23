@@ -1,6 +1,6 @@
 use kitlang::ast::{
-    ASTRoot, BinaryOpKind, Block, Expression, ExpressionKind, FunctionReturnTy, Item, ItemKind,
-    Literal, LocalKind, Mutability, StatementKind, Ty, UnaryOpKind, Visibility,
+    ASTRoot, BinaryOpKind, BindingPattern, Block, Expression, ExpressionKind, FunctionReturnTy,
+    Item, ItemKind, Literal, LocalKind, Mutability, StatementKind, Ty, UnaryOpKind, Visibility,
 };
 
 mod common;
@@ -96,6 +96,26 @@ fn get_nth_expr(root: &ASTRoot, index: usize) -> &Expression {
 }
 fn get_first_expr(root: &ASTRoot) -> &Expression {
     get_nth_expr(root, 0)
+}
+
+macro_rules! check_ident_pattern {
+    ($pattern:expr, $ident:expr, $muta:expr) => {{
+        let BindingPattern::Variable(found_ident, is_mut) = $pattern else {
+            panic!("Expected binding pattern to be a variable");
+        };
+        assert_eq!(
+            found_ident.str(),
+            $ident,
+            "Expected identifier `{}` but found `{}`",
+            $ident,
+            found_ident.str()
+        );
+        assert_eq!(
+            *is_mut, $muta,
+            "Expected mutability `{:?}` but found `{:?}`",
+            $muta, *is_mut
+        );
+    }};
 }
 
 // Let the testing begin...
@@ -431,8 +451,7 @@ fn parse_let_statement_basic() {
     let stmt = wrap_and_parse_statement!("let x: i32 = 5;");
 
     expect_match!(&stmt.kind, StatementKind::Let(local) => {
-        assert_eq!(local.ident.str(), "x");
-        assert!(local.mutable == Mutability::Immutable);
+        check_ident_pattern!(&local.pattern, "x", Mutability::Immutable);
 
         expect_ty!(str, &local.ty, "i32");
 
@@ -449,8 +468,7 @@ fn parse_let_statement_mutable() {
     );
 
     expect_match!(&stmt.kind, StatementKind::Let(local) => {
-        assert_eq!(local.ident.str(), "y");
-        assert!(local.mutable == Mutability::Mutable);
+        check_ident_pattern!(&local.pattern, "y", Mutability::Mutable);
 
         expect_ty!(str, &local.ty, "string");
 
@@ -485,10 +503,10 @@ fn parse_function_with_params() {
     assert_eq!(ast.items[0].vis, Visibility::Private);
     assert_eq!(func.sig.parameters.len(), 2);
 
-    assert_eq!(func.sig.parameters[0].ident.str(), "a");
+    check_ident_pattern!(&func.sig.parameters[0].pattern, "a", Mutability::Immutable);
     expect_ty!(str, func.sig.parameters[0].ty, "i32");
 
-    assert_eq!(func.sig.parameters[1].ident.str(), "b");
+    check_ident_pattern!(&func.sig.parameters[1].pattern, "b", Mutability::Immutable);
     expect_ty!(str, func.sig.parameters[1].ty, "f32");
 }
 
@@ -744,10 +762,10 @@ fn parse_complete_program() {
 
             assert_eq!(func.sig.parameters.len(), 2);
 
-            assert_eq!(func.sig.parameters[0].ident.str(), "x");
+            check_ident_pattern!(&func.sig.parameters[0].pattern, "x", Mutability::Immutable);
             expect_ty!(str, func.sig.parameters[0].ty, "f32");
 
-            assert_eq!(func.sig.parameters[1].ident.str(), "y");
+            check_ident_pattern!(&func.sig.parameters[1].pattern, "y", Mutability::Immutable);
             expect_ty!(str, func.sig.parameters[1].ty, "f32");
 
             // TODO: Function body check.. rn? nahhh
@@ -758,10 +776,10 @@ fn parse_complete_program() {
 
             assert_eq!(func.sig.parameters.len(), 2);
 
-            assert_eq!(func.sig.parameters[0].ident.str(), "self");
+            check_ident_pattern!(&func.sig.parameters[0].pattern, "self", Mutability::Immutable);
             assert!(matches!(func.sig.parameters[0].ty, Ty::This(..)));
 
-            assert_eq!(func.sig.parameters[1].ident.str(), "other");
+            check_ident_pattern!(&func.sig.parameters[1].pattern, "other", Mutability::Immutable);
             expect_ty!(str, func.sig.parameters[1].ty, "Vec2");
 
             // TODO: Function body check
@@ -784,7 +802,7 @@ fn parse_nested_blocks() {
     let block = expect_block!(&expr);
     let inner_block = expect_block!(statement_any_expr(block, 0));
     expect_match!(&inner_block.statements[0].kind, StatementKind::Let(local) => {
-        assert_eq!(local.ident.str(), "x");
+        check_ident_pattern!(&local.pattern, "x", Mutability::Immutable);
 
         expect_match!(&local.kind, LocalKind::Initialise(init_expr) => {
             expect_literal!(init_expr, Literal::Integer(1));

@@ -24,7 +24,8 @@ use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
 
 use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::hir::nodes::{
-    Block, Expr, ExprKind, HirNode, RefPath, ResolvedID, Statement, StatementKind, Type,
+    BindingKind, Block, Expr, ExprKind, HirNode, RefPath, ResolvedID, Statement, StatementKind,
+    Type,
 };
 use crate::intermediate::types::{KitFloat, KitInt, KitTy};
 
@@ -113,6 +114,23 @@ impl TypeChecker<'_> {
     #[inline]
     pub fn current_expected_return(&self) -> Option<Type> {
         self.return_type_stack.last().cloned()
+    }
+
+    /// Retrieves the binding name for a given binding [`HirId`], or "Unkvar" if not found.
+    #[inline]
+    pub fn binding_name(hlir: &mut HLIRDisjointMut<'_>, binding_id: HirId) -> String {
+        let Some(node) = hlir.get_hir_node_mut(binding_id) else {
+            return "Unkvar".to_string();
+        };
+        if let HirNode::Binding(binding_pattern) = node {
+            if let BindingKind::Ident(i) = &binding_pattern.kind {
+                i.str().to_string()
+            } else {
+                format!("{:?}", binding_pattern.kind)
+            }
+        } else {
+            "Unkvar".to_string()
+        }
     }
 
     /// Attempts to get a human-readable type name for the given [`Type`].
@@ -310,7 +328,7 @@ impl TypeChecker<'_> {
     /// # Returns
     /// * `Ok(Type)` if the non-expression type is successfully evaluated.
     /// * `Err(TypeCheckFail)` if there was an error during type evaluation.
-    fn eval_non_expr_hir_id(id: HirId, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
+    fn eval_non_expr_hir_id(&self, id: HirId, hlir: &mut HLIRDisjointMut<'_>) -> TypeResult<Type> {
         let Some(node) = hlir.get_hir_node_mut(id) else {
             return Err(type_fail!(
                 hlir,
@@ -341,6 +359,14 @@ impl TypeChecker<'_> {
                     "eval non-expression of item semi-expr not implemented."
                 )),
             },
+            HirNode::Binding(a) => self.meta.type_map.get(&a.id).cloned().ok_or_else(|| {
+                type_fail!(
+                    hlir,
+                    id,
+                    "Failed to determine variable type of binding `{}`",
+                    a.string_repr(hlir.nonmut_ref())
+                )
+            }),
             invalid_for_non_expr => Err(type_fail!(
                 hlir,
                 id,
@@ -802,7 +828,7 @@ impl TypeChecker<'_> {
             ExprKind::Path(ref_path) => {
                 if let Some(resolved_id) = ref_path.resolved_id() {
                     match resolved_id {
-                        ResolvedID::Hir(hir_id) => Self::eval_non_expr_hir_id(hir_id, hlir),
+                        ResolvedID::Hir(hir_id) => self.eval_non_expr_hir_id(hir_id, hlir),
                         ResolvedID::Def(_def_id) => {
                             Err(type_fail!(hlir, expr.id, "Def resolution not implemented."))
                         }
@@ -1003,8 +1029,8 @@ impl TypeChecker<'_> {
                 type_fail!(
                     hlir,
                     id,
-                    "Failed to infer type of: '{}'. {}",
-                    let_statement.ident.str(),
+                    "Failed to infer type of: `{}`. {}",
+                    Self::binding_name(hlir, let_statement.binding),
                     e.reason
                 )
             })?
@@ -1014,25 +1040,79 @@ impl TypeChecker<'_> {
 
         if is_inferring {
             let_statement.ty = init_ty;
+            self.store_binding_type(hlir.nonmut_ref(), let_statement.binding, &let_statement.ty);
             Ok(let_statement.ty.clone())
         } else if let_statement.ty.is_infer() {
             Err(type_fail!(
                 hlir,
                 id,
-                "Type of local '{}' could not be deduced.",
-                let_statement.ident.str()
+                "Type of local `{}` could not be deduced.",
+                Self::binding_name(hlir, let_statement.binding)
             ))
         } else if init_ty != let_statement.ty {
             Err(type_fail!(
                 hlir,
                 id,
                 "Let statement type mismatch. Tried to assign {}: {} = {}",
-                let_statement.ident.str(),
+                Self::binding_name(hlir, let_statement.binding),
                 self.type_name(let_statement.ty.clone()),
                 self.type_name(init_ty)
             ))
         } else {
+            self.store_binding_type(hlir.nonmut_ref(), let_statement.binding, &init_ty);
             Ok(init_ty)
+        }
+    }
+
+    fn store_binding_type(&mut self, hlir: &HLIR, binding_id: HirId, ty: &Type) {
+        self.meta.type_map.insert(binding_id, ty.clone());
+        let Some(binding) = hlir.binding_by_id(binding_id) else {
+            self.errors.push(type_fail!(
+                hlir,
+                binding_id,
+                "Failed to find variable binding `{:?}`",
+                binding_id
+            ));
+            return;
+        };
+
+        let Some(resolved_ty) = ty.resolved() else {
+            self.errors.push(type_fail!(
+                hlir,
+                binding_id,
+                "Type not resolved on variable binding `{}`, type not resolved: {:?}",
+                binding.string_repr(hlir),
+                ty
+            ));
+            return;
+        };
+
+        match (&binding.kind, resolved_ty) {
+            (BindingKind::Ident(_), _) => {}
+            (BindingKind::Tuple(binding_ids), KitTy::Tuple(element_tys)) => {
+                if binding_ids.len() != element_tys.len() {
+                    self.errors.push(type_fail!(
+                        hlir,
+                        binding_id,
+                        "Tuple destructuring element count mismatch. Binding has `{}` elements, but type has `{}` elements.",
+                        binding_ids.len(),
+                        element_tys.len()
+                    ));
+                }
+
+                for (b_id, e_ty) in binding_ids.iter().zip(element_tys.iter()) {
+                    self.store_binding_type(hlir, *b_id, &Type::Resolved(e_ty.clone()));
+                }
+            }
+            _ => {
+                self.errors.push(type_fail!(
+                    hlir,
+                    binding_id,
+                    "Variable type mismatch. Binding: {:?}, Type: {:?}",
+                    binding.kind,
+                    self.type_name(ty.clone())
+                ));
+            }
         }
     }
 
@@ -1150,7 +1230,7 @@ impl TypeChecker<'_> {
                             self.validate_return_value(*statement_id, final_ty, hlir)
                         } else {
                             Ok(final_ty)
-                        }
+                        };
                     }
                 }
                 Err(e) => self.errors.push(e),
@@ -1207,7 +1287,27 @@ impl HLIRVisitorMut<'_> for TypeChecker<'_> {
 
     fn visit_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'_>) {
         self.push_current_return_type(function.sig.output.clone());
-        self.super_function_mut(function, hlir);
+        if let Some(func_body) = &function.body {
+            for (index, param_id) in func_body.params.iter().enumerate() {
+                if let Some(HirNode::Param(param)) = hlir.get_hir_node_mut(*param_id) {
+                    let Some(param_type) = function.sig.parameters.get(index) else {
+                        self.errors.push(type_fail!(
+                            hlir,
+                            param.id,
+                            "Function parameter index out of bounds. Index: `{}`, total parameters: `{}`",
+                            index,
+                            function.sig.parameters.len()
+                        ));
+                        continue;
+                    };
+                    self.store_binding_type(hlir.nonmut_ref(), param.binding, param_type);
+                    self.visit_function_param_mut(param, hlir);
+                }
+            }
+            if let Some(HirNode::Block(block)) = hlir.get_hir_node_mut(func_body.block) {
+                self.visit_block_mut(block, hlir);
+            }
+        }
         self.pop_current_return_type();
     }
 }

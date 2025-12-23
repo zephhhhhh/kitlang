@@ -1,5 +1,6 @@
 use ::std::fmt::{Debug, Display};
 
+use crate::KitSmallVec;
 use crate::intermediate::hir::{DefId, HirId, LocalDefId, OwnerDefId};
 
 use crate::ast::{
@@ -118,6 +119,17 @@ impl Type {
         matches!(self, Self::Unresolved(ASTTy::Infer))
     }
 
+    /// Check if the type is a tuple type, either resolved or unresolved.
+    #[inline]
+    #[must_use]
+    pub const fn is_tuple(&self) -> bool {
+        match self {
+            Self::Unresolved(ASTTy::Tuple(..)) => true,
+            Self::Resolved(kit_ty) => matches!(kit_ty, KitTy::Tuple(_)),
+            Self::Unresolved(_) => false,
+        }
+    }
+
     /// Get the resolved Kit type, if it exists.
     #[inline]
     #[must_use]
@@ -203,6 +215,10 @@ pub enum HirNode {
     /// }
     /// ```
     Statement(Statement),
+    /// A variable binding.
+    /// This may be of multiple different kinds of binding, however the 'atomic' unit is a single variable.
+    /// Other kinds of variable bindings such as tuple destructuring are represented as a collection of these.
+    Binding(VarBinding),
     /// A field within a struct.
     Field(StructField),
     /// A reference to another node via a path.
@@ -220,6 +236,7 @@ impl HirNode {
             Self::Block(block) => block.span,
             Self::Expr(expr) => expr.span,
             Self::Statement(statement) => statement.span,
+            Self::Binding(binding) => binding.span,
             Self::Field(struct_field) => struct_field.span,
             Self::Path(ref_path) => ref_path.span(),
         }
@@ -233,6 +250,7 @@ impl Debug for HirNode {
             Self::Block(arg0) => arg0.fmt(f),
             Self::Expr(arg0) => arg0.fmt(f),
             Self::Statement(arg0) => arg0.fmt(f),
+            Self::Binding(arg0) => arg0.fmt(f),
             Self::Field(arg0) => arg0.fmt(f),
             Self::Path(arg0) => f.debug_tuple("Path").field(&arg0).finish(),
         }
@@ -267,6 +285,7 @@ impl_hir_node_from!(Expr, Expr);
 impl_hir_node_from!(Statement, Statement);
 impl_hir_node_from!(StructField, Field);
 impl_hir_node_from!(RefPath, Path);
+impl_hir_node_from!(VarBinding, Binding);
 
 /// Owning HIR node, which contains other HIR nodes and manages their scope.
 /// Has a kind, which describes what type of owning node it is (e.g. an `Item` or an `Item` within an `impl` block).
@@ -515,20 +534,18 @@ pub struct Parameter {
     pub id: HirId,
     /// The [`OwnerDefId`] of the function this parameter belongs to.
     pub fn_id: OwnerDefId,
-    /// The identifier of the parameter.
-    pub ident: SpannedIdent,
+    /// Variable binding of the param.
+    pub binding: HirId,
     /// The span of the full parameter definition (Including type and mutability).
     pub span: SourceSpan,
-    /// If the parameter is marked `mut` or not.
-    pub mutable: Mutability,
 }
 
 impl Debug for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Parameter {{ id: {:?}, name: {:?}, mutable: {:?} }}",
-            self.id, self.ident, self.mutable
+            "Parameter {{ id: {:?}, binding: {:?} }}",
+            self.id, self.binding
         )
     }
 }
@@ -859,10 +876,8 @@ pub struct Statement {
 /// A `let` statement in HIR, containing the identifier, mutability, type, and optional initial value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LetStatement {
-    /// The identifier of the variable being declared.
-    pub ident: Ident,
-    /// Whether the variable is marked `mut` or not.
-    pub mutable: Mutability,
+    /// Pattern of the variable binding,
+    pub binding: HirId,
     /// The type of the variable.
     /// This may be a defined type, or `ASTTy::Infer` if the type declaration is absent.
     pub ty: Type,
@@ -1129,5 +1144,72 @@ impl RefPath {
     #[inline]
     pub fn resolve_to_def_id(&mut self, id: DefId) {
         *self = Self::Resolved(self.spanned_ident_path().clone(), ResolvedID::Def(id));
+    }
+}
+
+/// Modifiers for a variable binding, such as mutability.
+/// # Example
+/// ```ignore
+/// let mut x = 5;
+/// ```
+/// The `mut` modifier is represented by this struct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BindingModifiers {
+    /// Whether the binding is mutable or not.
+    pub mutable: Mutability,
+}
+
+/// The different kinds of variable bindings in HIR.
+/// I.e. A single identifier such as `let x = ...` or a tuple binding such as `let (x, y) = ...`.
+/// In this system, the `Ident` variant is used as the atomic unit of variable bindings.
+/// Tuple bindings are represented as a collection of `Ident` bindings, referenced by a [`HirId`].
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BindingKind {
+    /// A single identifier binding.
+    /// # Example
+    /// ```ignore
+    /// let x = 5;
+    /// ```
+    Ident(SpannedIdent),
+    /// A tuple binding, containing a small vector of the `HirId`s of the individual identifier bindings.
+    /// # Example
+    /// ```ignore
+    /// let (x, y) = (5, 10);
+    /// ```
+    Tuple(KitSmallVec<HirId>),
+}
+
+/// A variable binding in HIR, containing its `HirId` and kind.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct VarBinding {
+    pub id: HirId,
+    pub kind: BindingKind,
+    pub modifiers: BindingModifiers,
+    pub span: SourceSpan,
+}
+
+impl VarBinding {
+    /// Get the string representation of the binding.
+    #[inline]
+    #[must_use]
+    pub fn string_repr(&self, hlir: &crate::intermediate::hir::HLIR) -> String {
+        match &self.kind {
+            BindingKind::Ident(ident) => ident.string(),
+            BindingKind::Tuple(ids) => {
+                let mut repr = "(".to_string();
+                for (i, pat_id) in ids.iter().enumerate() {
+                    if i > 0 {
+                        repr.push_str(", ");
+                    }
+                    repr.push_str(
+                        &hlir
+                            .binding_by_id(*pat_id)
+                            .map_or_else(|| "??var??".to_string(), |p| p.string_repr(hlir)),
+                    );
+                }
+                repr.push(')');
+                repr
+            }
+        }
     }
 }

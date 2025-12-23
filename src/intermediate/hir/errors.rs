@@ -122,13 +122,22 @@ macro_rules! push_lower_err {
 
 macro_rules! lowering_err {
     (no_span, $($arg:tt)*) => {
-        LoweringError::new(LoweringErrorKind::Diagnostic(format!($($arg)*)), $crate::ast::SourceSpan::null_span())
+        $crate::intermediate::hir::errors::LoweringError::new(
+            $crate::intermediate::hir::errors::LoweringErrorKind::Diagnostic(format!($($arg)*)),
+            $crate::ast::SourceSpan::null_span()
+        )
     };
     (on_span, $span: expr, $($arg:tt)*) => {
-        LoweringError::new(LoweringErrorKind::Diagnostic(format!($($arg)*)), $span)
+        $crate::intermediate::hir::errors::LoweringError::new(
+            $crate::intermediate::hir::errors::LoweringErrorKind::Diagnostic(format!($($arg)*)),
+            $span
+        )
     };
     ($hlir: expr, $id: expr, $($arg:tt)*) => {
-        LoweringError::new(LoweringErrorKind::Diagnostic(format!($($arg)*)), $crate::intermediate::hir::get_span_by_id($hlir.as_ref(), $id))
+        $crate::intermediate::hir::errors::LoweringError::new(
+            $crate::intermediate::hir::errors::LoweringErrorKind::Diagnostic(format!($($arg)*)),
+            $crate::intermediate::hir::get_span_by_id($hlir.as_ref(), $id)
+        )
     };
 }
 pub(crate) use lowering_err;

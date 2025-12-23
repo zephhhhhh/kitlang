@@ -87,6 +87,7 @@ impl Debug for LocalId {
 #[derive(Clone)]
 pub enum LocalInfo {
     UserDeclared(Ident), /*(SourceSpan)*/
+    ParamTemp,
     Temp,
 }
 
@@ -94,6 +95,7 @@ impl Debug for LocalInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UserDeclared(arg0) => write!(f, "User({})", arg0.str()),
+            Self::ParamTemp => write!(f, "ParamTemp"),
             Self::Temp => write!(f, "Temp"),
         }
     }
@@ -499,6 +501,28 @@ impl Body {
 }
 
 impl Body {
+    #[inline]
+    #[must_use]
+    pub fn is_block_exit_return(&self, block_id: BasicBlockId) -> bool {
+        if let Some(exit_kind) = self.block_exit_kind(block_id) {
+            matches!(exit_kind, BlockExitKind::Return)
+        } else {
+            false
+        }
+    }
+}
+
+impl Body {
+    #[inline]
+    pub fn push_param_for_binding(&mut self, mutable: Mutability) -> LocalId {
+        let def = LocalDefinition {
+            mutable,
+            info: LocalInfo::ParamTemp,
+        };
+        self.arg_count += 1;
+        self.push_local(def)
+    }
+
     #[inline]
     pub fn push_param(&mut self, mutable: Mutability, ident: Ident) -> LocalId {
         let def = LocalDefinition {

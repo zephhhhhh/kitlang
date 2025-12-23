@@ -15,7 +15,9 @@ use ::std::fmt::Debug;
 use crate::ast::{ASTRoot, IdentPath, SourceSpan};
 
 use crate::intermediate::hir::errors::LowerResult;
-use crate::intermediate::hir::nodes::{HirNode, Item, OwningNode, OwningNodeKind, Type};
+use crate::intermediate::hir::nodes::{
+    HirNode, Item, OwningNode, OwningNodeKind, Type, VarBinding,
+};
 use crate::intermediate::resolver::{ADTTypeInfo, Namespace, TypeRegistry, resolve_paths};
 use crate::intermediate::type_check::{TypeMap, run_type_checker};
 
@@ -385,6 +387,20 @@ impl HLIR {
     #[must_use]
     pub fn span_by_hir_id(&self, id: HirId) -> Option<SourceSpan> {
         Some(self.get_hir_node(id)?.span())
+    }
+}
+
+impl HLIR {
+    /// Get a reference to a variable binding by its [`HirId`],
+    /// if the node exists and is a binding.
+    #[inline]
+    #[must_use]
+    pub fn binding_by_id(&self, id: HirId) -> Option<&VarBinding> {
+        let node = self.get_hir_node(id)?;
+        match node {
+            nodes::HirNode::Binding(binding) => Some(binding),
+            _ => None,
+        }
     }
 }
 

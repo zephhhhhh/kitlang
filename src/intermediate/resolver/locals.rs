@@ -12,12 +12,12 @@ use ::std::fmt::Debug;
 use std::collections::HashMap;
 
 use crate::intermediate::hir::nodes::{
-    Block, Function, LetStatement, Parameter, RefPath, ResolvedID,
+    BindingKind, Block, Function, HirNode, LetStatement, Parameter, RefPath, ResolvedID,
 };
 use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
 use crate::intermediate::hir::{HLIR, HirId};
 use crate::intermediate::resolver::errors::{
-    ResolveResult, ResolverError, ResolverErrorKind, resolve_err,
+    ResolveResult, ResolverError, ResolverErrorKind, push_resolve_err, resolve_err,
 };
 
 /// Represents a local scope in the resolver, maintaining variable definitions and their resolved IDs.
@@ -212,6 +212,34 @@ impl ScopeResolver {
     }
 }
 
+impl ScopeResolver {
+    fn handle_pattern_from_id(&mut self, hlir: &HLIR, id: HirId, allow_dupes: bool) {
+        let Some(HirNode::Binding(pattern)) = hlir.get_hir_node(id) else {
+            push_resolve_err!(self, no_span, "Expected binding pattern for let statement.");
+            return;
+        };
+
+        match &pattern.kind {
+            BindingKind::Ident(ident) => {
+                if allow_dupes {
+                    self.current_scope_mut()
+                        .add_definition_overwrite(ident.str(), pattern.id.into());
+                } else if let Err(e) = self
+                    .current_scope_mut()
+                    .add_definition_result(ident.str(), pattern.id.into())
+                {
+                    self.errors.push(e);
+                }
+            }
+            BindingKind::Tuple(sub_ids) => {
+                for sub_id in sub_ids {
+                    self.handle_pattern_from_id(hlir, *sub_id, allow_dupes);
+                }
+            }
+        }
+    }
+}
+
 impl HLIRVisitorMut<'_> for ScopeResolver {
     fn visit_block_mut(&mut self, block: &mut Block, hlir: &mut HLIRDisjointMut<'_>) {
         if block.root_block {
@@ -226,14 +254,9 @@ impl HLIRVisitorMut<'_> for ScopeResolver {
     fn visit_function_param_mut(
         &mut self,
         parameter: &mut Parameter,
-        _hlir: &mut HLIRDisjointMut<'_>,
+        hlir: &mut HLIRDisjointMut<'_>,
     ) {
-        if let Err(e) = self
-            .current_scope_mut()
-            .add_definition_result(parameter.ident.str(), parameter.id.into())
-        {
-            self.errors.push(e);
-        }
+        self.handle_pattern_from_id(hlir.nonmut_ref(), parameter.binding, false);
     }
 
     fn visit_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'_>) {
@@ -253,8 +276,7 @@ impl HLIRVisitorMut<'_> for ScopeResolver {
         let_statement: &mut LetStatement,
         hlir: &mut HLIRDisjointMut<'_>,
     ) {
-        self.current_scope_mut()
-            .add_definition_overwrite(let_statement.ident.str(), id.into());
+        self.handle_pattern_from_id(hlir.nonmut_ref(), let_statement.binding, true);
 
         self.super_let_statement_mut(id, let_statement, hlir);
     }

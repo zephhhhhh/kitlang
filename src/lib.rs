@@ -29,6 +29,9 @@ pub mod token;
 // Re-export macros for use in downstream crates.
 pub use kitlang_macros as macros;
 
+/// A small vector type used throughout Kitlang for performance where a small vector is expected.
+pub type KitSmallVec<T> = smolvec::SmolVec<T>;
+
 use crate::{ast::SourceSpan, spanned_error::SpannedErrorBuilder};
 
 #[cfg(feature = "webasm")]

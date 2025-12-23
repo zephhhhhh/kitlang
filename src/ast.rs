@@ -1435,41 +1435,30 @@ pub enum LocalKind {
 /// initial value.
 #[derive(Clone, PartialEq)]
 pub struct Local {
-    pub ident: SpannedIdent,
+    pub pattern: BindingPattern,
     pub ty: Ty,
     pub kind: LocalKind,
-    pub mutable: Mutability,
 }
 
 impl Local {
     #[inline]
     #[must_use]
-    pub const fn new(ident: SpannedIdent, ty: Ty, kind: LocalKind, mutable: Mutability) -> Self {
-        Self {
-            ident,
-            ty,
-            kind,
-            mutable,
-        }
+    pub const fn new(pattern: BindingPattern, ty: Ty, kind: LocalKind) -> Self {
+        Self { pattern, ty, kind }
     }
 
     #[inline]
     #[must_use]
-    pub fn new_boxed(
-        ident: SpannedIdent,
-        ty: Ty,
-        kind: LocalKind,
-        mutable: Mutability,
-    ) -> Box<Self> {
-        Box::new(Self::new(ident, ty, kind, mutable))
+    pub fn new_boxed(pattern: BindingPattern, ty: Ty, kind: LocalKind) -> Box<Self> {
+        Box::new(Self::new(pattern, ty, kind))
     }
 
     #[allow(clippy::missing_errors_doc)]
     #[inline]
     pub fn fmt_with_name(&self, f: &mut std::fmt::Formatter<'_>, name: &str) -> std::fmt::Result {
         let info = format!(
-            "{{ name: {:?}, type: {:?}, {:?} }}",
-            self.ident, self.ty, self.mutable
+            "{{ pattern: {:?}, type: {:?}, {:?} }}",
+            self.pattern, self.ty, self.kind
         );
         f.debug_struct(name)
             .field_with("info", |a| write!(a, "{info}"))
@@ -1537,26 +1526,82 @@ impl Block {
     }
 }
 
+/// A pattern used when binding variables, such as in a `let` statement.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BindingPattern {
+    Variable(SpannedIdent, Mutability),
+    Tuple(Vec<BindingPattern>, SourceSpan),
+}
+
+impl BindingPattern {
+    /// Returns `true` if the binding pattern is a single variable.
+    #[inline]
+    #[must_use]
+    pub fn is_variable(&self) -> bool {
+        matches!(self, Self::Variable(_, _))
+    }
+
+    /// Returns `true` if the binding pattern is a single variable.
+    #[inline]
+    #[must_use]
+    pub fn is_tuple(&self) -> bool {
+        matches!(self, Self::Tuple(..))
+    }
+
+    /// Returns the span of the binding pattern.
+    #[inline]
+    #[must_use]
+    pub fn span(&self) -> SourceSpan {
+        match self {
+            Self::Variable(i, _) => i.span,
+            Self::Tuple(_, span) => *span,
+        }
+    }
+
+    /// Returns a string representation of the binding pattern.
+    #[inline]
+    #[must_use]
+    pub fn pat_ident_str(&self) -> String {
+        match &self {
+            BindingPattern::Variable(ident, _) => ident.str().to_string(),
+            BindingPattern::Tuple(t, _) => {
+                let mut repr = "(".to_string();
+                for (i, pat) in t.iter().enumerate() {
+                    if i > 0 {
+                        repr.push_str(", ");
+                    }
+                    repr.push_str(&pat.pat_ident_str());
+                }
+                repr.push(')');
+                repr
+            }
+        }
+    }
+}
+
 /// An individual parameter to a function, includes the name `Identifier`, the [`Ty`] of the
 /// parameter, as well as if it is declared as `mutable` or not.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Parameter {
-    pub ident: SpannedIdent,
+    pub pattern: BindingPattern,
     pub ty: Ty,
-    pub mutable: Mutability,
     pub span: SourceSpan,
 }
 
 impl Parameter {
     #[inline]
     #[must_use]
-    pub const fn new(ident: SpannedIdent, ty: Ty, mutable: Mutability, span: SourceSpan) -> Self {
-        Self {
-            ident,
-            ty,
-            mutable,
-            span,
-        }
+    pub const fn new(pattern: BindingPattern, ty: Ty, span: SourceSpan) -> Self {
+        Self { pattern, ty, span }
+    }
+
+    /// Returns `true` if the parameter is named `self`, indicating it's the self parameter of a method.
+    #[inline]
+    #[must_use]
+    pub fn is_self_param(&self) -> bool {
+        matches!((&self.pattern, &self.ty),
+            (BindingPattern::Variable(ident, _), Ty::This(..)) if ident.str() == "self"
+        )
     }
 }
 
@@ -1564,8 +1609,8 @@ impl Debug for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Parameter {{ name: {:?}, type: {:?}, mutable: {:?} }}",
-            self.ident, self.ty, self.mutable
+            "Parameter {{ pattern: {:?}, type: {:?} }}",
+            self.pattern, self.ty
         )
     }
 }
