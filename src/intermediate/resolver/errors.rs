@@ -148,10 +148,10 @@ impl ResolutionFailure {
     pub fn error_message_for(&self, target_ident: &str) -> String {
         match self {
             Self::NotFound => {
-                format!("The referenced item '{target_ident}' was not found.")
+                format!("Failed to resolve referenced item `{target_ident}`.")
             }
             Self::Inaccessible => format!(
-                "The referenced item '{target_ident}' is not accessible from the current scope."
+                "The referenced item `{target_ident}` is not accessible from the current scope."
             ),
         }
     }
