@@ -523,6 +523,19 @@ impl HIRToMIRFuncLowerer<'_> {
 }
 
 impl HIRToMIRFuncLowerer<'_> {
+    #[inline]
+    fn get_let_statement_binding(hlir: &HLIR, statement_id: HirId) -> Option<HirId> {
+        let HirNode::Statement(let_stmt) = hlir.get_hir_node(statement_id)? else {
+            return None;
+        };
+        let StatementKind::Let(local) = &let_stmt.kind else {
+            return None;
+        };
+        Some(local.binding)
+    }
+}
+
+impl HIRToMIRFuncLowerer<'_> {
     fn lower_if(
         &mut self,
         hlir: &HLIR,
@@ -661,6 +674,15 @@ impl HIRToMIRFuncLowerer<'_> {
                 push_lower_err!(self, hlir, iterable_id, "Iterable is not a range.");
                 return;
             };
+            let Some(statement_binding) = Self::get_let_statement_binding(hlir, binding_id) else {
+                push_lower_err!(
+                    self,
+                    hlir,
+                    binding_id,
+                    "Failed to get for loop binding let statement."
+                );
+                return;
+            };
 
             let Some(binding_init_rhs_local) = self.visit_expr_assigned(*min_expr, hlir) else {
                 push_lower_err!(
@@ -675,7 +697,7 @@ impl HIRToMIRFuncLowerer<'_> {
             self.builder_mut_expect()
                 .push_assign(binding_local.into(), RValue::copy(binding_init_rhs_local));
             self.emit_and_replace_block();
-            self.lut.insert(binding_id, binding_local);
+            self.lut.insert(statement_binding, binding_local);
             (*inclusive, *max_expr)
         };
 
