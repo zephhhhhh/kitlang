@@ -148,10 +148,10 @@
 <a href=#148 id=148 data-nosnippet>148</a>    </span><span class="kw">pub fn </span>error_message_for(<span class="kw-2">&amp;</span><span class="self">self</span>, target_ident: <span class="kw-2">&amp;</span>str) -&gt; String {
 <a href=#149 id=149 data-nosnippet>149</a>        <span class="kw">match </span><span class="self">self </span>{
 <a href=#150 id=150 data-nosnippet>150</a>            <span class="self">Self</span>::NotFound =&gt; {
-<a href=#151 id=151 data-nosnippet>151</a>                <span class="macro">format!</span>(<span class="string">"The referenced item '{target_ident}' was not found."</span>)
+<a href=#151 id=151 data-nosnippet>151</a>                <span class="macro">format!</span>(<span class="string">"Failed to resolve referenced item `{target_ident}`."</span>)
 <a href=#152 id=152 data-nosnippet>152</a>            }
 <a href=#153 id=153 data-nosnippet>153</a>            <span class="self">Self</span>::Inaccessible =&gt; <span class="macro">format!</span>(
-<a href=#154 id=154 data-nosnippet>154</a>                <span class="string">"The referenced item '{target_ident}' is not accessible from the current scope."
+<a href=#154 id=154 data-nosnippet>154</a>                <span class="string">"The referenced item `{target_ident}` is not accessible from the current scope."
 <a href=#155 id=155 data-nosnippet>155</a>            </span>),
 <a href=#156 id=156 data-nosnippet>156</a>        }
 <a href=#157 id=157 data-nosnippet>157</a>    }
