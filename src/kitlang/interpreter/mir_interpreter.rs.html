@@ -1148,7 +1148,7 @@
 <a href=#1148 id=1148 data-nosnippet>1148</a>    }
 <a href=#1149 id=1149 data-nosnippet>1149</a>    <span class="attr">#[kitlang_native_fn]
 <a href=#1150 id=1150 data-nosnippet>1150</a>    </span><span class="kw">fn </span>string_to_i64(s: String) -&gt; (i64, bool) {
-<a href=#1151 id=1151 data-nosnippet>1151</a>        s.parse::&lt;i64&gt;().map(|v| (v, <span class="bool-val">true</span>)).unwrap_or((<span class="number">0</span>, <span class="bool-val">false</span>))
+<a href=#1151 id=1151 data-nosnippet>1151</a>        s.parse::&lt;i64&gt;().map(|v| (v, <span class="bool-val">false</span>)).unwrap_or((<span class="number">0</span>, <span class="bool-val">true</span>))
 <a href=#1152 id=1152 data-nosnippet>1152</a>    }
 <a href=#1153 id=1153 data-nosnippet>1153</a>    <span class="attr">#[kitlang_native_fn]
 <a href=#1154 id=1154 data-nosnippet>1154</a>    </span><span class="kw">fn </span>f64_to_string(x: f64) -&gt; String {
@@ -1156,7 +1156,7 @@
 <a href=#1156 id=1156 data-nosnippet>1156</a>    }
 <a href=#1157 id=1157 data-nosnippet>1157</a>    <span class="attr">#[kitlang_native_fn]
 <a href=#1158 id=1158 data-nosnippet>1158</a>    </span><span class="kw">fn </span>string_to_f64(s: String) -&gt; (f64, bool) {
-<a href=#1159 id=1159 data-nosnippet>1159</a>        s.parse::&lt;f64&gt;().map(|v| (v, <span class="bool-val">true</span>)).unwrap_or((<span class="number">0.0</span>, <span class="bool-val">false</span>))
+<a href=#1159 id=1159 data-nosnippet>1159</a>        s.parse::&lt;f64&gt;().map(|v| (v, <span class="bool-val">false</span>)).unwrap_or((<span class="number">0.0</span>, <span class="bool-val">true</span>))
 <a href=#1160 id=1160 data-nosnippet>1160</a>    }
 <a href=#1161 id=1161 data-nosnippet>1161</a>    <span class="attr">#[kitlang_native_fn]
 <a href=#1162 id=1162 data-nosnippet>1162</a>    </span><span class="kw">fn </span>u64_to_string(x: u64) -&gt; String {
@@ -1164,7 +1164,7 @@
 <a href=#1164 id=1164 data-nosnippet>1164</a>    }
 <a href=#1165 id=1165 data-nosnippet>1165</a>    <span class="attr">#[kitlang_native_fn]
 <a href=#1166 id=1166 data-nosnippet>1166</a>    </span><span class="kw">fn </span>string_to_u64(s: String) -&gt; (u64, bool) {
-<a href=#1167 id=1167 data-nosnippet>1167</a>        s.parse::&lt;u64&gt;().map(|v| (v, <span class="bool-val">true</span>)).unwrap_or((<span class="number">0</span>, <span class="bool-val">false</span>))
+<a href=#1167 id=1167 data-nosnippet>1167</a>        s.parse::&lt;u64&gt;().map(|v| (v, <span class="bool-val">false</span>)).unwrap_or((<span class="number">0</span>, <span class="bool-val">true</span>))
 <a href=#1168 id=1168 data-nosnippet>1168</a>    }
 <a href=#1169 id=1169 data-nosnippet>1169</a>    <span class="attr">#[kitlang_native_fn]
 <a href=#1170 id=1170 data-nosnippet>1170</a>    </span><span class="kw">fn </span>bool_to_string(x: bool) -&gt; String {
@@ -1173,8 +1173,8 @@
 <a href=#1173 id=1173 data-nosnippet>1173</a>    <span class="attr">#[kitlang_native_fn]
 <a href=#1174 id=1174 data-nosnippet>1174</a>    </span><span class="kw">fn </span>string_to_bool(s: String) -&gt; (bool, bool) {
 <a href=#1175 id=1175 data-nosnippet>1175</a>        s.parse::&lt;bool&gt;()
-<a href=#1176 id=1176 data-nosnippet>1176</a>            .map(|v| (v, <span class="bool-val">true</span>))
-<a href=#1177 id=1177 data-nosnippet>1177</a>            .unwrap_or((<span class="bool-val">false</span>, <span class="bool-val">false</span>))
+<a href=#1176 id=1176 data-nosnippet>1176</a>            .map(|v| (v, <span class="bool-val">false</span>))
+<a href=#1177 id=1177 data-nosnippet>1177</a>            .unwrap_or((<span class="bool-val">false</span>, <span class="bool-val">true</span>))
 <a href=#1178 id=1178 data-nosnippet>1178</a>    }
 <a href=#1179 id=1179 data-nosnippet>1179</a>    <span class="attr">#[kitlang_native_fn]
 <a href=#1180 id=1180 data-nosnippet>1180</a>    </span><span class="kw">fn </span>is_empty(s: String) -&gt; bool {
