@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["mir_interpreter","native_functions"]};
+window.SIDEBAR_ITEMS = {"mod":["errors","mir_interpreter","native_functions"]};

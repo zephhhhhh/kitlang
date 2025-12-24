@@ -132,7 +132,7 @@
 <a href=#132 id=132 data-nosnippet>132</a>    </span><span class="kw">pub fn </span>format_as_error_message(<span class="kw-2">&amp;</span><span class="self">self</span>, source_string: <span class="kw-2">&amp;</span>str) -&gt; String {
 <a href=#133 id=133 data-nosnippet>133</a>        SpannedErrorBuilder::new(source_string, <span class="self">self</span>.span)
 <a href=#134 id=134 data-nosnippet>134</a>            .generate_highlight()
-<a href=#135 id=135 data-nosnippet>135</a>            .print_header_line(<span class="macro">format!</span>(<span class="string">"Error: {}"</span>, <span class="self">self</span>.error_kind))
+<a href=#135 id=135 data-nosnippet>135</a>            .print_header_line(<span class="macro">format!</span>(<span class="string">"{}"</span>, <span class="self">self</span>.error_kind))
 <a href=#136 id=136 data-nosnippet>136</a>            .generate_output()
 <a href=#137 id=137 data-nosnippet>137</a>    }
 <a href=#138 id=138 data-nosnippet>138</a>}
