@@ -64,86 +64,89 @@
 <a href=#64 id=64 data-nosnippet>64</a>    <span class="attr">#[error(<span class="string">"Unexpected token: {0:?}"</span>)]
 <a href=#65 id=65 data-nosnippet>65</a>    </span>UnexpectedToken(TokenKind),
 <a href=#66 id=66 data-nosnippet>66</a>
-<a href=#67 id=67 data-nosnippet>67</a>    <span class="attr">#[error(<span class="string">"Invalid path, path separator must be '::' and all segments must be identifiers"</span>)]
-<a href=#68 id=68 data-nosnippet>68</a>    </span>InvalidPath,
+<a href=#67 id=67 data-nosnippet>67</a>    <span class="attr">#[error(<span class="string">"Expected left hand side for `{0}` expression"</span>)]
+<a href=#68 id=68 data-nosnippet>68</a>    </span>ExpectedLHSExpression(String),
 <a href=#69 id=69 data-nosnippet>69</a>
-<a href=#70 id=70 data-nosnippet>70</a>    <span class="attr">#[error(<span class="string">"Found an invalid binary operator"</span>)]
-<a href=#71 id=71 data-nosnippet>71</a>    </span>InvalidBinaryOperator,
+<a href=#70 id=70 data-nosnippet>70</a>    <span class="attr">#[error(<span class="string">"Invalid path, path separator must be '::' and all segments must be identifiers"</span>)]
+<a href=#71 id=71 data-nosnippet>71</a>    </span>InvalidPath,
 <a href=#72 id=72 data-nosnippet>72</a>
-<a href=#73 id=73 data-nosnippet>73</a>    <span class="attr">#[error(<span class="string">"Tried to parse AST type, but there were no available tokens"</span>)]
-<a href=#74 id=74 data-nosnippet>74</a>    </span>NoTokens,
-<a href=#75 id=75 data-nosnippet>75</a>    <span class="attr">#[error(<span class="string">"Unterminated string literal."</span>)]
-<a href=#76 id=76 data-nosnippet>76</a>    </span>UnterminatedStringLiteral,
-<a href=#77 id=77 data-nosnippet>77</a>
-<a href=#78 id=78 data-nosnippet>78</a>    <span class="attr">#[error(<span class="string">"A function marked 'native' cannot define a function body"</span>)]
-<a href=#79 id=79 data-nosnippet>79</a>    </span>NativeFunctionCannotDefineABody,
+<a href=#73 id=73 data-nosnippet>73</a>    <span class="attr">#[error(<span class="string">"Found an invalid binary operator"</span>)]
+<a href=#74 id=74 data-nosnippet>74</a>    </span>InvalidBinaryOperator,
+<a href=#75 id=75 data-nosnippet>75</a>
+<a href=#76 id=76 data-nosnippet>76</a>    <span class="attr">#[error(<span class="string">"Tried to parse AST type, but there were no available tokens"</span>)]
+<a href=#77 id=77 data-nosnippet>77</a>    </span>NoTokens,
+<a href=#78 id=78 data-nosnippet>78</a>    <span class="attr">#[error(<span class="string">"Unterminated string literal."</span>)]
+<a href=#79 id=79 data-nosnippet>79</a>    </span>UnterminatedStringLiteral,
 <a href=#80 id=80 data-nosnippet>80</a>
-<a href=#81 id=81 data-nosnippet>81</a>    <span class="attr">#[error(<span class="string">"Feature not implemented: {0}"</span>)]
-<a href=#82 id=82 data-nosnippet>82</a>    </span>UnimplementedFeature(String),
-<a href=#83 id=83 data-nosnippet>83</a>    <span class="attr">#[error(<span class="string">"Unknown literal kind: {0:?}"</span>)]
-<a href=#84 id=84 data-nosnippet>84</a>    </span>UnknownLiteralKind(TokenKind),
-<a href=#85 id=85 data-nosnippet>85</a>}
-<a href=#86 id=86 data-nosnippet>86</a>
-<a href=#87 id=87 data-nosnippet>87</a><span class="kw">impl </span>ParseErrorKind {
-<a href=#88 id=88 data-nosnippet>88</a>    <span class="doccomment">/// Create a new [`ParseError`] from this kind and the given [`SourceSpan`].
-<a href=#89 id=89 data-nosnippet>89</a>    </span><span class="attr">#[inline]
-<a href=#90 id=90 data-nosnippet>90</a>    #[must_use]
-<a href=#91 id=91 data-nosnippet>91</a>    </span><span class="kw">pub fn </span>with_span(<span class="kw-2">&amp;</span><span class="self">self</span>, span: <span class="kw">impl </span>Into&lt;SourceSpan&gt;) -&gt; ParseError {
-<a href=#92 id=92 data-nosnippet>92</a>        ParseError::new(<span class="self">self</span>.clone(), span.into())
-<a href=#93 id=93 data-nosnippet>93</a>    }
-<a href=#94 id=94 data-nosnippet>94</a>
-<a href=#95 id=95 data-nosnippet>95</a>    <span class="doccomment">/// Create a new [`ParseError`] from this kind and a null [`SourceSpan`].
-<a href=#96 id=96 data-nosnippet>96</a>    </span><span class="attr">#[inline]
-<a href=#97 id=97 data-nosnippet>97</a>    #[must_use]
-<a href=#98 id=98 data-nosnippet>98</a>    </span><span class="kw">pub fn </span>with_no_span(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; ParseError {
-<a href=#99 id=99 data-nosnippet>99</a>        ParseError::new(<span class="self">self</span>.clone(), SourceSpan::null_span())
-<a href=#100 id=100 data-nosnippet>100</a>    }
-<a href=#101 id=101 data-nosnippet>101</a>}
-<a href=#102 id=102 data-nosnippet>102</a>
-<a href=#103 id=103 data-nosnippet>103</a><span class="doccomment">/// Represents an error while parsing the tokens produced by the lexer into an AST.
-<a href=#104 id=104 data-nosnippet>104</a></span><span class="attr">#[derive(Debug, Error)]
-<a href=#105 id=105 data-nosnippet>105</a></span><span class="kw">pub struct </span>ParseError {
-<a href=#106 id=106 data-nosnippet>106</a>    <span class="kw">pub </span>span: SourceSpan,
-<a href=#107 id=107 data-nosnippet>107</a>    <span class="attr">#[source]
-<a href=#108 id=108 data-nosnippet>108</a>    </span><span class="kw">pub </span>error_kind: ParseErrorKind,
-<a href=#109 id=109 data-nosnippet>109</a>}
-<a href=#110 id=110 data-nosnippet>110</a>
-<a href=#111 id=111 data-nosnippet>111</a><span class="kw">impl </span>ParseError {
-<a href=#112 id=112 data-nosnippet>112</a>    <span class="doccomment">/// Create a new [`ParseError`] from the given kind and source span.
-<a href=#113 id=113 data-nosnippet>113</a>    </span><span class="attr">#[inline]
-<a href=#114 id=114 data-nosnippet>114</a>    #[must_use]
-<a href=#115 id=115 data-nosnippet>115</a>    </span><span class="kw">pub fn </span>new(kind: <span class="kw">impl </span>Into&lt;ParseErrorKind&gt;, span: <span class="kw">impl </span>Into&lt;SourceSpan&gt;) -&gt; <span class="self">Self </span>{
-<a href=#116 id=116 data-nosnippet>116</a>        <span class="self">Self </span>{
-<a href=#117 id=117 data-nosnippet>117</a>            error_kind: kind.into(),
-<a href=#118 id=118 data-nosnippet>118</a>            span: span.into(),
-<a href=#119 id=119 data-nosnippet>119</a>        }
-<a href=#120 id=120 data-nosnippet>120</a>    }
-<a href=#121 id=121 data-nosnippet>121</a>
-<a href=#122 id=122 data-nosnippet>122</a>    <span class="doccomment">/// Create a new [`ParseError`] indicating that there were no tokens to parse.
-<a href=#123 id=123 data-nosnippet>123</a>    </span><span class="attr">#[inline]
-<a href=#124 id=124 data-nosnippet>124</a>    #[must_use]
-<a href=#125 id=125 data-nosnippet>125</a>    </span><span class="kw">pub fn </span>no_tokens(span: <span class="kw">impl </span>Into&lt;SourceSpan&gt;) -&gt; <span class="self">Self </span>{
-<a href=#126 id=126 data-nosnippet>126</a>        <span class="self">Self</span>::new(ParseErrorKind::NoTokens, span)
-<a href=#127 id=127 data-nosnippet>127</a>    }
-<a href=#128 id=128 data-nosnippet>128</a>
-<a href=#129 id=129 data-nosnippet>129</a>    <span class="doccomment">/// Format the error as an error message, given the source code string.
-<a href=#130 id=130 data-nosnippet>130</a>    </span><span class="attr">#[inline]
-<a href=#131 id=131 data-nosnippet>131</a>    #[must_use]
-<a href=#132 id=132 data-nosnippet>132</a>    </span><span class="kw">pub fn </span>format_as_error_message(<span class="kw-2">&amp;</span><span class="self">self</span>, source_string: <span class="kw-2">&amp;</span>str) -&gt; String {
-<a href=#133 id=133 data-nosnippet>133</a>        SpannedErrorBuilder::new(source_string, <span class="self">self</span>.span)
-<a href=#134 id=134 data-nosnippet>134</a>            .generate_highlight()
-<a href=#135 id=135 data-nosnippet>135</a>            .print_header_line(<span class="macro">format!</span>(<span class="string">"{}"</span>, <span class="self">self</span>.error_kind))
-<a href=#136 id=136 data-nosnippet>136</a>            .generate_output()
-<a href=#137 id=137 data-nosnippet>137</a>    }
-<a href=#138 id=138 data-nosnippet>138</a>}
-<a href=#139 id=139 data-nosnippet>139</a>
-<a href=#140 id=140 data-nosnippet>140</a><span class="kw">impl </span>Display <span class="kw">for </span>ParseError {
-<a href=#141 id=141 data-nosnippet>141</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; std::fmt::Result {
-<a href=#142 id=142 data-nosnippet>142</a>        <span class="macro">write!</span>(
-<a href=#143 id=143 data-nosnippet>143</a>            f,
-<a href=#144 id=144 data-nosnippet>144</a>            <span class="string">"Error: {}, Location: [{}..{}]"</span>,
-<a href=#145 id=145 data-nosnippet>145</a>            <span class="self">self</span>.error_kind, <span class="self">self</span>.span.start, <span class="self">self</span>.span.end
-<a href=#146 id=146 data-nosnippet>146</a>        )
-<a href=#147 id=147 data-nosnippet>147</a>    }
-<a href=#148 id=148 data-nosnippet>148</a>}
+<a href=#81 id=81 data-nosnippet>81</a>    <span class="attr">#[error(<span class="string">"A function marked 'native' cannot define a function body"</span>)]
+<a href=#82 id=82 data-nosnippet>82</a>    </span>NativeFunctionCannotDefineABody,
+<a href=#83 id=83 data-nosnippet>83</a>
+<a href=#84 id=84 data-nosnippet>84</a>    <span class="attr">#[error(<span class="string">"Feature not implemented: {0}"</span>)]
+<a href=#85 id=85 data-nosnippet>85</a>    </span>UnimplementedFeature(String),
+<a href=#86 id=86 data-nosnippet>86</a>    <span class="attr">#[error(<span class="string">"Unknown literal kind: {0:?}"</span>)]
+<a href=#87 id=87 data-nosnippet>87</a>    </span>UnknownLiteralKind(TokenKind),
+<a href=#88 id=88 data-nosnippet>88</a>}
+<a href=#89 id=89 data-nosnippet>89</a>
+<a href=#90 id=90 data-nosnippet>90</a><span class="kw">impl </span>ParseErrorKind {
+<a href=#91 id=91 data-nosnippet>91</a>    <span class="doccomment">/// Create a new [`ParseError`] from this kind and the given [`SourceSpan`].
+<a href=#92 id=92 data-nosnippet>92</a>    </span><span class="attr">#[inline]
+<a href=#93 id=93 data-nosnippet>93</a>    #[must_use]
+<a href=#94 id=94 data-nosnippet>94</a>    </span><span class="kw">pub fn </span>with_span(<span class="kw-2">&amp;</span><span class="self">self</span>, span: <span class="kw">impl </span>Into&lt;SourceSpan&gt;) -&gt; ParseError {
+<a href=#95 id=95 data-nosnippet>95</a>        ParseError::new(<span class="self">self</span>.clone(), span.into())
+<a href=#96 id=96 data-nosnippet>96</a>    }
+<a href=#97 id=97 data-nosnippet>97</a>
+<a href=#98 id=98 data-nosnippet>98</a>    <span class="doccomment">/// Create a new [`ParseError`] from this kind and a null [`SourceSpan`].
+<a href=#99 id=99 data-nosnippet>99</a>    </span><span class="attr">#[inline]
+<a href=#100 id=100 data-nosnippet>100</a>    #[must_use]
+<a href=#101 id=101 data-nosnippet>101</a>    </span><span class="kw">pub fn </span>with_no_span(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; ParseError {
+<a href=#102 id=102 data-nosnippet>102</a>        ParseError::new(<span class="self">self</span>.clone(), SourceSpan::null_span())
+<a href=#103 id=103 data-nosnippet>103</a>    }
+<a href=#104 id=104 data-nosnippet>104</a>}
+<a href=#105 id=105 data-nosnippet>105</a>
+<a href=#106 id=106 data-nosnippet>106</a><span class="doccomment">/// Represents an error while parsing the tokens produced by the lexer into an AST.
+<a href=#107 id=107 data-nosnippet>107</a></span><span class="attr">#[derive(Debug, Error)]
+<a href=#108 id=108 data-nosnippet>108</a></span><span class="kw">pub struct </span>ParseError {
+<a href=#109 id=109 data-nosnippet>109</a>    <span class="kw">pub </span>span: SourceSpan,
+<a href=#110 id=110 data-nosnippet>110</a>    <span class="attr">#[source]
+<a href=#111 id=111 data-nosnippet>111</a>    </span><span class="kw">pub </span>error_kind: ParseErrorKind,
+<a href=#112 id=112 data-nosnippet>112</a>}
+<a href=#113 id=113 data-nosnippet>113</a>
+<a href=#114 id=114 data-nosnippet>114</a><span class="kw">impl </span>ParseError {
+<a href=#115 id=115 data-nosnippet>115</a>    <span class="doccomment">/// Create a new [`ParseError`] from the given kind and source span.
+<a href=#116 id=116 data-nosnippet>116</a>    </span><span class="attr">#[inline]
+<a href=#117 id=117 data-nosnippet>117</a>    #[must_use]
+<a href=#118 id=118 data-nosnippet>118</a>    </span><span class="kw">pub fn </span>new(kind: <span class="kw">impl </span>Into&lt;ParseErrorKind&gt;, span: <span class="kw">impl </span>Into&lt;SourceSpan&gt;) -&gt; <span class="self">Self </span>{
+<a href=#119 id=119 data-nosnippet>119</a>        <span class="self">Self </span>{
+<a href=#120 id=120 data-nosnippet>120</a>            error_kind: kind.into(),
+<a href=#121 id=121 data-nosnippet>121</a>            span: span.into(),
+<a href=#122 id=122 data-nosnippet>122</a>        }
+<a href=#123 id=123 data-nosnippet>123</a>    }
+<a href=#124 id=124 data-nosnippet>124</a>
+<a href=#125 id=125 data-nosnippet>125</a>    <span class="doccomment">/// Create a new [`ParseError`] indicating that there were no tokens to parse.
+<a href=#126 id=126 data-nosnippet>126</a>    </span><span class="attr">#[inline]
+<a href=#127 id=127 data-nosnippet>127</a>    #[must_use]
+<a href=#128 id=128 data-nosnippet>128</a>    </span><span class="kw">pub fn </span>no_tokens(span: <span class="kw">impl </span>Into&lt;SourceSpan&gt;) -&gt; <span class="self">Self </span>{
+<a href=#129 id=129 data-nosnippet>129</a>        <span class="self">Self</span>::new(ParseErrorKind::NoTokens, span)
+<a href=#130 id=130 data-nosnippet>130</a>    }
+<a href=#131 id=131 data-nosnippet>131</a>
+<a href=#132 id=132 data-nosnippet>132</a>    <span class="doccomment">/// Format the error as an error message, given the source code string.
+<a href=#133 id=133 data-nosnippet>133</a>    </span><span class="attr">#[inline]
+<a href=#134 id=134 data-nosnippet>134</a>    #[must_use]
+<a href=#135 id=135 data-nosnippet>135</a>    </span><span class="kw">pub fn </span>format_as_error_message(<span class="kw-2">&amp;</span><span class="self">self</span>, source_string: <span class="kw-2">&amp;</span>str) -&gt; String {
+<a href=#136 id=136 data-nosnippet>136</a>        SpannedErrorBuilder::new(source_string, <span class="self">self</span>.span)
+<a href=#137 id=137 data-nosnippet>137</a>            .generate_highlight()
+<a href=#138 id=138 data-nosnippet>138</a>            .print_header_line(<span class="macro">format!</span>(<span class="string">"{}"</span>, <span class="self">self</span>.error_kind))
+<a href=#139 id=139 data-nosnippet>139</a>            .generate_output()
+<a href=#140 id=140 data-nosnippet>140</a>    }
+<a href=#141 id=141 data-nosnippet>141</a>}
+<a href=#142 id=142 data-nosnippet>142</a>
+<a href=#143 id=143 data-nosnippet>143</a><span class="kw">impl </span>Display <span class="kw">for </span>ParseError {
+<a href=#144 id=144 data-nosnippet>144</a>    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; std::fmt::Result {
+<a href=#145 id=145 data-nosnippet>145</a>        <span class="macro">write!</span>(
+<a href=#146 id=146 data-nosnippet>146</a>            f,
+<a href=#147 id=147 data-nosnippet>147</a>            <span class="string">"Error: {}, Location: [{}..{}]"</span>,
+<a href=#148 id=148 data-nosnippet>148</a>            <span class="self">self</span>.error_kind, <span class="self">self</span>.span.start, <span class="self">self</span>.span.end
+<a href=#149 id=149 data-nosnippet>149</a>        )
+<a href=#150 id=150 data-nosnippet>150</a>    }
+<a href=#151 id=151 data-nosnippet>151</a>}
 </code></pre></div></section></main></body></html>
