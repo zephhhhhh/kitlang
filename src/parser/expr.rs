@@ -146,6 +146,12 @@ impl Parser<'_, '_> {
                 Keyword::Return => self.parse_return(),
                 Keyword::This => self.parse_self(),
                 Keyword::Break => self.parse_break(),
+                Keyword::As => {
+                    Err(ParseError::new(
+                        ParseErrorKind::ExpectedLHSExpression("cast".to_string()),
+                        token,
+                    ))
+                }
                 _ => {
                     return Err(ParseError::new(
                         ParseErrorKind::UnimplementedFeature(format!("Keyword: {kw:?}")),

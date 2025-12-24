@@ -64,6 +64,9 @@ pub enum ParseErrorKind {
     #[error("Unexpected token: {0:?}")]
     UnexpectedToken(TokenKind),
 
+    #[error("Expected left hand side for `{0}` expression")]
+    ExpectedLHSExpression(String),
+
     #[error("Invalid path, path separator must be '::' and all segments must be identifiers")]
     InvalidPath,
 
