@@ -718,6 +718,13 @@ impl HLIRLowerer<'_> {
                 }
                 Ok(ExprKind::Tuple(element_ids))
             }
+            ast::ExpressionKind::ArrayInit(element_exprs) => {
+                let mut element_ids = Vec::new();
+                for element_expr in element_exprs {
+                    element_ids.push(self.lower_expression(element_expr, owner_node)?);
+                }
+                Ok(ExprKind::ArrayInit(element_ids))
+            }
         }?;
 
         let hir_expr = Expr {

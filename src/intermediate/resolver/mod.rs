@@ -16,6 +16,8 @@
 
 pub mod errors;
 
+use itertools::Itertools;
+
 #[cfg(doc)]
 use crate::intermediate::hir::HirId;
 #[cfg(doc)]
@@ -279,6 +281,42 @@ impl TypeRegistry {
     #[must_use]
     pub fn adt_types(&self) -> &[ADTTypeInfo] {
         &self.store
+    }
+
+    /// Attempts to get a human-readable type name for the given [`Type`].
+    #[inline]
+    #[must_use]
+    pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
+        match ty.into() {
+            Type::Unresolved(ty) => Some(ty.get_type_ident()),
+            Type::Resolved(KitTy::Abstract(ty_id)) => {
+                let abs_ty = self.get_from_type_id(ty_id)?;
+                let type_path = abs_ty.defined_in.extend_ident(&abs_ty.type_ident.ident);
+                Some(type_path.to_string())
+            }
+            Type::Resolved(KitTy::Tuple(ts)) => Some(format!(
+                "({})",
+                ts.iter()
+                    .map(|t| self.type_name(Type::Resolved(t.clone())))
+                    .join(", ")
+            )),
+            Type::Resolved(KitTy::Array(ty, size)) => Some(format!(
+                "[{}; {}]",
+                self.type_name(Type::Resolved(*ty)),
+                size
+            )),
+            Type::Resolved(KitTy::Slice(ty)) => {
+                Some(format!("[{}]", self.type_name(Type::Resolved(*ty))))
+            }
+            Type::Resolved(kit_ty) => kit_ty.to_type_str(),
+        }
+    }
+
+    /// Gets a human-readable type name for the given [`Type`], defaulting to `"??"` if it cannot be determined.
+    #[inline]
+    #[must_use]
+    pub fn type_name(&self, ty: impl Into<Type>) -> String {
+        self.try_type_name(ty).unwrap_or_else(|| String::from("??"))
     }
 }
 

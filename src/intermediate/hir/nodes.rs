@@ -969,6 +969,8 @@ pub enum ExprKind {
     Range(HirId, HirId, bool),
     /// Tuple expression with multiple elements
     Tuple(Vec<HirId>),
+    /// Array expression with multiple elements
+    ArrayInit(Vec<HirId>),
 }
 
 /// An expression in HIR, containing its kind and source span.

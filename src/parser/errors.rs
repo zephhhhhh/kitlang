@@ -28,6 +28,11 @@ pub enum ParseErrorKind {
     ExpectedToken(TokenKind, TokenKind),
     #[error("Expected token: {0:?}, but none was found")]
     ExpectedTokenFoundNone(TokenKind),
+    #[error("Expected literal, but found: {0:?}")]
+    ExpectedLiteral(TokenKind),
+
+    #[error("Expected integer array size specifier")]
+    InvalidArraySizeSpecifier,
 
     #[error("Invalid expression atom: {0:?}")]
     InvalidExpressionAtom(TokenKind),

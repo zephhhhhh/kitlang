@@ -25,7 +25,7 @@ use crate::ast::{
 
 use crate::lexer::tokenise_stripped;
 use crate::parser::errors::PResult;
-use crate::token::{Keyword, Punctuation, Token, TokenKind};
+use crate::token::{Keyword, LiteralKind, Punctuation, Token, TokenKind};
 
 pub use crate::parser::errors::{ParseError, ParseErrorKind};
 
@@ -394,8 +394,49 @@ impl Parser<'_, '_> {
         }
     }
 
+    /// Parse an array or slice type from the current cursor position.
+    /// # Example
+    /// ```ignore
+    /// [Ty; N]
+    /// [Ty]
+    /// ```
+    /// # Notes
+    /// Must be verified the type being parsed is _NOT_ a unit type `()` by the caller.
+    pub fn parse_array_or_slice_ty(&mut self) -> PResult<Ty> {
+        let span_start = self.begin_span();
+        self.expect_kind(Punctuation::OpenBracket)?;
+
+        let element_type = Box::new(self.parse_ty()?);
+
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        if self.check_kind_advance(Punctuation::SemiColon) {
+            // Array..
+            match self.expect_literal()? {
+                LiteralKind::Integer(len) => {
+                    self.expect_kind(Punctuation::CloseBracket)?;
+                    Ok(Ty::Array(
+                        element_type,
+                        len as usize,
+                        self.finish_span(span_start),
+                    ))
+                }
+                LiteralKind::Float(_) => Err(ParseError::new(
+                    ParseErrorKind::InvalidArraySizeSpecifier,
+                    self.cursor.current_span(),
+                )),
+            }
+        } else {
+            // Slice..
+            self.expect_kind(Punctuation::CloseBracket)?;
+            Ok(Ty::Slice(element_type, self.finish_span(span_start)))
+        }
+    }
+
     /// Parse a tuple type from the current cursor position.
+    /// # Example
+    /// ```ignore
     /// (Ty, Ty, ...)
+    /// ```
     /// # Notes
     /// Must be verified the type being parsed is _NOT_ a unit type `()` by the caller.
     pub fn parse_tuple_ty(&mut self) -> PResult<Ty> {
@@ -432,6 +473,7 @@ impl Parser<'_, '_> {
                     self.parse_tuple_ty()?
                 }
             }
+            TokenKind::Punctuation(Punctuation::OpenBracket) => self.parse_array_or_slice_ty()?,
             TokenKind::Keyword(Keyword::ThisTy) => {
                 let self_span_start = self.begin_span();
                 self.cursor.advance();
@@ -640,6 +682,26 @@ impl Parser<'_, '_> {
 
 // Expect..
 impl Parser<'_, '_> {
+    /// Expect that the token at the current cursor position is a literal.
+    ///
+    /// This function will advance the cursor by one position if a literal is found.
+    /// # Returns
+    /// *   `Ok(())` if the token at the cursor position is a literal.
+    /// *   `Err(ParseErrorKind::ExpectedLiteral)` if the token found at the current cursor position
+    ///     was not a literal.
+    /// *   `Err(ParseErrorKind::ExpectedTokenFoundNone)` if there are no more tokens in the
+    ///     stream, but it was expected that there were.
+    fn expect_literal(&mut self) -> PResult<LiteralKind> {
+        let token = self.peek()?.clone();
+        match &token.kind {
+            TokenKind::Literal(lit) => {
+                self.cursor.advance();
+                Ok(*lit)
+            }
+            k => Err(ParseErrorKind::ExpectedLiteral(k.clone()).with_span(token)),
+        }
+    }
+
     /// Expect that the token at the current cursor position is of a specified [`TokenKind`].
     ///
     /// This function will advance the cursor by one position if the `expected_kind` is found.

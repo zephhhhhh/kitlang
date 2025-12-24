@@ -139,6 +139,22 @@ impl TypeResolver<'_> {
                     .collect::<ResolveResult<Vec<KitTy>>>()?;
                 Ok(KitTy::Tuple(resolved_tys))
             }
+            Ty::Array(ty, size, _) => {
+                let arr_inner_type = if let Some(resolved_ty) = KitTy::try_from_ast_ty(ty) {
+                    Ok(resolved_ty)
+                } else {
+                    self.resolve_ast_type(ty)
+                };
+                Ok(KitTy::Array(Box::new(arr_inner_type?), *size))
+            }
+            Ty::Slice(ty, _) => {
+                let slice_inner_type = if let Some(resolved_ty) = KitTy::try_from_ast_ty(ty) {
+                    Ok(resolved_ty)
+                } else {
+                    self.resolve_ast_type(ty)
+                };
+                Ok(KitTy::Slice(Box::new(slice_inner_type?)))
+            }
             unk => Err(resolve_err!(
                 no_span,
                 "Cannot resolve type for unsupported AST type variant `{:?}` in `{}`",

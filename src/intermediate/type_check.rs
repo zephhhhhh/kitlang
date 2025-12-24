@@ -16,8 +16,6 @@
 
 use std::collections::HashMap;
 
-use itertools::Itertools;
-
 use crate::ast::{Literal, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
@@ -135,32 +133,11 @@ impl TypeChecker<'_> {
         }
     }
 
-    /// Attempts to get a human-readable type name for the given [`Type`].
-    #[inline]
-    #[must_use]
-    pub fn try_type_name(&self, ty: impl Into<Type>) -> Option<String> {
-        match ty.into() {
-            Type::Unresolved(ty) => Some(ty.get_type_ident()),
-            Type::Resolved(KitTy::Abstract(ty_id)) => {
-                let abs_ty = self.meta.type_registry.get_from_type_id(ty_id)?;
-                let type_path = abs_ty.defined_in.extend_ident(&abs_ty.type_ident.ident);
-                Some(type_path.to_string())
-            }
-            Type::Resolved(KitTy::Tuple(ts)) => Some(format!(
-                "({})",
-                ts.iter()
-                    .map(|t| self.type_name(Type::Resolved(t.clone())))
-                    .join(", ")
-            )),
-            Type::Resolved(kit_ty) => kit_ty.to_type_str(),
-        }
-    }
-
     /// Gets a human-readable type name for the given [`Type`], defaulting to `"??"` if it cannot be determined.
     #[inline]
     #[must_use]
     pub fn type_name(&self, ty: impl Into<Type>) -> String {
-        self.try_type_name(ty).unwrap_or_else(|| String::from("??"))
+        self.meta.type_registry.type_name(ty)
     }
 }
 
@@ -973,10 +950,10 @@ impl TypeChecker<'_> {
                 // TODO: Create a proper tuple type representation
                 Ok(Type::Resolved(KitTy::Tuple(element_types)))
             }
-            ExprKind::Index(_target_expr_id, index_expr_id) => {
-                // let target_type = self.eval_expr_type_by_id(*target_expr_id, hlir)?;
+            ExprKind::Index(target_expr_id, index_expr_id) => {
+                let target_type = self.eval_expr_type_by_id(*target_expr_id, hlir)?;
                 let index_type = self.eval_expr_type_by_id(*index_expr_id, hlir)?;
-                // let target_type_r = self.resolved_type(*target_expr_id, &target_type, hlir)?;
+                let target_type_r = self.resolved_type(*target_expr_id, &target_type, hlir)?;
                 let index_type_r = self.resolved_type(*index_expr_id, &index_type, hlir)?;
 
                 if !index_type_r.is_int() && !index_type_r.is_uint() {
@@ -988,23 +965,77 @@ impl TypeChecker<'_> {
                     ));
                 }
 
-                todo!()
-                // match target_type_r {
-                //     // Soon..
-                //     // KitTy::String => Ok(Type::Resolved(KitTy::Char)),
-                //     _ => Err(type_fail!(
-                //         hlir,
-                //         *target_expr_id,
-                //         "Type `{}` is not indexable.",
-                //         self.type_name(target_type)
-                //     )),
-                // }
-            } // unk @ ExprKind::Index(..) => Err(type_fail!(
-              //     hlir,
-              //     expr.id,
-              //     "Error unknown expression type: {:?}",
-              //     unk
-              // )),
+                match target_type_r {
+                    KitTy::Array(inner_ty, _size) => Ok(Type::Resolved(*inner_ty.clone())),
+                    KitTy::Slice(inner_ty) => Ok(Type::Resolved(*inner_ty.clone())),
+                    // TODO: String indexing to char..
+                    _ => Err(type_fail!(
+                        hlir,
+                        *target_expr_id,
+                        "Type `{}` is not indexable.",
+                        self.type_name(target_type)
+                    )),
+                }
+            }
+            ExprKind::ArrayInit(elems) => {
+                let expected_kit = expected.and_then(|e| e.resolved());
+                let mut expected_inner_ty = match expected_kit {
+                    Some(KitTy::Array(inner_ty, _) | KitTy::Slice(inner_ty)) => {
+                        Some(Type::Resolved(*inner_ty.clone()))
+                    }
+                    _ => None,
+                };
+
+                if elems.is_empty() {
+                    return if let Some(expected) = expected {
+                        Ok(expected.clone())
+                    } else {
+                        Err(type_fail!(
+                            hlir,
+                            expr.id,
+                            "Cannot infer type of empty array literal without expected type."
+                        ))
+                    };
+                }
+
+                for elem_id in elems {
+                    let elem_type = self.eval_expr_type_by_id_continued(
+                        *elem_id,
+                        hlir,
+                        expected_inner_ty.as_ref(),
+                    )?;
+                    if let Some(expected_inner) = &expected_inner_ty {
+                        if &elem_type != expected_inner {
+                            return Err(type_fail!(
+                                hlir,
+                                *elem_id,
+                                "Array element type mismatch. Expected: `{}`, found: `{}`",
+                                self.type_name(expected_inner.clone()),
+                                self.type_name(elem_type)
+                            ));
+                        }
+                    } else {
+                        expected_inner_ty = Some(elem_type);
+                    }
+                }
+
+                let elem_inner_ty = expected_inner_ty
+                    .as_ref()
+                    .and_then(|i| i.resolved())
+                    .ok_or_else(|| {
+                        type_fail!(hlir, expr.id, "Failed to resolve array element type.")
+                    })?;
+
+                match expected_kit {
+                    Some(KitTy::Slice(..)) => Ok(Type::Resolved(KitTy::Slice(Box::new(
+                        elem_inner_ty.clone(),
+                    )))),
+                    _ => Ok(Type::Resolved(KitTy::Array(
+                        Box::new(elem_inner_ty.clone()),
+                        elems.len(),
+                    ))),
+                }
+            }
         }
     }
 

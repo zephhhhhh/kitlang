@@ -847,8 +847,11 @@ pub enum Ty {
     Ref(Box<Self>, Mutability, SourceSpan),
     /// Just a plain type, no reference or anything else.
     Type(SpannedIdentPath),
-    /// An array of a specified [`Ty`].
-    Array(Box<Self>, SourceSpan),
+    /// An array of a specified [`Ty`], with a specified size.
+    Array(Box<Self>, usize, SourceSpan),
+    /// An array of a specified [`Ty`], with an unknown size.
+    /// This must be behind indirection, such as a reference.
+    Slice(Box<Self>, SourceSpan),
     /// A tuple of multiple [`Ty`]'s.
     Tuple(Vec<Box<Self>>, SourceSpan),
 }
@@ -874,7 +877,9 @@ impl Ty {
         match self {
             Self::Unit(_) => "()".to_string(),
             Self::Type(t) => t.to_string(),
-            Self::Ref(ty, _, _) | Self::Array(ty, _) => ty.get_type_ident(),
+            Self::Ref(ty, _, _) => ty.get_type_ident(),
+            Self::Array(ty, len, _) => format!("[{}; {len}]", ty.get_type_ident()),
+            Self::Slice(ty, _) => format!("[{}]", ty.get_type_ident()),
             Self::Tuple(tys, _) => {
                 format!("({})", tys.iter().map(|ty| ty.get_type_ident()).join(", "))
             }
@@ -891,9 +896,10 @@ impl Ty {
             Self::Infer => None,
             Self::Type(t) => Some(t.span),
             Self::Unit(s)
+            | Self::Slice(_, s)
             | Self::This(s)
             | Self::Ref(_, _, s)
-            | Self::Array(_, s)
+            | Self::Array(_, _, s)
             | Self::Tuple(_, s) => Some(*s), // TODO: ?
         }
     }
@@ -919,17 +925,10 @@ impl Debug for Ty {
                     write!(f, "Ref({t:?})")
                 }
             }
-            Self::Array(t, _) => write!(f, "Array({t:?})"),
+            Self::Array(t, len, _) => write!(f, "Array({t:?}, {len})"),
+            Self::Slice(t, _) => write!(f, "Slice({t:?})"),
             Self::Tuple(t, _) => {
-                write!(f, "Tuple(")?;
-                for (i, ty) in t.iter().enumerate() {
-                    if i == 0 {
-                        write!(f, "{ty:?}")?;
-                    } else {
-                        write!(f, ", {ty:?}")?;
-                    }
-                }
-                write!(f, ")")
+                write!(f, "({})", t.iter().map(|ty| format!("{ty:?}")).join(", "))
             }
             Self::Type(t) => write!(f, "Type({})", t.path),
         }
@@ -1185,6 +1184,10 @@ pub enum ExpressionKind {
     /// # Kit Example
     /// `(1, 2, 3)`, `(x, y, name)`.
     Tuple(Vec<Box<Expression>>),
+    /// A tuple expression with multiple elements.
+    /// # Kit Example
+    /// `(1, 2, 3)`, `(x, y, name)`.
+    ArrayInit(Vec<Box<Expression>>),
 }
 
 impl ExpressionKind {
@@ -1272,6 +1275,7 @@ impl Debug for ExpressionKind {
                 .field(arg2)
                 .finish(),
             Self::Tuple(arg0) => f.debug_tuple("Tuple").field(arg0).finish(),
+            Self::ArrayInit(arg0) => f.debug_tuple("ArrayInit").field(arg0).finish(),
         }
     }
 }

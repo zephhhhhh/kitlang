@@ -926,6 +926,26 @@ impl HIRToMIRFuncLowerer<'_> {
         self.state.last_block_target = Some(call_result_slot.into());
     }
 
+    fn lower_index(&mut self, hlir: &HLIR, target_id: HirId, index_id: HirId) {
+        let Some(target_at) = self.visit_expr_assigned(target_id, hlir) else {
+            push_lower_err!(self, hlir, target_id, "Failed to eval target index local!");
+            return;
+        };
+        let Some(index_at) = self.visit_expr_assigned(index_id, hlir) else {
+            push_lower_err!(self, hlir, index_id, "Failed to eval index local!");
+            return;
+        };
+
+        let target_local = target_at.local_expect();
+        let index_local = index_at.local_expect();
+
+        let local = self.new_temp_local_with_mut(self.get_mutability_of_local(target_local));
+        self.builder_mut_expect().push_local_assign(
+            local,
+            RValue::refer(AssignTarget::Index(target_local, index_local)),
+        );
+    }
+
     fn lower_tuple_index(
         &mut self,
         hlir: &HLIR,
@@ -1222,7 +1242,9 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
             ExprKind::MethodCall(hir_id, ident, args) => {
                 self.lower_method_call(hlir, expr.id, *hir_id, ident.str(), args);
             }
-            // ExprKind::Index(hir_id, hir_id1) => {}
+            ExprKind::Index(target_id, index_id) => {
+                self.lower_index(hlir, *target_id, *index_id);
+            }
             ExprKind::FieldAccess(hir_id, ident) => {
                 self.lower_field_access(hlir, expr.id, *hir_id, ident.str());
             }
@@ -1348,7 +1370,28 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 self.builder_mut_expect()
                     .push_local_assign(tuple_local, RValue::Tuple(element_values));
             }
-            _ => {}
+            ExprKind::ArrayInit(elems) => {
+                let mut element_values = Vec::with_capacity(elems.len());
+                for element_expr_id in elems {
+                    if let Some(element_local) = self.visit_expr_assigned(*element_expr_id, hlir) {
+                        element_values.push(Operand::Copy(element_local));
+                    } else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *element_expr_id,
+                            "Failed to eval array element expression."
+                        );
+                        return;
+                    }
+                }
+                let array_local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(array_local, RValue::Array(element_values));
+            }
+            ExprKind::Range(..) => {
+                todo!()
+            }
         }
     }
 

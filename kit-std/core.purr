@@ -1,7 +1,7 @@
 // @lang
-impl i8 { 
+impl i8 {
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
-    pub fn from_string(s: string) -> (Self, bool) { 
+    pub fn from_string(s: string) -> (Self, bool) {
         let result = string_to_i64(s);
         (result.0 as Self, result.1)
     }
@@ -14,9 +14,9 @@ impl i8 {
     pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
 }
 // @lang
-impl i16 { 
+impl i16 {
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
-    pub fn from_string(s: string) -> (Self, bool) { 
+    pub fn from_string(s: string) -> (Self, bool) {
         let result = string_to_i64(s);
         (result.0 as Self, result.1)
     }
@@ -29,9 +29,9 @@ impl i16 {
     pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
 }
 // @lang
-impl i32 { 
+impl i32 {
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
-    pub fn from_string(s: string) -> (Self, bool) { 
+    pub fn from_string(s: string) -> (Self, bool) {
         let result = string_to_i64(s);
         (result.0 as Self, result.1)
     }
@@ -44,7 +44,7 @@ impl i32 {
     pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
 }
 // @lang
-impl i64 { 
+impl i64 {
     pub fn to_string(self) -> string { i64_to_string(self) }
     pub fn from_string(s: string) -> (Self, bool) { string_to_i64(s) }
     pub fn from_string_or(s: string, default: Self) -> Self {
@@ -56,7 +56,7 @@ impl i64 {
     pub fn abs(self) -> Self { i64_abs(self) }
 }
 // @lang
-impl i128 { 
+impl i128 {
     pub fn to_string(self) -> string { i64_to_string(self as i64) }
     pub fn from_string(s: string) -> (Self, bool) {
         let result = string_to_i64(s);
@@ -72,7 +72,7 @@ impl i128 {
 }
 
 // @lang
-impl u8 { 
+impl u8 {
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
     pub fn from_string(s: string) -> (Self, bool) {
         let result = string_to_u64(s);
@@ -86,7 +86,7 @@ impl u8 {
     pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
 }
 // @lang
-impl u16 { 
+impl u16 {
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
     pub fn from_string(s: string) -> (Self, bool) {
         let result = string_to_u64(s);
@@ -100,7 +100,7 @@ impl u16 {
     pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
 }
 // @lang
-impl u32 { 
+impl u32 {
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
     pub fn from_string(s: string) -> (Self, bool) {
         let result = string_to_u64(s);
@@ -114,7 +114,7 @@ impl u32 {
     pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
 }
 // @lang
-impl u64 { 
+impl u64 {
     pub fn to_string(self) -> string { u64_to_string(self) }
     pub fn from_string(s: string) -> (Self, bool) { string_to_u64(s) }
     pub fn from_string_or(s: string, default: Self) -> Self {
@@ -125,7 +125,7 @@ impl u64 {
     pub fn sqrt(self) -> Self { u64_sqrt(self) }
 }
 // @lang
-impl u128 { 
+impl u128 {
     pub fn to_string(self) -> string { u64_to_string(self as u64) }
     pub fn from_string(s: string) -> (Self, bool) {
         let result = string_to_u64(s);

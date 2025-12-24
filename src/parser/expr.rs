@@ -171,6 +171,7 @@ impl Parser<'_, '_> {
                     ))
                 }
             }
+            TokenKind::Punctuation(Punctuation::OpenBracket) => self.parse_array_initialiser(),
             TokenKind::Punctuation(Punctuation::OpenBrace) => self.parse_block_as_expression(),
             TokenKind::Punctuation(Punctuation::OpenParen) => self.parse_parens_expr(),
             TokenKind::Punctuation(Punctuation::Bang | Punctuation::Minus | Punctuation::Star) => {
@@ -215,6 +216,21 @@ impl Parser<'_, '_> {
             self.expect_kind(Punctuation::CloseParen)?;
             Ok(expr)
         }
+    }
+
+    fn parse_array_initialiser(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+        self.expect_kind(Punctuation::OpenBracket)?;
+
+        let elements =
+            self.parse_block_like(Punctuation::Comma, Punctuation::CloseBracket, |s| {
+                s.parse_expression()
+            })?;
+
+        Ok(Expression::new_boxed(
+            ExpressionKind::ArrayInit(elements),
+            self.finish_span(span_start),
+        ))
     }
 
     fn parse_range_expr_continued(

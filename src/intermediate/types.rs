@@ -222,7 +222,11 @@ pub enum KitTy {
     /// User-defined / abstract types, denoted by their `TypeID`.
     Abstract(TypeID),
     /// Tuple type..
-    Tuple(Vec<KitTy>), // TODO: Array, Tuple..
+    Tuple(Vec<KitTy>),
+    /// Array type..
+    Array(Box<KitTy>, usize),
+    /// Slice type..
+    Slice(Box<KitTy>),
 }
 
 impl KitTy {
@@ -238,8 +242,12 @@ impl KitTy {
             ASTTy::Type(spanned_ident_path) => {
                 Self::from_primitive_ty_str(spanned_ident_path.path.path_stem())
             }
-            ASTTy::Infer | ASTTy::This(..) | ASTTy::Tuple(..) => None,
-            a => {
+            ASTTy::Infer
+            | ASTTy::This(..)
+            | ASTTy::Tuple(..)
+            | ASTTy::Array(..)
+            | ASTTy::Slice(..) => None,
+            a @ ASTTy::Ref(..) => {
                 error!("KitTy conversion not implemented for: {a:?}");
                 None
             }
@@ -327,6 +335,8 @@ impl KitTy {
             Self::String => 192,
             Self::Abstract(_) => 64,
             Self::Tuple(i) => i.iter().map(KitTy::bit_width).sum(),
+            Self::Array(t, size) => t.bit_width() * (*size as u64),
+            Self::Slice(..) => KitUInt::USize.bit_width(),
         }
     }
 
@@ -371,12 +381,8 @@ impl KitTy {
                 UnaryOpKind::Dereference | UnaryOpKind::Negate => None,
             },
             Self::Unit | Self::Char | Self::String => None,
-            Self::Abstract(_) => {
-                warn!("Tried to do abstract result type for unary.");
-                None
-            }
-            Self::Tuple(..) => {
-                warn!("Tried to do tuple result type for unary.");
+            unsupported => {
+                warn!("Tried to do unary result type for unsupported type: {unsupported:?}");
                 None
             }
         }
@@ -542,12 +548,8 @@ impl KitTy {
             Self::Boolean => boolean_result_type(other, op_kind),
             Self::Char => char_result_type(other, op_kind),
             Self::String => string_result_type(other, op_kind),
-            Self::Abstract(_) => {
-                warn!("Tried to do abstract binary result type.");
-                None
-            }
-            Self::Tuple(..) => {
-                warn!("Tried to do tuple binary result type.");
+            unsupported => {
+                warn!("Tried to do unary result type for unsupported type: {unsupported:?}");
                 None
             }
         }
@@ -656,7 +658,7 @@ impl KitTy {
             Self::Boolean => Some("bool".into()),
             Self::Char => Some("char".into()),
             Self::String => Some("string".into()),
-            Self::Abstract(_) | Self::Tuple(..) => None,
+            Self::Abstract(_) | Self::Tuple(..) | Self::Array(..) | Self::Slice(..) => None,
         }
     }
 }

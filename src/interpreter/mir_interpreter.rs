@@ -66,6 +66,7 @@ pub enum Value {
     Ref(AssignTarget),
     ADT(ADTValueKind),
     Tuple(Vec<Value>),
+    Array(Vec<Value>),
 }
 
 impl Value {
@@ -95,6 +96,10 @@ impl Value {
             Self::Tuple(vals) => {
                 let elements: Vec<String> = vals.iter().map(Value::repr_string).collect();
                 format!("({})", elements.join(", "))
+            }
+            Self::Array(vals) => {
+                let elements: Vec<String> = vals.iter().map(Value::repr_string).collect();
+                format!("[{}]", elements.join(", "))
             }
         }
     }
@@ -193,6 +198,7 @@ impl Value {
             Self::Ref(_) => todo!(),
             Self::ADT(_) => todo!(),
             Self::Tuple(_) => todo!(),
+            Self::Array(_) => todo!(),
         }
     }
 
@@ -308,6 +314,7 @@ impl Value {
             Self::Ref(_) => panic!("Cannot perform binary op on reference values!"),
             Self::ADT(_) => panic!("Cannot perform binary op on ADT values!"),
             Self::Tuple(_) => panic!("Cannot perform binary op on Tuple values!"),
+            Self::Array(_) => panic!("Cannot perform binary op on Array values!"),
         }
     }
 
@@ -321,26 +328,39 @@ impl Value {
         }
     }
 
+    /// Converts the value to a `usize` index if possible.
     #[inline]
     #[must_use]
-    pub fn field(&self, index: usize) -> Option<&Self> {
+    pub const fn as_index_usize(&self) -> Option<usize> {
         match self {
-            Self::ADT(adtvalue_kind) => match adtvalue_kind {
-                ADTValueKind::Struct(values) => values.get(index),
-            },
-            Self::Tuple(vals) => vals.get(index),
+            Self::Integer(i) if *i >= 0 => Some(*i as usize),
+            Self::UnsignedInteger(u) => Some(*u as usize),
             _ => None,
         }
     }
 
     #[inline]
     #[must_use]
-    pub fn field_mut(&mut self, index: usize) -> Option<&mut Self> {
+    pub fn index(&self, index: usize) -> Option<&Self> {
+        match self {
+            Self::ADT(adtvalue_kind) => match adtvalue_kind {
+                ADTValueKind::Struct(values) => values.get(index),
+            },
+            Self::Tuple(vals) => vals.get(index),
+            Self::Array(elems) => elems.get(index),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn index_mut(&mut self, index: usize) -> Option<&mut Self> {
         match self {
             Self::ADT(adtvalue_kind) => match adtvalue_kind {
                 ADTValueKind::Struct(values) => values.get_mut(index),
             },
             Self::Tuple(vals) => vals.get_mut(index),
+            Self::Array(elems) => elems.get_mut(index),
             _ => None,
         }
     }
@@ -479,14 +499,14 @@ impl ExecutionFrame {
     #[must_use]
     pub fn field_access(&self, id: LocalId, field_index: usize) -> Option<&Value> {
         self.value(self.perform_deref(AssignTarget::Local(id)))?
-            .field(field_index)
+            .index(field_index)
     }
 
     #[inline]
     #[must_use]
     pub fn field_access_mut(&mut self, id: LocalId, field_index: usize) -> Option<&mut Value> {
         self.value_mut(self.perform_deref(AssignTarget::Local(id)))?
-            .field_mut(field_index)
+            .index_mut(field_index)
     }
 
     /// # Panics
@@ -511,6 +531,49 @@ impl ExecutionFrame {
     pub fn field_access_expect_mut(&mut self, id: LocalId, field_index: usize) -> &mut Value {
         self.field_access_mut(id, field_index)
             .expect("Field access doesn't exist mut.")
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn index(&self, id: LocalId, idx_id: LocalId) -> Option<&Value> {
+        let index = self
+            .value(self.perform_deref(AssignTarget::Local(idx_id)))?
+            .as_index_usize()?;
+        self.value(self.perform_deref(AssignTarget::Local(id)))?
+            .index(index)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn index_mut(&mut self, id: LocalId, idx_id: LocalId) -> Option<&mut Value> {
+        let index = self
+            .value(self.perform_deref(AssignTarget::Local(idx_id)))?
+            .as_index_usize()?;
+        self.value_mut(self.perform_deref(AssignTarget::Local(id)))?
+            .index_mut(index)
+    }
+
+    /// # Panics
+    /// This function will panic if:
+    /// - The `LocalId` doesn't exist
+    /// - The field index doesn't exist
+    /// - The value at the `LocalId` is not an `ADT`
+    #[inline]
+    #[must_use]
+    pub fn index_expect(&self, id: LocalId, idx_id: LocalId) -> &Value {
+        self.index(id, idx_id).expect("Index doesn't exist.")
+    }
+
+    /// # Panics
+    /// This function will panic if:
+    /// - The `LocalId` doesn't exist
+    /// - The field index doesn't exist
+    /// - The value at the `LocalId` is not an `ADT`
+    #[inline]
+    #[must_use]
+    pub fn index_expect_mut(&mut self, id: LocalId, idx_id: LocalId) -> &mut Value {
+        self.index_mut(id, idx_id)
+            .expect("Index doesn't exist mut.")
     }
 
     #[inline]
@@ -551,6 +614,7 @@ impl ExecutionFrame {
         match at {
             AssignTarget::Local(local_id) => self.local(local_id),
             AssignTarget::Field(local_id, field_index) => self.field_access(local_id, field_index),
+            AssignTarget::Index(local_id, index_id) => self.index(local_id, index_id),
         }
     }
 
@@ -562,6 +626,7 @@ impl ExecutionFrame {
             AssignTarget::Field(local_id, field_index) => {
                 self.field_access_mut(local_id, field_index)
             }
+            AssignTarget::Index(local_id, index_id) => self.index_mut(local_id, index_id),
         }
     }
 
@@ -589,6 +654,7 @@ impl ExecutionFrame {
             AssignTarget::Field(local_id, field_index) => {
                 self.field_access_expect(local_id, field_index)
             }
+            AssignTarget::Index(local_id, index_id) => self.index_expect(local_id, index_id),
         };
 
         match local_mut {
@@ -853,6 +919,13 @@ impl InterpreterState {
                     .map(|o| self.eval_operand(o))
                     .collect::<Vec<_>>();
                 Some(Value::Tuple(tuple_values))
+            }
+            RValue::Array(elems) => {
+                let element_values = elems
+                    .iter()
+                    .map(|o| self.eval_operand(o))
+                    .collect::<Vec<_>>();
+                Some(Value::Array(element_values))
             }
         }
     }

@@ -21,6 +21,8 @@ use crate::intermediate::hir::OwnerDefId;
 use crate::intermediate::resolver::TypeID;
 use crate::intermediate::types::{KitFloat, KitInt, KitTy, KitUInt};
 
+use itertools::Itertools;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -170,6 +172,7 @@ pub enum RValue {
     Increment(Operand),
     ADT(ADTKind, Vec<Operand>),
     Tuple(Vec<Operand>),
+    Array(Vec<Operand>),
     Cast(Operand, CastKind),
 }
 
@@ -184,29 +187,28 @@ impl Debug for RValue {
             Self::UnaryOp(arg0, arg1) => write!(f, "UnaryOp({arg0:?}, {arg1:?})"),
             Self::Increment(arg0) => write!(f, "Increment({arg0:?})"),
             Self::ADT(kind, operands) => {
-                write!(f, "ADT({kind:?}, ")?;
-                for (i, operand) in operands.iter().enumerate() {
-                    if i == 0 {
-                        write!(f, "{operand:?}")?;
-                    } else {
-                        write!(f, ", {operand:?}")?;
-                    }
-                }
-                write!(f, ")")
+                write!(
+                    f,
+                    "ADT({kind:?}, {})",
+                    operands.iter().map(|o| format!("{o:?}")).join(", ")
+                )
             }
             Self::Cast(operand, target_type) => {
                 write!(f, "Cast({operand:?} as {target_type:?})")
             }
             Self::Tuple(operands) => {
-                write!(f, "Tuple(")?;
-                for (i, operand) in operands.iter().enumerate() {
-                    if i == 0 {
-                        write!(f, "{operand:?}")?;
-                    } else {
-                        write!(f, ", {operand:?}")?;
-                    }
-                }
-                write!(f, ")")
+                write!(
+                    f,
+                    "Tuple({})",
+                    operands.iter().map(|o| format!("{o:?}")).join(", ")
+                )
+            }
+            Self::Array(elems) => {
+                write!(
+                    f,
+                    "Array({})",
+                    elems.iter().map(|o| format!("{o:?}")).join(", ")
+                )
             }
         }
     }
@@ -251,6 +253,7 @@ impl RValue {
 pub enum AssignTarget {
     Local(LocalId),
     Field(LocalId, usize /*FieldIndex*/),
+    Index(LocalId, LocalId),
 }
 
 impl AssignTarget {
@@ -272,7 +275,9 @@ impl AssignTarget {
     #[must_use]
     pub const fn local_id(&self) -> LocalId {
         match self {
-            Self::Local(local_id) | Self::Field(local_id, _) => *local_id,
+            Self::Local(local_id) | Self::Field(local_id, _) | Self::Index(local_id, _) => {
+                *local_id
+            }
         }
     }
 
@@ -283,7 +288,7 @@ impl AssignTarget {
     pub const fn local(&self) -> Option<LocalId> {
         match self {
             Self::Local(local_id) => Some(*local_id),
-            Self::Field(..) => None,
+            _ => None,
         }
     }
 
@@ -303,7 +308,7 @@ impl AssignTarget {
     pub const fn field_access(&self) -> Option<(LocalId, usize)> {
         match self {
             Self::Field(local_id, field_index) => Some((*local_id, *field_index)),
-            Self::Local(_) => None,
+            _ => None,
         }
     }
 
@@ -315,6 +320,26 @@ impl AssignTarget {
     pub const fn field_access_expect(&self) -> (LocalId, usize) {
         self.field_access()
             .expect("Assign target should be field access!")
+    }
+
+    /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Field` assignment variant.
+    /// Returns `None` otherwise.
+    #[inline]
+    #[must_use]
+    pub const fn index(&self) -> Option<(LocalId, LocalId)> {
+        match self {
+            Self::Index(local_id, index_local) => Some((*local_id, *index_local)),
+            _ => None,
+        }
+    }
+
+    /// Only returns the [`LocalId`] if the [`AssignTarget`] is of the `Field` assignment variant.
+    /// # Panics
+    /// If the [`AssignTarget`] is not of the `Field` assignment variant.
+    #[inline]
+    #[must_use]
+    pub const fn index_expect(&self) -> (LocalId, LocalId) {
+        self.index().expect("Assign target should be index access!")
     }
 }
 
