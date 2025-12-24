@@ -98,12 +98,15 @@ impl SpannedErrorLine {
 
         let end = start.saturating_add(remaining.min(self.source.len() as u32));
         let only_highlighted_bit = substr_safe(&self.source, start..end);
+        let only_highlighted_bit_trimmed = only_highlighted_bit.trim_end();
+        let trimmed_end = start.saturating_add(only_highlighted_bit_trimmed.len() as u32);
 
-        if let Some(first_non_whitespace) = only_highlighted_bit.find(|c: char| !c.is_whitespace())
+        if let Some(first_non_whitespace) =
+            only_highlighted_bit_trimmed.find(|c: char| !c.is_whitespace())
         {
             let final_start = start + first_non_whitespace as u32;
 
-            if final_start >= self.source.len() as u32 || final_start >= end {
+            if final_start >= self.source.len() as u32 || final_start >= trimmed_end {
                 return;
             }
 
@@ -112,7 +115,7 @@ impl SpannedErrorLine {
             let actual_str_bit: String = highlight
                 .chars()
                 .cycle()
-                .take(end.saturating_sub(final_start) as usize)
+                .take(trimmed_end.saturating_sub(final_start) as usize)
                 .collect();
 
             #[cfg(feature = "colour")]

@@ -730,7 +730,7 @@ impl Parser<'_, '_> {
     }
 
     fn parse_struct_initialiser(&mut self, lhs: SpannedIdentPath) -> PResult<Box<Expression>> {
-        let span_start = self.begin_span();
+        let span_start = lhs.span.start;
 
         self.expect_kind(Punctuation::OpenBrace)?;
 

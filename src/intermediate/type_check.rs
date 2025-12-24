@@ -1065,9 +1065,10 @@ impl TypeChecker<'_> {
 
         let init_ty = if is_inferring {
             self.eval_expr_type_by_id(init_expr_id, hlir).map_err(|e| {
+                self.errors.push(e.clone());
                 type_fail!(
                     hlir,
-                    id,
+                    let_statement.binding,
                     "Failed to infer type of: `{}`. {}",
                     Self::binding_name(hlir, let_statement.binding),
                     e.reason
