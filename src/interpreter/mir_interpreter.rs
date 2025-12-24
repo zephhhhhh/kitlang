@@ -1061,11 +1061,20 @@ impl InterpreterState {
     }
 
     #[inline]
+    #[must_use]
+    pub fn deref_value(&self, value: Value) -> Value {
+        match value {
+            Value::Ref(at) => self.perform_deref(at).clone(),
+            _ => value,
+        }
+    }
+
+    #[inline]
     pub fn execute_statement(&mut self, statement: &Statement) {
         match &statement.kind {
             StatementKind::Assign(target, rvalue) => {
                 if let Some(new_value) = self.eval_rvalue(rvalue) {
-                    self.perform_assignment(*target, new_value);
+                    self.perform_assignment(*target, self.deref_value(new_value));
                 } else {
                     error!("Failed to evaluate Rvalue: {rvalue:?}");
                 }
