@@ -331,6 +331,7 @@ impl Value {
     /// Converts the value to a `usize` index if possible.
     #[inline]
     #[must_use]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub const fn as_index_usize(&self) -> Option<usize> {
         match self {
             Self::Integer(i) if *i >= 0 => Some(*i as usize),
