@@ -11,6 +11,7 @@ use crate::intermediate::mir::{
 
 use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeRegistry};
 use crate::intermediate::types::{KitFloat, KitInt, KitUInt};
+use crate::interpreter::errors::{InterpResult, interp_err};
 use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
 
 #[cfg(feature = "serde")]
@@ -709,18 +710,20 @@ impl InterpreterState {
     }
 
     #[inline]
-    #[must_use]
-    pub fn call_native_function(&mut self, name: &str, args: &[Value]) -> Option<Value> {
+    #[allow(clippy::missing_errors_doc)]
+    pub fn call_native_function(&mut self, name: &str, args: &[Value]) -> InterpResult<Value> {
         self.native_functions.get_mut(name).map_or_else(
-            || {
-                error!("Failed to find native function: {name}");
-                None
+            || Err(interp_err!("Failed to find native function `{name}`")),
+            |f| {
+                f(args).ok_or_else(|| {
+                    interp_err!("Native function `{name}` failed to return a valid value.")
+                })
             },
-            |f| f(args),
         )
     }
 
-    pub fn execute_from_entry(&mut self, program: &ProgramType) -> Option<Value> {
+    #[allow(clippy::missing_errors_doc)]
+    pub fn execute_from_entry(&mut self, program: &ProgramType) -> InterpResult<Value> {
         // log::info!("Running program: {:#?}", program);
         self.execute_function(program, self.entry, &[])
     }
@@ -739,9 +742,11 @@ impl InterpreterState {
     }
 
     #[inline]
-    #[must_use]
-    pub fn execution_frame(&self) -> Option<&ExecutionFrame> {
-        self.execution_frames.last()
+    #[allow(clippy::missing_errors_doc)]
+    pub fn execution_frame(&self) -> InterpResult<&ExecutionFrame> {
+        self.execution_frames
+            .last()
+            .ok_or_else(|| interp_err!("No execution frames exist."))
     }
 
     #[inline]
@@ -773,20 +778,22 @@ impl InterpreterState {
 
 // Implementation details..
 impl InterpreterState {
+    /// Execute a function by its `OwnerDefId`.
+    /// # Errors
+    /// Returns an error if the function is not found or if there is an error during execution.
+    /// The returned error contains diagnostic information about the error.
     pub fn execute_function(
         &mut self,
         program: &ProgramType,
         id: OwnerDefId,
         args: &[Value],
-    ) -> Option<Value> {
+    ) -> InterpResult<Value> {
         if let Some(kit_body) = program.mir.bodies.get(&id) {
             self.execute_kit_function(program, kit_body, args)
         } else if let Some(native_function_name) = program.mir.native_function_links.get(&id) {
             self.call_native_function(native_function_name, args)
         } else {
-            error!("Unknown function reference: {id:?}");
-
-            None
+            Err(interp_err!("Unknown function reference: {id:?}"))
         }
     }
 
@@ -796,20 +803,21 @@ impl InterpreterState {
         program: &ProgramType,
         body: &Body,
         args: &[Value],
-    ) -> Option<Value> {
+    ) -> InterpResult<Value> {
         if body.arg_count != args.len() as u32 {
-            error!(
+            return Err(interp_err!(
                 "Argument count mismatch! {} != {}",
                 body.arg_count,
                 args.len()
-            );
-            return None;
+            ));
         }
 
         self.push_execution_frame(body.locals.len());
         self.execution_frame_expect_mut().set_arguments(args);
 
-        let mut current_block = body.block(BasicBlockId::ENTRY_BLOCK)?;
+        let mut current_block = body
+            .block(BasicBlockId::ENTRY_BLOCK)
+            .ok_or_else(|| interp_err!("Failed to get entry block from body"))?;
 
         // TODO: I must have been drunk writing this, but this needs to be fixed.
         for _i in 0..10000 {
@@ -819,23 +827,32 @@ impl InterpreterState {
 
             match &current_block.exit_directive.kind {
                 BlockExitKind::Goto(basic_block_id) => {
-                    current_block = body.block(*basic_block_id)?;
+                    current_block = body.block(*basic_block_id).ok_or_else(|| {
+                        interp_err!("Failed to get goto block: {basic_block_id:?}")
+                    })?;
                 }
                 BlockExitKind::Branch(operand, true_block, false_block) => {
                     let condition = match operand {
                         Operand::Copy(at) => {
                             let value = self.perform_deref(*at).clone();
-                            value.bool()?
+                            value.bool().ok_or_else(|| {
+                                interp_err!(
+                                    "Failed to get block branch condition value as a boolean!"
+                                )
+                            })?
                         }
                         Operand::Literal(Literal::Boolean(b)) => *b,
                         _ => {
-                            error!("Invalid branch operand type! {operand:?}");
-                            return None;
+                            return Err(interp_err!("Invalid branch operand type! {operand:?}"));
                         }
                     };
 
-                    current_block =
-                        body.block(if condition { *true_block } else { *false_block })?;
+                    let block_id = if condition { *true_block } else { *false_block };
+                    current_block = body.block(block_id).ok_or_else(|| {
+                        interp_err!(
+                            "Failed to get basic block from body in branch with id: {block_id:?}"
+                        )
+                    })?;
                 }
                 BlockExitKind::Return => break,
                 BlockExitKind::Call(local_id, owner_def_id, operands, basic_block_id) => {
@@ -851,7 +868,11 @@ impl InterpreterState {
                     let result = self.execute_function(program, *owner_def_id, &args)?;
                     self.perform_assignment(AssignTarget::from_local(*local_id), result);
 
-                    current_block = body.block(*basic_block_id)?;
+                    current_block = body.block(*basic_block_id).ok_or_else(|| {
+                        interp_err!(
+                            "Failed to get basic block from body with id: {basic_block_id:?}"
+                        )
+                    })?;
                 }
             }
         }
@@ -861,7 +882,7 @@ impl InterpreterState {
             .local(LocalId::RETURN_VALUE)
             .cloned();
         self.pop_execution_frame();
-        return_value
+        return_value.ok_or_else(|| interp_err!("Failed to get return value from execution frame"))
     }
 
     #[inline]
@@ -1087,7 +1108,10 @@ impl Interpreter {
         }
     }
 
-    pub fn execute_from_entry(&mut self) -> Option<Value> {
+    /// Execute the loaded program from its entry point.
+    /// # Errors
+    /// Errors if no program is loaded or if execution fails.
+    pub fn execute_from_entry(&mut self) -> InterpResult<Value> {
         if let Some(state) = self.state.as_mut()
             && let Some(program) = self.program.as_ref()
         {
@@ -1095,7 +1119,7 @@ impl Interpreter {
             return state.execute_from_entry(&program_ref);
         }
 
-        None
+        Err(interp_err!("Interpreter does not have a program loaded!"))
     }
 }
 
@@ -1104,7 +1128,7 @@ pub type RegisterNativeFns = fn(interpreter: &mut Interpreter);
 fn internal_execute_mir(
     interpreter: &mut Interpreter,
     time_execution: bool,
-) -> crate::KitlangResult<Value> {
+) -> InterpResult<Value> {
     let (result_value, execution_time) = if time_execution {
         crate::profiling::measure_execution(|| interpreter.execute_from_entry())
     } else {
@@ -1118,9 +1142,7 @@ fn internal_execute_mir(
         );
     }
 
-    result_value.map_or(Err(crate::KitlangError::ExecutionEndedUnexpectedly), |v| {
-        Ok(v)
-    })
+    result_value
 }
 
 /// Execute MIR with no default compiler intrinsics registered.
@@ -1132,19 +1154,21 @@ pub fn execute_mir_no_intrinsics(
     register_fns: RegisterNativeFns,
     time_execution: bool,
 ) -> crate::KitlangResult<Value> {
-    Interpreter::new_with_program(Program::new(
+    let result = Interpreter::new_with_program(Program::new(
         mir,
         meta_data.type_registry.clone(),
         meta_data.namespace.clone(),
     ))
     .map_or(
-        Err(crate::KitlangError::FailedToFindEntryPoint),
+        Err(interp_err!("Failed to find entry point.")),
         |mut interpreter| {
             register_fns(&mut interpreter);
 
             internal_execute_mir(&mut interpreter, time_execution)
         },
-    )
+    );
+
+    Ok(result?)
 }
 
 /// Execute MIR with default compiler intrinsics registered.
@@ -1156,20 +1180,20 @@ pub fn execute_mir(
     register_fns: RegisterNativeFns,
     time_execution: bool,
 ) -> crate::KitlangResult<Value> {
-    Interpreter::new_with_program(Program::new(
+    Ok(Interpreter::new_with_program(Program::new(
         mir,
         meta_data.type_registry.clone(),
         meta_data.namespace.clone(),
     ))
     .map_or(
-        Err(crate::KitlangError::FailedToFindEntryPoint),
+        Err(interp_err!("Failed to find entry point.")),
         |mut interpreter| {
             intrinsics::register_compiler_intrinsics(&mut interpreter);
             register_fns(&mut interpreter);
 
             internal_execute_mir(&mut interpreter, time_execution)
         },
-    )
+    )?)
 }
 
 // Compiler intrinsics implementations..

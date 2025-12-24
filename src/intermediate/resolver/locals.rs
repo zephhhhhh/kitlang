@@ -243,11 +243,11 @@ impl ScopeResolver {
 impl HLIRVisitorMut<'_> for ScopeResolver {
     fn visit_block_mut(&mut self, block: &mut Block, hlir: &mut HLIRDisjointMut<'_>) {
         if block.root_block {
+            self.super_block_mut(block, hlir);
+        } else {
             self.with_child_scope(None, |r| {
                 r.super_block_mut(block, hlir);
             });
-        } else {
-            self.super_block_mut(block, hlir);
         }
     }
 

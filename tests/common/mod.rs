@@ -1,9 +1,14 @@
 #![allow(dead_code)]
 
 use kitlang::{
+    KitlangError,
     ast::ASTRoot,
-    intermediate::hir::{HLIR, LoweringError, lower_ast_to_hir},
+    intermediate::{
+        hir::{HLIR, LoweringError, LoweringErrorKind, lower_ast_to_hir},
+        resolver::errors::ResolverError,
+    },
     parser::{ParseError, parse_from_source},
+    prelude::{Compiler, ProgramMetaData},
 };
 
 /// Wraps the given source code in a `main` function.
@@ -70,7 +75,7 @@ pub fn parse_err(source: &str) -> ParseError {
     parse_from_source(source).expect_err("Parse should fail")
 }
 
-/// Parse the source code, expect it to succeed, and return the AST.
+/// Parse the source code, expect it to succeed, and return the [`HLIR`].
 pub fn parse_lower_hir_ok(source: &str) -> HLIR {
     let ast = parse_ok(source);
     lower_ast_to_hir(&ast).expect("HIR lowering should succeed")
@@ -79,4 +84,29 @@ pub fn parse_lower_hir_ok(source: &str) -> HLIR {
 pub fn parse_ok_lower_hir_err(source: &str) -> LoweringError {
     let ast = parse_ok(source);
     lower_ast_to_hir(&ast).expect_err("HIR lowering should fail")
+}
+
+/// Parse the source code, resolve it, expect it to succeed, and return the [`HLIR`].
+pub fn parse_lower_hir_full_ok(source: &str) -> (ProgramMetaData, HLIR) {
+    let mut compiler = Compiler::new(source).no_stdlib(true);
+
+    let hlir = compiler
+        .compile_to_hir()
+        .expect("HIR lowering should succeed");
+
+    (compiler.context.meta, hlir)
+}
+/// Parse the source code, expect it to fail, and return the parse error.
+pub fn parse_lower_hir_full_err(source: &str) -> ResolverError {
+    let mut compiler = Compiler::new(source).no_stdlib(true);
+    let error = compiler
+        .compile_to_hir()
+        .expect_err("HIR lowering should fail");
+    match error {
+        KitlangError::LoweringError(lower_err) => match lower_err.error_kind {
+            LoweringErrorKind::ResolverError(resolver_err) => resolver_err,
+            _ => panic!("Expected resolver error"),
+        },
+        _ => panic!("Expected resolver error"),
+    }
 }

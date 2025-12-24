@@ -69,7 +69,7 @@ fn add_native_functions(interpreter: &mut Interpreter) {
                 match js_func.call1(&JsValue::NULL, &JsValue::from(js_args)) {
                     Ok(result) => {
                         if let Some(return_value_type) = KitTy::from_primitive_ty_str(&ret_val_c) {
-                            Some(from_js_value_expected(&result, return_value_type))
+                            Some(from_js_value_expected(&result, &return_value_type))
                         } else {
                             Some(from_js_value(&result))
                         }
@@ -163,7 +163,7 @@ fn to_js_value(value: &Value) -> JsValue {
 }
 
 /// Converts a [`JsValue`] into a [`Value`], with expected types.
-fn from_js_value_expected(value: &JsValue, expected: KitTy) -> Value {
+fn from_js_value_expected(value: &JsValue, expected: &KitTy) -> Value {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     match expected {
         KitTy::Int(..) => {

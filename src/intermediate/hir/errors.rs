@@ -100,11 +100,7 @@ impl LoweringError {
 
 impl Display for LoweringError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Error: {:#?}",
-            self.error_kind, //self.span.start, self.span.end
-        )
+        write!(f, "Error: {:#?}", self.error_kind,)
     }
 }
 

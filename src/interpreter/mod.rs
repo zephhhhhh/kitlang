@@ -3,5 +3,6 @@
 //! This module is mostly temporary and will be eventually replaced with a more robust and faster either bytecode or sandboxed
 //! machine code based executor.
 
+pub mod errors;
 pub mod mir_interpreter;
 pub mod native_functions;

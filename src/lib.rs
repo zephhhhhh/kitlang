@@ -32,8 +32,6 @@ pub use kitlang_macros as macros;
 /// A small vector type used throughout Kitlang for performance where a small vector is expected.
 pub type KitSmallVec<T> = smolvec::SmolVec<T>;
 
-use crate::{ast::SourceSpan, spanned_error::SpannedErrorBuilder};
-
 #[cfg(feature = "webasm")]
 pub mod webasm;
 
@@ -51,12 +49,8 @@ pub enum KitlangError {
     /// Errors originating from the lowering stage.
     #[error("Lowering Error: {0}")]
     LoweringError(#[from] crate::intermediate::hir::LoweringError),
-    /// Indicates that execution ended unexpectedly, I.e. the interpreter encountered an error.
-    #[error("Execution ended unexpectedly.")]
-    ExecutionEndedUnexpectedly,
-    /// Indicates that the entry point 'main' function could not be found when trying to execute.
-    #[error("Failed to find entry point `main` function.")]
-    FailedToFindEntryPoint,
+    #[error("Interpreter Error: {0}")]
+    InterpreterError(#[from] crate::interpreter::errors::InterpreterError),
 }
 
 impl KitlangError {
@@ -67,10 +61,7 @@ impl KitlangError {
         match self {
             Self::ParserError(err) => err.format_as_error_message(source_string),
             Self::LoweringError(err) => err.format_as_error_message(source_string),
-            e => SpannedErrorBuilder::new(source_string, SourceSpan::null_span())
-                .print_header_line(format!("{e}"))
-                .generate_highlight()
-                .generate_output(),
+            Self::InterpreterError(err) => err.format_as_error_message(source_string),
         }
     }
 }

@@ -132,7 +132,7 @@ impl ParseError {
     pub fn format_as_error_message(&self, source_string: &str) -> String {
         SpannedErrorBuilder::new(source_string, self.span)
             .generate_highlight()
-            .print_header_line(format!("Error: {}", self.error_kind))
+            .print_header_line(format!("{}", self.error_kind))
             .generate_output()
     }
 }

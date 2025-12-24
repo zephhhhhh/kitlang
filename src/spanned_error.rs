@@ -154,6 +154,8 @@ pub struct SpannedErrorBuilder {
     pub header_lines: Vec<String>,
     pub footer_lines: Vec<String>,
 
+    pub error_prefix: Option<String>,
+
     pub file_name: Option<String>,
 
     pub show_location: bool,
@@ -172,6 +174,7 @@ impl SpannedErrorBuilder {
         Self {
             header_lines: Vec::new(),
             footer_lines: Vec::new(),
+            error_prefix: Some("Error:".to_string()),
             file_name: None,
             show_location: true,
             pad_around_source_view: true,
@@ -211,6 +214,21 @@ impl SpannedErrorBuilder {
         self
     }
 
+    /// Disable error prefixes.
+    #[inline]
+    pub fn no_error_prefix(&mut self) -> &mut Self {
+        self.error_prefix = None;
+        self
+    }
+
+    /// The text to prefix error messages with.
+    #[inline]
+    pub fn error_prefix(&mut self, prefix: impl AsRef<str>) -> &mut Self {
+        let prefix_str = prefix.as_ref();
+        self.error_prefix = Some(prefix_str.to_string());
+        self
+    }
+
     /// Show the location (file name, line number and character index) that the error span starts
     /// at as a header line above the source code view.
     #[inline]
@@ -223,15 +241,24 @@ impl SpannedErrorBuilder {
     #[inline]
     pub fn print_header_line(&mut self, line: impl AsRef<str>) -> &mut Self {
         let header_line = if self.hard_error {
-            #[cfg(feature = "colour")]
-            {
-                format!(
-                    "{color_red}Error:{color_bright_white} {}{color_reset}\n",
-                    line.as_ref()
-                )
+            if let Some(prefix) = &self.error_prefix {
+                #[cfg(feature = "colour")]
+                {
+                    format!(
+                        "{color_red}{prefix}{color_bright_white} {}{color_reset}\n",
+                        line.as_ref()
+                    )
+                }
+                #[cfg(not(feature = "colour"))]
+                format!("{prefix} {}\n", line.as_ref())
+            } else {
+                #[cfg(feature = "colour")]
+                {
+                    format!("{color_bright_white}{}{color_reset}\n", line.as_ref())
+                }
+                #[cfg(not(feature = "colour"))]
+                format!("{}\n", line.as_ref())
             }
-            #[cfg(not(feature = "colour"))]
-            format!("Error: {}\n", line.as_ref())
         } else {
             format!("{}\n", line.as_ref())
         };
