@@ -123,10 +123,16 @@ impl TypeChecker<'_> {
             return "Unkvar".to_string();
         };
         if let HirNode::Binding(binding_pattern) = node {
-            if let BindingKind::Ident(i) = &binding_pattern.kind {
-                i.str().to_string()
-            } else {
-                format!("{:?}", binding_pattern.kind)
+            match &binding_pattern.kind {
+                BindingKind::Ident(i) => i.str().to_string(),
+                BindingKind::Tuple(bindings) => format!(
+                    "({})",
+                    bindings
+                        .iter()
+                        .map(|b| Self::binding_name(hlir, *b))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
             }
         } else {
             "Unkvar".to_string()
