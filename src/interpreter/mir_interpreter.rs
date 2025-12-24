@@ -168,6 +168,9 @@ impl Value {
             Self::Float(_) => matches!(other, Self::Float(_)),
             Self::String(_) => matches!(other, Self::String(_)),
             Self::Boolean(_) => matches!(other, Self::Boolean(_)),
+            Self::ADT(_) => other.is_adt(),
+            Self::Tuple(_) => other.is_tuple(),
+            Self::Array(_) => other.is_array(),
             _ => false,
         }
     }
@@ -391,6 +394,12 @@ impl Value {
     #[must_use]
     pub const fn is_tuple(&self) -> bool {
         matches!(self, Self::Tuple(_))
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn is_array(&self) -> bool {
+        matches!(self, Self::Array(_))
     }
 }
 

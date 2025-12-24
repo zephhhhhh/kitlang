@@ -195,6 +195,11 @@ pub trait HLIRVisitor {
                 self.visit_block_by_id(*enclosing_id, hlir);
                 self.visit_expr_by_id(*iterable_id, hlir);
             }
+            ExprKind::ArrayInit(elems) => {
+                for element_id in elems {
+                    self.visit_expr_by_id(*element_id, hlir);
+                }
+            }
             _ => {}
         }
     }
@@ -615,6 +620,11 @@ pub trait HLIRVisitorMut<'a> {
             }
             ExprKind::Tuple(element_ids) => {
                 for element_id in element_ids {
+                    self.visit_expr_by_id_mut(*element_id, hlir);
+                }
+            }
+            ExprKind::ArrayInit(elems) => {
+                for element_id in elems {
                     self.visit_expr_by_id_mut(*element_id, hlir);
                 }
             }
