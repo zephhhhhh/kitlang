@@ -1384,7 +1384,7 @@
 <a href=#1384 id=1384 data-nosnippet>1384</a>    <span class="attr">#[cfg(not(feature = <span class="string">"webasm"</span>))]
 <a href=#1385 id=1385 data-nosnippet>1385</a>    #[kitlang_native_fn]
 <a href=#1386 id=1386 data-nosnippet>1386</a>    </span><span class="kw">fn </span>input(prompt: String) -&gt; String {
-<a href=#1387 id=1387 data-nosnippet>1387</a>        <span class="macro">print!</span>(<span class="string">"{prompt}"</span>);
+<a href=#1387 id=1387 data-nosnippet>1387</a>        <span class="macro">print!</span>(<span class="string">"{prompt} "</span>);
 <a href=#1388 id=1388 data-nosnippet>1388</a>        std::io::stdout().flush().expect(<span class="string">"Failed to flush."</span>);
 <a href=#1389 id=1389 data-nosnippet>1389</a>        <span class="kw">let </span><span class="kw-2">mut </span>input = String::new();
 <a href=#1390 id=1390 data-nosnippet>1390</a>        std::io::stdin()
@@ -1396,7 +1396,7 @@
 <a href=#1396 id=1396 data-nosnippet>1396</a>    #[kitlang_native_fn]
 <a href=#1397 id=1397 data-nosnippet>1397</a>    </span><span class="kw">fn </span>input_placeholder(prompt: String, default: String) -&gt; String {
 <a href=#1398 id=1398 data-nosnippet>1398</a>        <span class="kw">let </span><span class="kw-2">mut </span>input = String::new();
-<a href=#1399 id=1399 data-nosnippet>1399</a>        <span class="macro">print!</span>(<span class="string">"{prompt}"</span>);
+<a href=#1399 id=1399 data-nosnippet>1399</a>        <span class="macro">print!</span>(<span class="string">"{prompt} "</span>);
 <a href=#1400 id=1400 data-nosnippet>1400</a>        std::io::stdout().flush().expect(<span class="string">"Failed to flush."</span>);
 <a href=#1401 id=1401 data-nosnippet>1401</a>        std::io::stdin()
 <a href=#1402 id=1402 data-nosnippet>1402</a>            .read_line(<span class="kw-2">&amp;mut </span>input)
