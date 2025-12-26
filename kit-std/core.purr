@@ -181,6 +181,9 @@ impl bool {
 impl string {
     pub fn to_string(self) -> string { self }
     pub fn from_string(s: string) -> string { s }
+
+    pub fn is_empty(self) -> bool { is_empty(self) }
+    pub fn to_lower(self) -> string { to_lower(self) }
 }
 
 // @lang
