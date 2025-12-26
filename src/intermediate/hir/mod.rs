@@ -18,7 +18,9 @@ use crate::intermediate::hir::errors::LowerResult;
 use crate::intermediate::hir::nodes::{
     HirNode, Item, OwningNode, OwningNodeKind, Type, VarBinding,
 };
-use crate::intermediate::resolver::{ADTTypeInfo, Namespace, TypeRegistry, resolve_paths};
+use crate::intermediate::resolver::{
+    ADTTypeInfo, Namespace, RootNamespace, TypeRegistry, resolve_paths,
+};
 use crate::intermediate::type_check::{TypeMap, run_type_checker};
 
 pub use crate::intermediate::hir::errors::{LoweringError, LoweringErrorKind};
@@ -419,10 +421,10 @@ impl Debug for HLIR {
 }
 
 /// Contains metadata about the program stored in HIR, such as type information, namespace etc.
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ProgramMetaData {
     /// The program's namespace information, I.e. all defined modules, types, functions, etc.
-    pub namespace: Namespace,
+    pub namespace: RootNamespace,
     /// The program's type registry, containing all defined types.
     pub type_registry: TypeRegistry,
     /// The program's type map, containing side channel
@@ -430,17 +432,21 @@ pub struct ProgramMetaData {
     pub type_map: TypeMap,
 }
 
-impl Default for ProgramMetaData {
-    fn default() -> Self {
-        Self {
-            namespace: Namespace::default_root_definition(),
-            type_registry: TypeRegistry::default(),
-            type_map: TypeMap::new(),
-        }
-    }
-}
-
 impl ProgramMetaData {
+    /// Get a reference to the [`Namespace`] defined at a given `path`, if it exists.
+    #[inline]
+    #[must_use]
+    pub fn get_namespace(&self, path: &IdentPath) -> Option<&Namespace> {
+        self.namespace.find_definition(path)
+    }
+
+    /// Get a mutable reference to the [`Namespace`] defined at a given `path`, if it exists.
+    #[inline]
+    #[must_use]
+    pub fn get_namespace_mut(&mut self, path: &IdentPath) -> Option<&mut Namespace> {
+        self.namespace.find_definition_mut(path)
+    }
+
     /// Find a method in the namespace given its defining path, data type identifier, and method identifier.
     /// # Returns
     /// The method namespace if found, otherwise `None`.
@@ -587,11 +593,7 @@ pub fn parse_ast_to_hir_processed_with(
 /// The returned error will contain a diagnostic message indicating the nature and location of any failures,
 /// as well as which stage of lowering it occurred in.
 pub fn parse_ast_to_hir_processed(ast: &ASTRoot) -> LowerResult<(ProgramMetaData, HLIR)> {
-    let mut meta_data = ProgramMetaData {
-        namespace: Namespace::default_root_definition(),
-        type_registry: TypeRegistry::default(),
-        type_map: TypeMap::new(),
-    };
+    let mut meta_data = ProgramMetaData::default();
 
     let hlir = parse_ast_to_hir_processed_with(ast, &mut meta_data)?;
 

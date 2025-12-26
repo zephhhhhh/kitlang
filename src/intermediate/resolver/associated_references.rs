@@ -31,7 +31,7 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{IdentPath, SpannedIdentPath, Visibility};
+use crate::ast::{IdentPath, SourceSpan, SpannedIdentPath, Visibility};
 
 use crate::intermediate::hir::nodes::{
     Constant, Enum, Function, HirNode, Impl, Module, RefPath, ResolvedID, Struct, StructField,
@@ -45,7 +45,9 @@ use crate::intermediate::resolver::errors::{
     ResolutionFailure, ResolveResult, ResolverError, ResolverErrorKind, UnresolvedReference,
     UnresolvedReferences, push_resolve_err, resolve_err,
 };
-use crate::intermediate::resolver::{ADTStructField, ADTTypeInfo, Namespace, NamespaceKind};
+use crate::intermediate::resolver::{
+    ADTStructField, ADTTypeInfo, Namespace, NamespaceInsertError, NamespaceKind,
+};
 
 use log::debug;
 
@@ -149,58 +151,11 @@ impl<'a> AssociatedReferenceMapper<'a> {
             .into_iter()
             .map(builtin_namespace)
             .for_each(|ns| {
-                self.meta.namespace.insert(ns);
+                self.meta
+                    .namespace
+                    .insert_namespace(&IdentPath::new_empty(true), ns)
+                    .unwrap();
             });
-    }
-
-    /// Recursively resolves all `use` items in the given [`Namespace`] by
-    /// looking up their target definitions in the `root_namespace` and cloning them
-    /// into the current [`Namespace`].
-    // TODO: This is a bit messy, needs refactoring, also this should reference other items not just clone.
-    fn resolve_uses_in_namespace(
-        root_namespace: &Namespace,
-        namespace: &mut Namespace,
-        current_path: &IdentPath,
-        // so bad...
-        errors: &mut Vec<ResolverError>,
-    ) {
-        let item_idents: Vec<String> = namespace.items.keys().cloned().collect();
-
-        for ident in item_idents {
-            let Some(item_namespace) = namespace.get_mut(&ident) else {
-                continue;
-            };
-
-            let mut next_path = current_path.clone();
-            next_path.push(&ident);
-
-            let NamespaceKind::Use(use_path) = &item_namespace.kind else {
-                Self::resolve_uses_in_namespace(root_namespace, item_namespace, &next_path, errors);
-                continue;
-            };
-
-            let target_path = use_path.rebase_from_path(current_path);
-
-            let Some(target_namespace) = root_namespace.find_definition(&target_path) else {
-                errors.push(resolve_err!(
-                    no_span,
-                    "Failed to resolve use path `{:?}` within namespace `{:?}`",
-                    target_path,
-                    current_path
-                ));
-                continue;
-            };
-
-            let mut cloned = target_namespace.clone();
-            cloned.ident.clone_from(&item_namespace.ident);
-            cloned.vis = item_namespace.vis;
-            cloned.local = item_namespace.local;
-            cloned.id = target_namespace.id;
-
-            *item_namespace = cloned;
-
-            Self::resolve_uses_in_namespace(root_namespace, item_namespace, &next_path, errors);
-        }
     }
 
     /// `Entrypoint` function to map all associated references in the given [`HLIR`].
@@ -213,7 +168,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
         self.stage1_complete = true;
 
         // Manually traverse impl items..
-        let impls = self.impl_path_lut.clone();
+        let impls = std::mem::take(&mut self.impl_path_lut);
         for (impl_id, impl_path) in impls {
             if let Some(node) = hlir.owning_node(impl_id)
                 && let Some(impl_info) = node.hir_impl_ref()
@@ -222,17 +177,6 @@ impl<'a> AssociatedReferenceMapper<'a> {
                 self.visit_impl(impl_info, hlir);
             }
         }
-
-        let root_namespace_clone = self.meta.namespace.clone();
-        let mut resolve_use_errors = Vec::new();
-        Self::resolve_uses_in_namespace(
-            &root_namespace_clone,
-            &mut self.meta.namespace,
-            &IdentPath::new_empty(true),
-            &mut resolve_use_errors,
-        );
-
-        self.errors.extend(resolve_use_errors);
 
         // Resolve references..
         self.reset_path();
@@ -284,7 +228,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
             return Some((path, def.id));
         }
 
-        let namespace = self.get_namespace(&base_path)?;
+        let namespace = self.meta.get_namespace(&base_path)?;
         if namespace.kind == NamespaceKind::Module {
             None
         } else {
@@ -299,7 +243,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
     /// * `false` if access violates local visibility rules.
     #[inline]
     fn validate_local_access(&self, target_path: &IdentPath, base_path: &IdentPath) -> bool {
-        let Some(target_namespace) = self.get_namespace(target_path) else {
+        let Some(target_namespace) = self.meta.get_namespace(target_path) else {
             return false;
         };
         if target_namespace.local {
@@ -354,6 +298,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
             }
 
             let inside_func = self
+                .meta
                 .get_namespace(&local_check)
                 .is_some_and(|ns| ns.kind == NamespaceKind::Function);
 
@@ -370,7 +315,7 @@ impl<'a> AssociatedReferenceMapper<'a> {
                     true,
                 ));
 
-                let visible = self.get_namespace(&to_check).is_some_and(|n| {
+                let visible = self.meta.get_namespace(&to_check).is_some_and(|n| {
                     n.vis == Visibility::Public
                         || (n.kind == NamespaceKind::Function && inside_func)
                 });
@@ -442,30 +387,34 @@ impl AssociatedReferenceMapper<'_> {
     /// A path is considered local if it is defined within a local scope or is a function
     #[inline]
     fn should_be_local(&self, path: &IdentPath) -> bool {
-        let Some(namespace) = self.get_namespace(path) else {
+        let Some(namespace) = self.meta.get_namespace(path) else {
             return false;
         };
         namespace.local || namespace.kind == NamespaceKind::Function
     }
 
-    /// Get a reference to the [`Namespace`] defined at a given `path`, if it exists.
     #[inline]
-    fn get_namespace(&self, path: &IdentPath) -> Option<&Namespace> {
-        let mut curr_namespace = &self.meta.namespace;
-        for segment in path.segments() {
-            curr_namespace = curr_namespace.get(segment)?;
+    fn handle_namespace_insertion_error(
+        &mut self,
+        err: NamespaceInsertError,
+        span: SourceSpan,
+        current_path: &IdentPath,
+        ident: &str,
+    ) {
+        match err {
+            NamespaceInsertError::ParentNotFound => {
+                push_resolve_err!(
+                    self,
+                    on_span,
+                    span,
+                    "Cannot find parent namespace `{}`",
+                    current_path
+                );
+            }
+            NamespaceInsertError::ItemAlreadyExists => {
+                push_resolve_err!(self, on_span, span, "Item already defined: `{}`", ident);
+            }
         }
-        Some(curr_namespace)
-    }
-
-    /// Get a mutable reference to the [`Namespace`] defined at a given `path`, if it exists.
-    #[inline]
-    fn get_namespace_mut(&mut self, path: &IdentPath) -> Option<&mut Namespace> {
-        let mut curr_namespace = &mut self.meta.namespace;
-        for segment in path.segments() {
-            curr_namespace = curr_namespace.get_mut(segment)?;
-        }
-        Some(curr_namespace)
     }
 }
 
@@ -479,25 +428,26 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
         let current_path = self.current_path().clone();
         let module_ident = module.ident.ident().string();
         let local = self.should_be_local(&current_path);
-        if let Some(ns) = self.get_namespace_mut(&current_path) {
-            ns.insert(Namespace {
-                ident: module_ident.clone(),
+        if let Err(e) = self.meta.namespace.insert_namespace(
+            &current_path,
+            Namespace {
+                ident: module.ident.ident().string(),
                 kind: NamespaceKind::Module,
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(module.owner_id),
                 vis: module.vis,
                 local,
-            });
-            self.with_pushed_segment(&module_ident, |this| this.super_module(module, hlir));
-        } else {
-            push_resolve_err!(
-                self,
-                on_span,
+            },
+        ) {
+            self.handle_namespace_insertion_error(
+                e,
                 module.ident.span(),
-                "Cannot find parent namespace `{}`",
-                current_path
+                &current_path,
+                &module_ident,
             );
+            return;
         }
+        self.with_pushed_segment(&module_ident, |this| this.super_module(module, hlir));
     }
 
     fn visit_function(&mut self, function: &Function, hlir: &HLIR) {
@@ -510,42 +460,27 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
                 .insert(function_ident.clone(), function.owner_id);
         }
 
-        if self
-            .get_namespace_mut(&current_path)
-            .expect("Namespace path exists")
-            .items
-            .contains_key(&function_ident)
-        {
-            push_resolve_err!(
-                self,
-                on_span,
+        if let Err(e) = self.meta.namespace.insert_namespace(
+            &current_path,
+            Namespace {
+                ident: function_ident.clone(),
+                kind: NamespaceKind::Function,
+                items: HashMap::new(),
+                id: ResolvedID::OwnerDef(function.owner_id),
+                vis: function.vis,
+                local,
+            },
+        ) {
+            self.handle_namespace_insertion_error(
+                e,
                 function.ident.span,
-                "Item already defined: `{}`",
-                current_path
+                &current_path,
+                &function_ident,
             );
+            return;
         }
-        if let Some(ns) = self.get_namespace_mut(&current_path) {
-            ns.items.insert(
-                function_ident.clone(),
-                Namespace {
-                    ident: function_ident.clone(),
-                    kind: NamespaceKind::Function,
-                    items: HashMap::new(),
-                    id: ResolvedID::OwnerDef(function.owner_id),
-                    vis: function.vis,
-                    local,
-                },
-            );
-            self.with_pushed_segment(&function_ident, |this| this.super_function(function, hlir));
-        } else {
-            push_resolve_err!(
-                self,
-                on_span,
-                function.ident.span,
-                "Cannot find parent namespace: `{}`",
-                current_path
-            );
-        }
+
+        self.with_pushed_segment(&function_ident, |this| this.super_function(function, hlir));
     }
 
     fn visit_struct(&mut self, structure: &Struct, hlir: &HLIR) {
@@ -594,74 +529,68 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
         };
 
         let local = self.should_be_local(&current_path);
-        let struct_ident = structure.ident.string();
-        if let Some(ns) = self.get_namespace_mut(&current_path) {
-            ns.items.insert(
-                struct_ident.clone(),
-                Namespace {
-                    ident: struct_ident,
-                    kind: NamespaceKind::Struct(struct_type_id),
-                    items: HashMap::new(),
-                    id: ResolvedID::OwnerDef(structure.owner_id),
-                    vis: structure.vis,
-                    local,
-                },
-            );
-        } else {
-            push_resolve_err!(
-                self,
-                on_span,
+        if let Err(e) = self.meta.namespace.insert_namespace(
+            &current_path,
+            Namespace {
+                ident: structure.ident.string(),
+                kind: NamespaceKind::Struct(struct_type_id),
+                items: HashMap::new(),
+                id: ResolvedID::OwnerDef(structure.owner_id),
+                vis: structure.vis,
+                local,
+            },
+        ) {
+            self.handle_namespace_insertion_error(
+                e,
                 structure.ident.span,
-                "Cannot find parent namespace: `{}`",
-                current_path
+                &current_path,
+                structure.ident.str(),
             );
         }
     }
 
     fn visit_enum(&mut self, enumeration: &Enum, _hlir: &HLIR) {
         let current_path = self.current_path().clone();
-        let struct_ident = enumeration.ident.string();
         let local = self.should_be_local(&current_path);
-        if let Some(ns) = self.get_namespace_mut(&current_path) {
-            ns.insert(Namespace {
-                ident: struct_ident,
+        if let Err(e) = self.meta.namespace.insert_namespace(
+            &current_path,
+            Namespace {
+                ident: enumeration.ident.string(),
                 kind: NamespaceKind::Enum,
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(enumeration.owner_id),
                 vis: enumeration.vis,
                 local,
-            });
-        } else {
-            push_resolve_err!(
-                self,
-                on_span,
+            },
+        ) {
+            self.handle_namespace_insertion_error(
+                e,
                 enumeration.ident.span,
-                "Cannot find parent namespace: `{}`",
-                current_path
+                &current_path,
+                enumeration.ident.str(),
             );
         }
     }
 
     fn visit_constant(&mut self, constant: &Constant, _hlir: &HLIR) {
         let current_path = self.current_path().clone();
-        let const_ident = constant.ident.string();
         let local = self.should_be_local(&current_path);
-        if let Some(ns) = self.get_namespace_mut(&current_path) {
-            ns.insert(Namespace {
-                ident: const_ident,
+        if let Err(e) = self.meta.namespace.insert_namespace(
+            &current_path,
+            Namespace {
+                ident: constant.ident.string(),
                 kind: NamespaceKind::Constant,
                 items: HashMap::new(),
                 id: ResolvedID::OwnerDef(constant.owner_id),
                 vis: constant.vis,
                 local,
-            });
-        } else {
-            push_resolve_err!(
-                self,
-                on_span,
+            },
+        ) {
+            self.handle_namespace_insertion_error(
+                e,
                 constant.ident.span,
-                "Cannot find parent namespace: `{}`",
-                current_path
+                &current_path,
+                constant.ident.str(),
             );
         }
     }
@@ -681,22 +610,22 @@ impl HLIRVisitor for AssociatedReferenceMapper<'_> {
 
         for import in &use_info.imports {
             let import_ident = import.segments().last().expect("Atleast one segment.");
-            if let Some(ns) = self.get_namespace_mut(&current_path) {
-                ns.insert(Namespace {
+            if let Err(e) = self.meta.namespace.insert_namespace(
+                &current_path,
+                Namespace {
                     ident: import_ident.clone(),
                     kind: NamespaceKind::Use(import.clone()),
                     items: HashMap::new(),
                     id: ResolvedID::OwnerDef(OwnerDefId(0)),
                     vis: use_info.vis,
                     local: use_info.vis == Visibility::Private,
-                });
-            } else {
-                push_resolve_err!(
-                    self,
-                    on_span,
+                },
+            ) {
+                self.handle_namespace_insertion_error(
+                    e,
                     use_info.span,
-                    "Cannot find parent namespace: `{}`",
-                    current_path
+                    &current_path,
+                    import_ident,
                 );
             }
         }

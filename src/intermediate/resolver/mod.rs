@@ -405,6 +405,13 @@ impl NamespaceKind {
     }
 }
 
+/// Represents errors that can occur when inserting items into a [`Namespace`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NamespaceInsertError {
+    ParentNotFound,
+    ItemAlreadyExists,
+}
+
 /// Represents a [`Namespace`] in the intermediate representation.
 /// A [`Namespace`] can represent modules, functions, structs, enums, etc.
 /// It contains child [`Namespace`]s for items defined within it.
@@ -471,13 +478,240 @@ impl Namespace {
         self.items.insert(namespace.ident.clone(), namespace);
     }
 
+    /// Checks if the namespace already contains an item with a specified identifier.
+    #[inline]
+    pub fn contains(&mut self, ident: &str) -> bool {
+        self.items.contains_key(ident)
+    }
+
     #[allow(dead_code)]
     #[inline]
     #[must_use]
     pub const fn is_resolvable_type(&self) -> bool {
         self.kind.is_resolvable_type()
     }
+}
 
+// Bool checks..
+impl Namespace {
+    /// Checks if the namespace kind is a module.
+    #[allow(dead_code)]
+    #[inline]
+    #[must_use]
+    pub fn is_module(&self) -> bool {
+        self.kind.is_module()
+    }
+
+    /// Checks if the namespace kind is a function.
+    #[allow(dead_code)]
+    #[inline]
+    #[must_use]
+    pub fn is_function(&self) -> bool {
+        self.kind.is_function()
+    }
+
+    /// Checks if the namespace kind is a constant.
+    #[allow(dead_code)]
+    #[inline]
+    #[must_use]
+    pub fn is_constant(&self) -> bool {
+        self.kind.is_constant()
+    }
+
+    /// Checks if the namespace kind is a struct.
+    #[allow(dead_code)]
+    #[inline]
+    #[must_use]
+    pub fn is_struct(&self) -> bool {
+        self.kind.is_struct()
+    }
+
+    /// Checks if the namespace kind is a builtin type.
+    #[allow(dead_code)]
+    #[inline]
+    #[must_use]
+    pub fn is_builtin(&self) -> bool {
+        self.kind.is_builtin()
+    }
+
+    /// Checks if the namespace kind is an enum.
+    #[allow(dead_code)]
+    #[inline]
+    #[must_use]
+    pub fn is_enum(&self) -> bool {
+        self.kind.is_enum()
+    }
+
+    /// Checks if the namespace kind is a use/import statement.
+    #[allow(dead_code)]
+    #[inline]
+    #[must_use]
+    pub fn is_use(&self) -> bool {
+        self.kind.is_use()
+    }
+}
+
+/// The root namespace of a Kitlang program.
+/// This is essentially a wrapper around a [`Namespace`] representing the root module.
+/// This is used to implement additional logic specific to the root namespace, such as resolving use imports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootNamespace {
+    pub namespace: Namespace,
+}
+
+impl AsRef<Namespace> for RootNamespace {
+    fn as_ref(&self) -> &Namespace {
+        &self.namespace
+    }
+}
+
+impl AsMut<Namespace> for RootNamespace {
+    fn as_mut(&mut self) -> &mut Namespace {
+        &mut self.namespace
+    }
+}
+
+impl Default for RootNamespace {
+    fn default() -> Self {
+        Self {
+            namespace: Namespace::default_root_definition(),
+        }
+    }
+}
+
+impl RootNamespace {
+    /// Finds a definition in the namespace from a sequence of path segments.
+    /// Each segment is looked up in order, starting from the root namespace,
+    /// where the next segment searched from the result of the previous segment.
+    #[inline]
+    #[must_use]
+    pub fn find_definition_from_segments(&self, path: &[IdentPathSegment]) -> Option<&Namespace> {
+        let mut curr_namespace = &self.namespace;
+        for segment in path {
+            curr_namespace = self.get_item_resolve_use(curr_namespace, segment.as_str())?;
+        }
+        Some(curr_namespace)
+    }
+
+    /// Finds a definition in the namespace from a full path.
+    /// Each segment within the [`IdentPath`] is looked up in order, starting from the root namespace,
+    /// where the next segment searched from the result of the previous segment.
+    #[inline]
+    #[must_use]
+    pub fn find_definition(&self, path: &IdentPath) -> Option<&Namespace> {
+        self.find_definition_from_segments(path.segments())
+    }
+
+    /// Finds a definition in the namespace from a full path.
+    /// Each segment within the [`IdentPath`] is looked up in order, starting from the root namespace,
+    /// where the next segment searched from the result of the previous segment.
+    /// The path is rebased from the given base path first.
+    #[inline]
+    #[must_use]
+    pub fn find_definition_from(&self, base: &IdentPath, path: &IdentPath) -> Option<&Namespace> {
+        let final_path = path.rebase_from_path(base);
+        self.find_definition_from_segments(final_path.segments())
+    }
+
+    /// Finds a definition in the namespace from a sequence of path segments.
+    /// Each segment is looked up in order, starting from the root namespace,
+    /// where the next segment searched from the result of the previous segment.
+    #[inline]
+    #[must_use]
+    pub fn find_definition_from_segments_mut(
+        &mut self,
+        path: &[IdentPathSegment],
+    ) -> Option<&mut Namespace> {
+        let mut curr_namespace = unsafe { &mut *std::ptr::from_mut(&mut self.namespace) };
+        for segment in path {
+            curr_namespace = unsafe {
+                &mut *std::ptr::from_mut(
+                    self.get_item_resolve_use_mut(curr_namespace, segment.as_str())?,
+                )
+            };
+        }
+        Some(curr_namespace)
+    }
+
+    /// Finds a definition in the namespace from a full path.
+    /// Each segment within the [`IdentPath`] is looked up in order, starting from the root namespace,
+    /// where the next segment searched from the result of the previous segment.
+    #[inline]
+    #[must_use]
+    pub fn find_definition_mut(&mut self, path: &IdentPath) -> Option<&mut Namespace> {
+        self.find_definition_from_segments_mut(path.segments())
+    }
+
+    /// Finds a definition in the namespace from a full path.
+    /// Each segment within the [`IdentPath`] is looked up in order, starting from the root namespace,
+    /// where the next segment searched from the result of the previous segment.
+    /// The path is rebased from the given base path first.
+    #[inline]
+    #[must_use]
+    pub fn find_definition_from_mut(
+        &mut self,
+        base: &IdentPath,
+        path: &IdentPath,
+    ) -> Option<&mut Namespace> {
+        let final_path = path.rebase_from_path(base);
+        self.find_definition_from_segments_mut(final_path.segments())
+    }
+
+    /// Gets an item from the namespace, resolving `use` statements if necessary.
+    #[inline]
+    #[must_use]
+    pub fn get_item_resolve_use<'a>(
+        &'a self,
+        namespace: &'a Namespace,
+        ident: &str,
+    ) -> Option<&'a Namespace> {
+        let result_namespace = namespace.get(ident)?;
+        if let NamespaceKind::Use(use_path) = &result_namespace.kind {
+            self.find_definition(use_path)
+        } else {
+            Some(result_namespace)
+        }
+    }
+
+    /// Gets an item from the namespace, resolving `use` statements if necessary.
+    #[inline]
+    #[must_use]
+    pub fn get_item_resolve_use_mut<'a>(
+        &'a mut self,
+        namespace: &'a mut Namespace,
+        ident: &str,
+    ) -> Option<&'a mut Namespace> {
+        let result_namespace = namespace.get_mut(ident)?;
+        if let NamespaceKind::Use(use_path) = &result_namespace.kind {
+            self.find_definition_from_segments_mut(use_path.segments())
+        } else {
+            Some(result_namespace)
+        }
+    }
+
+    /// Inserts a child namespace into a target namespace.
+    /// # Errors
+    /// This function will return an error if the parent namespace is not found,
+    /// or if an item with the same identifier already exists in the target namespace.
+    #[inline]
+    pub fn insert_namespace(
+        &mut self,
+        parent: &IdentPath,
+        namespace: Namespace,
+    ) -> Result<(), NamespaceInsertError> {
+        let Some(target) = self.find_definition_mut(parent) else {
+            return Err(NamespaceInsertError::ParentNotFound);
+        };
+        if target.contains(&namespace.ident) {
+            Err(NamespaceInsertError::ItemAlreadyExists)
+        } else {
+            target.insert(namespace);
+            Ok(())
+        }
+    }
+}
+
+impl RootNamespace {
     /// Track backwards from the path, finding the "deepest" enclosing scope of the path.
     /// Where an enclosing scope is something like a module or function that defines a 'border' of accessibility.
     #[must_use]
@@ -543,39 +777,6 @@ impl Namespace {
         self.find_previous_module(&path.rebase_from_path(base))
     }
 
-    /// Finds a definition in the namespace from a sequence of path segments.
-    /// Each segment is looked up in order, starting from the root namespace,
-    /// where the next segment searched from the result of the previous segment.
-    #[inline]
-    #[must_use]
-    pub fn find_definition_from_segments(&self, path: &[IdentPathSegment]) -> Option<&Self> {
-        let mut curr_namespace = self;
-        for segment in path {
-            curr_namespace = curr_namespace.get(segment)?;
-        }
-        Some(curr_namespace)
-    }
-
-    /// Finds a definition in the namespace from a full path.
-    /// Each segment within the [`IdentPath`] is looked up in order, starting from the root namespace,
-    /// where the next segment searched from the result of the previous segment.
-    #[inline]
-    #[must_use]
-    pub fn find_definition(&self, path: &IdentPath) -> Option<&Self> {
-        self.find_definition_from_segments(path.segments())
-    }
-
-    /// Finds a definition in the namespace from a full path.
-    /// Each segment within the [`IdentPath`] is looked up in order, starting from the root namespace,
-    /// where the next segment searched from the result of the previous segment.
-    /// The path is rebased from the given base path first.
-    #[inline]
-    #[must_use]
-    pub fn find_definition_from(&self, base: &IdentPath, path: &IdentPath) -> Option<&Self> {
-        let final_path = path.rebase_from_path(base);
-        self.find_definition_from_segments(final_path.segments())
-    }
-
     /// Finds a method in the namespace given its defining path, data type identifier, and method identifier.
     /// # Example
     /// ```ignore
@@ -600,12 +801,10 @@ impl Namespace {
         defined_in: &IdentPath,
         data_type_ident: &str,
         method_ident: &str,
-    ) -> Option<&Self> {
-        self.find_definition(defined_in)?
-            .items
-            .get(data_type_ident)?
-            .items
-            .get(method_ident)
+    ) -> Option<&Namespace> {
+        let containing_ns = self.find_definition(defined_in)?;
+        let data_type_ns = self.get_item_resolve_use(containing_ns, data_type_ident)?;
+        self.get_item_resolve_use(data_type_ns, method_ident)
     }
 
     /// Finds a method in the namespace given its defining path, data type identifier, and method identifier.
@@ -636,65 +835,6 @@ impl Namespace {
         self.find_method(defined_in, data_type_ident, method_ident)?
             .id
             .owner_def_id()
-    }
-}
-
-// Bool checks..
-impl Namespace {
-    /// Checks if the namespace kind is a module.
-    #[allow(dead_code)]
-    #[inline]
-    #[must_use]
-    pub fn is_module(&self) -> bool {
-        self.kind.is_module()
-    }
-
-    /// Checks if the namespace kind is a function.
-    #[allow(dead_code)]
-    #[inline]
-    #[must_use]
-    pub fn is_function(&self) -> bool {
-        self.kind.is_function()
-    }
-
-    /// Checks if the namespace kind is a constant.
-    #[allow(dead_code)]
-    #[inline]
-    #[must_use]
-    pub fn is_constant(&self) -> bool {
-        self.kind.is_constant()
-    }
-
-    /// Checks if the namespace kind is a struct.
-    #[allow(dead_code)]
-    #[inline]
-    #[must_use]
-    pub fn is_struct(&self) -> bool {
-        self.kind.is_struct()
-    }
-
-    /// Checks if the namespace kind is a builtin type.
-    #[allow(dead_code)]
-    #[inline]
-    #[must_use]
-    pub fn is_builtin(&self) -> bool {
-        self.kind.is_builtin()
-    }
-
-    /// Checks if the namespace kind is an enum.
-    #[allow(dead_code)]
-    #[inline]
-    #[must_use]
-    pub fn is_enum(&self) -> bool {
-        self.kind.is_enum()
-    }
-
-    /// Checks if the namespace kind is a use/import statement.
-    #[allow(dead_code)]
-    #[inline]
-    #[must_use]
-    pub fn is_use(&self) -> bool {
-        self.kind.is_use()
     }
 }
 

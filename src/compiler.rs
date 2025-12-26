@@ -1,6 +1,6 @@
 use crate::KitlangResult;
 use crate::intermediate::hir::ProgramMetaData;
-use crate::intermediate::resolver::{Namespace, TypeRegistry};
+use crate::intermediate::resolver::{RootNamespace, TypeRegistry};
 use crate::intermediate::type_check::TypeMap;
 
 use crate::token::Token;
@@ -48,14 +48,14 @@ impl CompilerContext {
     /// Get a reference to the program's namespace.
     #[inline]
     #[must_use]
-    pub fn namespace(&self) -> &Namespace {
+    pub fn namespace(&self) -> &RootNamespace {
         &self.meta.namespace
     }
 
     /// Get a mutable reference to the program's namespace.
     #[inline]
     #[must_use]
-    pub fn namespace_mut(&mut self) -> &mut Namespace {
+    pub fn namespace_mut(&mut self) -> &mut RootNamespace {
         &mut self.meta.namespace
     }
 

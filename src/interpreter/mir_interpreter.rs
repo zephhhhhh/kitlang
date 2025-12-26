@@ -9,7 +9,7 @@ use crate::intermediate::mir::{
     Statement, StatementKind,
 };
 
-use crate::intermediate::resolver::{Namespace, NamespaceKind, TypeRegistry};
+use crate::intermediate::resolver::{NamespaceKind, RootNamespace, TypeRegistry};
 use crate::intermediate::types::{KitFloat, KitInt, KitUInt};
 use crate::interpreter::errors::{InterpResult, interp_err};
 use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
@@ -21,7 +21,7 @@ use log::{debug, error, warn};
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    pub namespace: Namespace,
+    pub namespace: RootNamespace,
     pub registry: TypeRegistry,
     pub mir: MIR,
 }
@@ -29,7 +29,7 @@ pub struct Program {
 impl Program {
     #[inline]
     #[must_use]
-    pub const fn new(mir: MIR, registry: TypeRegistry, namespace: Namespace) -> Self {
+    pub const fn new(mir: MIR, registry: TypeRegistry, namespace: RootNamespace) -> Self {
         Self {
             namespace,
             registry,
@@ -701,7 +701,11 @@ impl InterpreterState {
     #[inline]
     #[must_use]
     fn find_entry_point(program: &ProgramType) -> Option<OwnerDefId> {
-        let main = program.namespace.items.get(Self::DEFAULT_ENTRY_NAME)?;
+        let main = program
+            .namespace
+            .namespace
+            .items
+            .get(Self::DEFAULT_ENTRY_NAME)?;
         if matches!(main.kind, NamespaceKind::Function) {
             main.id.owner_def_id()
         } else {
