@@ -906,7 +906,11 @@ impl TypeChecker<'_> {
             }
             ExprKind::Loop(body_id) => {
                 self.eval_block_type_by_id(*body_id, hlir)?;
-                Ok(Type::unit())
+                if let Some(expected_t) = expected && expected_t.is_resolved() {
+                    Ok(expected_t.clone())
+                } else {
+                    Ok(Type::unit())
+                }
             }
             ExprKind::For(_, binding_id, iterable_id, loop_block_id) => {
                 let iterable_type = self.eval_expr_type_by_id(*iterable_id, hlir)?;

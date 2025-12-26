@@ -1384,7 +1384,7 @@ mod intrinsics {
     #[cfg(not(feature = "webasm"))]
     #[kitlang_native_fn]
     fn input(prompt: String) -> String {
-        print!("{prompt}");
+        print!("{prompt} ");
         std::io::stdout().flush().expect("Failed to flush.");
         let mut input = String::new();
         std::io::stdin()
@@ -1396,7 +1396,7 @@ mod intrinsics {
     #[kitlang_native_fn]
     fn input_placeholder(prompt: String, default: String) -> String {
         let mut input = String::new();
-        print!("{prompt}");
+        print!("{prompt} ");
         std::io::stdout().flush().expect("Failed to flush.");
         std::io::stdin()
             .read_line(&mut input)

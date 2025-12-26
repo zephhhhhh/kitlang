@@ -603,7 +603,7 @@ impl Lexer<'_> {
         let literal_start_pos = self.cursor.position();
 
         let val_pos = self.cursor.position();
-        let mut prev_char = ESCAPE_CHAR;
+        let mut prev_char = EOF_CHAR;
 
         // This check just ensure that we don't stop reading the current
         // string until we find an unescaped `"` character.
