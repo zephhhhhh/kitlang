@@ -2,7 +2,7 @@ use kitlang::{
     ast::{BinaryOpKind, Literal, Mutability, Ty, UnaryOpKind, Visibility},
     intermediate::{
         hir::{
-            HLIR, HirId, LocalDefId, OwnerDefId,
+            HLIR, HLIRExt, HirId, LocalDefId, OwnerDefId,
             nodes::{BindingKind, Expr, ExprKind, HirNode, OwningNode, StatementKind, Type},
         },
         types::{KitFloat, KitInt, KitTy},

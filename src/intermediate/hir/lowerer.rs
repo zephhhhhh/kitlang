@@ -41,7 +41,7 @@ use crate::intermediate::hir::nodes::{
     OwningNodeKind, Parameter, RefPath, Statement, StatementKind, Struct, StructField,
     StructFieldInit, StructInitialisation, Type, UsePath, VarBinding,
 };
-use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+use crate::intermediate::hir::{HLIR, HLIRExt, HirId, OwnerDefId};
 
 /// This struct is how we store and maintain the HLIR while we lower from AST to HIR.
 /// Contains all the logic for doing the lowering.

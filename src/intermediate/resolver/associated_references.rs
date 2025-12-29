@@ -37,8 +37,8 @@ use crate::intermediate::hir::nodes::{
     Constant, Enum, Function, HirNode, Impl, Module, RefPath, ResolvedID, Struct, StructField,
     UsePath,
 };
-use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitor, HLIRVisitorMut};
-use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+use crate::intermediate::hir::visitor::{HLIRVisitor, HLIRVisitorMut};
+use crate::intermediate::hir::{HLIR, HLIRDisjointMut, HLIRExt, HirId, OwnerDefId};
 
 use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::resolver::errors::{

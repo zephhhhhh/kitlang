@@ -1,7 +1,7 @@
 use ::std::fmt::{Debug, Display};
 
 use crate::KitSmallVec;
-use crate::intermediate::hir::{DefId, HirId, LocalDefId, OwnerDefId};
+use crate::intermediate::hir::{DefId, HLIRExt, HirId, LocalDefId, OwnerDefId};
 
 use crate::ast::{
     BinaryOpKind, Ident, IdentPath, Literal, Mutability, SourceSpan, SpannedIdent,
@@ -459,6 +459,18 @@ macro_rules! impl_item_kind_shorthand {
                         $item_kind => Some($return_expr),
                         _ => None,
                     }
+                }
+            }
+
+            impl<'a> From<&'a OwningNode> for Option<&'a $return_ty> {
+                fn from(value: &'a OwningNode) -> Self {
+                    value.[<hir_ $item_name _ref>]()
+                }
+            }
+
+            impl<'a> From<&'a mut OwningNode> for Option<&'a mut $return_ty> {
+                fn from(value: &'a mut OwningNode) -> Self {
+                    value.[<hir_ $item_name _mut>]()
                 }
             }
         }

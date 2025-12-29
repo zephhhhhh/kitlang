@@ -17,8 +17,8 @@ use crate::ast::{IdentPath, Ty};
 use crate::intermediate::hir::nodes::{
     Expr, ExprKind, Function, Impl, Module, RefPath, ResolvedID, Struct, StructField, Type,
 };
-use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
-use crate::intermediate::hir::{HLIR, OwnerDefId};
+use crate::intermediate::hir::visitor::HLIRVisitorMut;
+use crate::intermediate::hir::{HLIR, HLIRDisjointMut, HLIRExt, OwnerDefId};
 
 use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::resolver::errors::{

@@ -9,7 +9,7 @@ use crate::intermediate::hir::nodes::{
 };
 use crate::intermediate::hir::visitor::HLIRVisitor;
 use crate::intermediate::hir::{
-    HLIR, HirId, LoweringError, LoweringErrorKind, OwnerDefId, ProgramMetaData,
+    HLIR, HLIRExt, HirId, LoweringError, LoweringErrorKind, OwnerDefId, ProgramMetaData,
 };
 
 use crate::intermediate::mir::{

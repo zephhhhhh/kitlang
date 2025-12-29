@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use crate::intermediate::hir::nodes::{
     BindingKind, Block, Function, HirNode, LetStatement, Parameter, RefPath, ResolvedID,
 };
-use crate::intermediate::hir::visitor::{HLIRDisjointMut, HLIRVisitorMut};
-use crate::intermediate::hir::{HLIR, HirId};
+use crate::intermediate::hir::visitor::HLIRVisitorMut;
+use crate::intermediate::hir::{HLIR, HLIRDisjointMut, HLIRExt, HirId};
 use crate::intermediate::resolver::errors::{
     ResolveResult, ResolverError, ResolverErrorKind, push_resolve_err, resolve_err,
 };

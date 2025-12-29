@@ -10,14 +10,19 @@
 //! program metadata ([`ProgramMetaData`]), and utilities for lowering, [traversing](crate::intermediate::hir::visitor),
 //! and manipulating the HIR.
 
+pub mod errors;
+mod hlir;
+pub mod lowerer;
+pub mod nodes;
+pub mod visitor;
+
+pub use hlir::*;
+
 use ::std::fmt::Debug;
 
 use crate::ast::{ASTRoot, IdentPath, SourceSpan};
-
 use crate::intermediate::hir::errors::LowerResult;
-use crate::intermediate::hir::nodes::{
-    HirNode, Item, OwningNode, OwningNodeKind, Type, VarBinding,
-};
+use crate::intermediate::hir::nodes::Type;
 use crate::intermediate::resolver::{
     ADTTypeInfo, Namespace, RootNamespace, TypeRegistry, resolve_paths,
 };
@@ -25,12 +30,6 @@ use crate::intermediate::type_check::{TypeMap, run_type_checker};
 
 pub use crate::intermediate::hir::errors::{LoweringError, LoweringErrorKind};
 use crate::intermediate::types::KitTy;
-
-pub mod lowerer;
-
-pub mod errors;
-pub mod nodes;
-pub mod visitor;
 
 /// Definition ID that is only valid when relative to the "owner".
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -168,255 +167,6 @@ impl HirId {
 impl Debug for HirId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "HirId({:?} : {:?})", self.owner, self.id)
-    }
-}
-
-/// High Level Intermediate Representation of the program.
-///
-/// Contains all HIR nodes in owning nodes, which are organized in a structure where
-/// top level items such as structures, impls, etc each have their own owning node.
-///
-/// And all lower level nodes such as statements, expressions, etc are stored within those owning nodes.
-///
-/// In this fashion, the HIR can represent the entire program in a structure that is much flatter
-/// than the tree structure of the AST, while still maintaining the hierarchical relationships.
-///
-/// This means that all nodes have a small `HirId` that can be used to reference them, without needing
-/// to traverse a large tree structure.
-///
-/// This makes lookups and storing side channel data such as type information much easier and more efficient.
-#[derive(Default, Clone)]
-pub struct HLIR {
-    /// List of all owning nodes in the HIR.
-    pub owner_nodes: Vec<OwningNode>,
-}
-
-impl HLIR {
-    /// Get the total count of owner nodes in the HIR.
-    #[allow(clippy::cast_possible_truncation)]
-    #[inline]
-    #[must_use]
-    pub const fn owner_node_count(&self) -> u32 {
-        self.owner_nodes.len() as u32
-    }
-
-    /// Get an iterator over all owner IDs in the HIR.
-    #[inline]
-    pub fn owner_id_iter(&self) -> impl Iterator<Item = OwnerDefId> {
-        (0..self.owner_node_count()).map(OwnerDefId)
-    }
-
-    /// Get a reference to the root module owning node.
-    #[inline]
-    #[must_use]
-    pub fn root_module(&self) -> Option<&OwningNode> {
-        self.owning_node(OwnerDefId::ROOT_NODE)
-    }
-
-    /// Get a mutable reference to the root module owning node.
-    #[inline]
-    #[must_use]
-    pub fn root_module_mut(&mut self) -> Option<&mut OwningNode> {
-        self.owning_node_mut(OwnerDefId::ROOT_NODE)
-    }
-
-    /// Get a reference to the owning node with a specified [`OwnerDefId`].
-    #[inline]
-    #[must_use]
-    pub fn owning_node(&self, id: OwnerDefId) -> Option<&OwningNode> {
-        self.owner_nodes.get(id.0 as usize)
-    }
-
-    /// Get a mutable reference to the owning node with a specified [`OwnerDefId`].
-    #[inline]
-    #[must_use]
-    pub fn owning_node_mut(&mut self, id: OwnerDefId) -> Option<&mut OwningNode> {
-        self.owner_nodes.get_mut(id.0 as usize)
-    }
-
-    /// Get a reference to the owning node without checking for existence.
-    /// # Panics
-    /// Panics if the node does not exist.
-    #[inline]
-    #[must_use]
-    pub fn owning_node_unchecked(&self, id: OwnerDefId) -> &OwningNode {
-        self.owner_nodes.get(id.0 as usize).expect("Node exists.")
-    }
-
-    /// Get a mutable reference to the owning node without checking for existence.
-    /// # Panics
-    /// Panics if the node does not exist.
-    #[inline]
-    #[must_use]
-    pub fn owning_node_mut_unchecked(&mut self, id: OwnerDefId) -> &mut OwningNode {
-        self.owner_nodes
-            .get_mut(id.0 as usize)
-            .expect("Node exists.")
-    }
-
-    /// Get the next available owner ID for inserting a new owning node.
-    #[inline]
-    #[must_use]
-    pub const fn next_owner_id(&self) -> OwnerDefId {
-        OwnerDefId(self.owner_node_count())
-    }
-
-    /// Insert a new owning node into the HIR, returning its assigned [`OwnerDefId`].
-    #[inline]
-    pub fn insert_owning_node(&mut self, mut owner_node: OwningNode) -> OwnerDefId {
-        let next_id = self.next_owner_id();
-        owner_node.set_owner_id(next_id);
-        self.owner_nodes.push(owner_node);
-        next_id
-    }
-
-    /// Insert a new owning node into the HIR, updating its parent's item list,
-    /// and returning its assigned [`OwnerDefId`].
-    #[inline]
-    pub fn insert_owning_node_with_parent(
-        &mut self,
-        owner_node: OwningNode,
-        parent_id: OwnerDefId,
-    ) -> OwnerDefId {
-        let is_normal_item = matches!(&owner_node.kind, OwningNodeKind::Item(_));
-        let new_node_id = self.insert_owning_node(owner_node);
-        if is_normal_item {
-            self.update_parent_item_list(new_node_id, parent_id);
-        }
-        new_node_id
-    }
-
-    /// Push a new item to the parent owning node's item list.
-    fn update_parent_item_list(&mut self, new_node: OwnerDefId, parent_id: OwnerDefId) {
-        if let Some(parent_module) = self
-            .owning_node_mut(parent_id)
-            .and_then(|o| o.hir_module_mut())
-        {
-            parent_module.item_ids.push(new_node);
-        }
-    }
-}
-
-impl HLIR {
-    /// Get a reference to the [`HirNode`] with a specified [`HirId`].
-    #[inline]
-    #[must_use]
-    pub fn get_hir_node(&self, hir_id: HirId) -> Option<&HirNode> {
-        self.owning_node(hir_id.owner)?.get_hir_node(hir_id.id)
-    }
-
-    /// Get a reference to the [`HirNode`] with a specified [`HirId`] without checking for existence.
-    /// # Panics
-    /// Panics if the node does not exist.
-    #[inline]
-    #[must_use]
-    pub fn get_hir_node_unchecked(&self, hir_id: HirId) -> &HirNode {
-        self.owning_node_unchecked(hir_id.owner)
-            .get_hir_node(hir_id.id)
-            .expect("HIRNode exists.")
-    }
-
-    /// Get a mutable reference to the [`HirNode`] with a specified [`HirId`].
-    #[inline]
-    #[must_use]
-    pub fn get_hir_node_mut(&mut self, hir_id: HirId) -> Option<&mut HirNode> {
-        self.owning_node_mut(hir_id.owner)?
-            .get_hir_node_mut(hir_id.id)
-    }
-
-    /// Get a mutable reference to the [`HirNode`] with a specified [`HirId`] without checking for existence.
-    /// # Panics
-    /// Panics if the node does not exist.
-    #[inline]
-    #[must_use]
-    pub fn get_hir_node_mut_unchecked(&mut self, hir_id: HirId) -> &mut HirNode {
-        self.owning_node_mut_unchecked(hir_id.owner)
-            .get_hir_node_mut(hir_id.id)
-            .expect("HIRNode exists.")
-    }
-
-    /// Get the next available [`HirId`] for a specified owner.
-    #[inline]
-    #[must_use]
-    pub fn next_hir_id_on(&self, owner_id: impl Into<OwnerDefId>) -> HirId {
-        self.owning_node(owner_id.into())
-            .map_or(HirId::PLACEHOLDER_ID, nodes::OwningNode::next_hir_id)
-    }
-
-    /// Insert a new [`HirNode`] into the HIR under the specified owner, returning its assigned [`HirId`].
-    #[inline]
-    pub fn insert_hir_node(
-        &mut self,
-        owner_id: impl Into<OwnerDefId>,
-        hir_node: HirNode,
-    ) -> Option<HirId> {
-        let owner = owner_id.into();
-        let local_id = self.owning_node_mut(owner)?.insert_hir_node(hir_node);
-        Some(HirId {
-            owner,
-            id: local_id,
-        })
-    }
-}
-
-impl HLIR {
-    /// Get a reference to the owning node's item with a specified [`OwnerDefId`].
-    #[inline]
-    #[must_use]
-    pub fn owning_node_item(&self, owner_id: OwnerDefId) -> Option<&Item> {
-        Some(self.owning_node(owner_id)?.item())
-    }
-
-    /// Get a mutable reference to the owning node's item with a specified [`OwnerDefId`].
-    #[inline]
-    #[must_use]
-    pub fn owning_node_item_mut(&mut self, owner_id: OwnerDefId) -> Option<&mut Item> {
-        Some(self.owning_node_mut(owner_id)?.item_mut())
-    }
-}
-
-// "Helper" functions..
-impl HLIR {
-    /// Get the source span for a given owning node ID, if it exists.
-    #[inline]
-    #[must_use]
-    pub fn span_by_owner_id(&self, id: OwnerDefId) -> Option<SourceSpan> {
-        Some(self.owning_node(id)?.span())
-    }
-
-    /// Get the source span for a given [`HirId`], if it exists.
-    #[inline]
-    #[must_use]
-    pub fn span_by_hir_id(&self, id: HirId) -> Option<SourceSpan> {
-        Some(self.get_hir_node(id)?.span())
-    }
-}
-
-impl HLIR {
-    /// Get a reference to a variable binding by its [`HirId`],
-    /// if the node exists and is a binding.
-    #[inline]
-    #[must_use]
-    pub fn binding_by_id(&self, id: HirId) -> Option<&VarBinding> {
-        let node = self.get_hir_node(id)?;
-        match node {
-            nodes::HirNode::Binding(binding) => Some(binding),
-            _ => None,
-        }
-    }
-}
-
-impl AsRef<Self> for HLIR {
-    fn as_ref(&self) -> &Self {
-        self
-    }
-}
-
-impl Debug for HLIR {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HLIR")
-            .field("hir_nodes", &self.owner_nodes)
-            .finish()
     }
 }
 

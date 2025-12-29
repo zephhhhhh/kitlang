@@ -4,7 +4,7 @@ use kitlang::{
     ast::IdentPath,
     intermediate::{
         hir::{
-            HLIR, HirId,
+            HLIR, HLIRExt, HirId,
             nodes::{Expr, ExprKind, HirNode, StatementKind},
         },
         resolver::errors::ResolverErrorKind,

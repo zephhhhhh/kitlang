@@ -20,7 +20,7 @@ use crate::ast::{Literal, Mutability, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::visitor::HLIRVisitorMut;
-use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+use crate::intermediate::hir::{HLIR, HLIRExt, HirId, OwnerDefId};
 
 use crate::intermediate::hir::ProgramMetaData;
 use crate::intermediate::hir::nodes::{
@@ -29,8 +29,8 @@ use crate::intermediate::hir::nodes::{
 };
 use crate::intermediate::types::{KitFloat, KitInt, KitTy};
 
+use super::hir::HLIRDisjointMut;
 use super::hir::nodes::{Function, LetStatement};
-use super::hir::visitor::HLIRDisjointMut;
 
 macro_rules! type_fail {
     (no_span, $($arg:tt)*) => {
@@ -200,7 +200,7 @@ impl TypeChecker<'_> {
                     ref_path
                 ));
             };
-            let Some(fn_node) = hlir.get_owning_node_mut(fn_def_id) else {
+            let Some(fn_node) = hlir.owning_node_mut(fn_def_id) else {
                 return Err(type_fail!(
                     hlir,
                     id,
@@ -239,20 +239,12 @@ impl TypeChecker<'_> {
         param_index: u32,
         hlir: &mut HLIRDisjointMut<'_>,
     ) -> TypeResult<Type> {
-        let Some(fn_node) = hlir.get_owning_node_mut(func_id) else {
+        let Some(func) = hlir.owning_node_item_as::<Function>(func_id) else {
             return Err(type_fail!(
                 hlir,
                 expr_id,
-                "Function parameter, target function id {:?} is not a node?",
+                "Function parameter, target function id {:?} is not a function?",
                 func_id
-            ));
-        };
-        let Some(func) = fn_node.hir_function_ref() else {
-            return Err(type_fail!(
-                hlir,
-                expr_id,
-                "Function parameter, resolved function owning node {:?} is not a function?",
-                fn_node
             ));
         };
 
@@ -1337,7 +1329,7 @@ impl TypeChecker<'_> {
         owner_def_id: OwnerDefId,
         hlir: &mut HLIRDisjointMut<'_>,
     ) -> TypeResult<()> {
-        let Some(owning_node) = hlir.get_owning_node_mut(owner_def_id) else {
+        let Some(owning_node) = hlir.owning_node_mut(owner_def_id) else {
             let span = hlir
                 .nonmut_ref()
                 .span_by_owner_id(owner_def_id)

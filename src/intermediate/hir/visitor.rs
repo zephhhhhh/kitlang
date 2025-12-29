@@ -1,8 +1,9 @@
+use crate::intermediate::hir::HLIRDisjointMut;
 use crate::intermediate::hir::nodes::{
     Block, Constant, Enum, Expr, ExprKind, Function, HirNode, Impl, Item, ItemKind, LetStatement,
-    Module, OwningNode, Parameter, RefPath, Statement, StatementKind, Struct, UsePath,
+    Module, Parameter, RefPath, Statement, StatementKind, Struct, UsePath,
 };
-use crate::intermediate::hir::{HLIR, HirId, OwnerDefId};
+use crate::intermediate::hir::{HLIR, HLIRExt, HirId, OwnerDefId};
 
 /// Provides an interface from traversing the HLIR tree.
 ///
@@ -290,126 +291,6 @@ pub trait HLIRVisitor {
     }
 }
 
-/// The purpose of this is to allow multiple mutable references to the individual disjoint nodes in
-/// the HLIR representation.
-/// # Safety
-/// This is safe as long as no new nodes are added in any form, so we only mutate already existing
-/// nodes, and no references are stored beyond the lifetime of 'a.
-///
-/// Therefore this struct offers no way to access the underlying HLIR directly, and only exposes
-/// methods for accessing already existing nodes.
-///
-/// Since we borrow [`HLIR`] mutably for this, we can guarantee that we are the only reference to
-/// the [`HLIR`] and so therefore this is no way for new nodes to be added, guaranteeing the safety
-/// of this.
-pub struct HLIRDisjointMut<'a> {
-    hlir: &'a mut HLIR,
-}
-
-impl<'a> HLIRDisjointMut<'a> {
-    #[inline]
-    pub const fn new(hlir: &'a mut HLIR) -> Self {
-        Self { hlir }
-    }
-
-    #[inline]
-    #[must_use]
-    pub const fn nonmut_ref<'b>(&'a self) -> &'b HLIR
-    where
-        'a: 'b,
-    {
-        self.hlir
-    }
-}
-
-impl HLIRDisjointMut<'_> {
-    pub fn get_hir_node_mut_as<'a, F>(&mut self, id: HirId) -> Option<&'a mut F>
-    where
-        Option<&'a mut F>: From<&'a mut HirNode>,
-    {
-        self.get_hir_node_mut(id).and_then(std::convert::Into::into)
-    }
-
-    pub fn get_hir_node_mut(&mut self, id: HirId) -> Option<&'static mut HirNode> {
-        Some(self.hir_node_mut(id)?.value_mut())
-    }
-
-    pub fn hir_node_mut(&mut self, id: HirId) -> Option<DisjointHIRNode> {
-        Some(DisjointHIRNode::from_mut_ref(
-            self.hlir.get_hir_node_mut(id)?,
-        ))
-    }
-
-    pub fn owning_node_mut(&mut self, id: OwnerDefId) -> Option<DisjointOwningNode> {
-        Some(DisjointOwningNode::from_mut_ref(
-            self.hlir.owning_node_mut(id)?,
-        ))
-    }
-
-    pub fn get_owning_node_mut(&mut self, id: OwnerDefId) -> Option<&'static mut OwningNode> {
-        Some(self.owning_node_mut(id)?.value_mut())
-    }
-
-    pub fn owning_node_item_mut(&mut self, id: OwnerDefId) -> Option<DisjointItem> {
-        Some(DisjointItem::from_mut_ref(
-            self.hlir.owning_node_item_mut(id)?,
-        ))
-    }
-}
-
-impl AsRef<HLIR> for HLIRDisjointMut<'_> {
-    fn as_ref(&self) -> &HLIR {
-        self.nonmut_ref()
-    }
-}
-
-/// This is a wrapper around a pointer, this purpose of this is to allow methods on
-/// [`HLIRDisjointMut`] to return a value, and not a reference with a lifetime, this means the
-/// mutable borrow of [`HLIRDisjointMut`] when querying is only held for the duration of the
-/// function call, and isn't held afterwards, preventing more mutable borrows from being made.
-#[derive(Clone)]
-pub struct Disjoint<T> {
-    v: *mut T,
-}
-
-impl<T> std::ops::Deref for Disjoint<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.v }
-    }
-}
-
-impl<T> std::ops::DerefMut for Disjoint<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.v }
-    }
-}
-
-impl<T> Disjoint<T> {
-    pub const fn from_mut_ref(v: &mut T) -> Self {
-        Self {
-            v: std::ptr::from_mut(v),
-        }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn value(&self) -> &'static T {
-        unsafe { &*self.v }
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn value_mut(&self) -> &'static mut T {
-        unsafe { &mut *self.v }
-    }
-}
-
-pub type DisjointHIRNode = Disjoint<HirNode>;
-pub type DisjointOwningNode = Disjoint<OwningNode>;
-pub type DisjointItem = Disjoint<Item>;
-
 /// Provides an interface from traversing the HLIR tree.
 ///
 /// Functions named `super_` are default implementations that traverse the tree further, and
@@ -436,7 +317,7 @@ pub trait HLIRVisitorMut<'a> {
     /// This visits the root module if it exists.
     fn super_root_mut(&mut self, hlir: &mut HLIRDisjointMut<'a>) {
         if let Some(root_node) = hlir.owning_node_mut(OwnerDefId::ROOT_NODE)
-            && let Some(root_module) = root_node.value_mut().hir_module_mut()
+            && let Some(root_module) = root_node.hir_module_mut()
         {
             self.visit_module_mut(root_module, hlir);
         }
@@ -446,7 +327,7 @@ pub trait HLIRVisitorMut<'a> {
     fn super_module_mut(&mut self, module: &mut Module, hlir: &mut HLIRDisjointMut<'a>) {
         for item_id in &module.item_ids {
             if let Some(item) = hlir.owning_node_item_mut(*item_id) {
-                self.visit_item_mut(item.value_mut(), hlir);
+                self.visit_item_mut(item, hlir);
             }
         }
     }
@@ -476,7 +357,7 @@ pub trait HLIRVisitorMut<'a> {
     fn super_impl_mut(&mut self, impl_info: &mut Impl, hlir: &mut HLIRDisjointMut<'a>) {
         for item_id in &impl_info.items {
             if let Some(item) = hlir.owning_node_item_mut(*item_id) {
-                self.visit_impl_item_mut(item.value_mut(), hlir);
+                self.visit_impl_item_mut(item, hlir);
             }
         }
     }
@@ -531,7 +412,7 @@ pub trait HLIRVisitorMut<'a> {
             }
             StatementKind::Item(owner_def_id) => {
                 if let Some(item) = hlir.owning_node_item_mut(*owner_def_id) {
-                    self.visit_item_mut(item.value_mut(), hlir);
+                    self.visit_item_mut(item, hlir);
                 }
             }
             StatementKind::Expr(hir_id) | StatementKind::Semi(hir_id) => {
@@ -564,8 +445,8 @@ pub trait HLIRVisitorMut<'a> {
         match &mut expr.kind {
             ExprKind::Path(ref_path) => self.visit_path_mut(expr.id, ref_path, hlir),
             ExprKind::Block(hir_id) => {
-                if let Some(node) = hlir.hir_node_mut(*hir_id)
-                    && let HirNode::Block(block) = node.value_mut()
+                if let Some(node) = hlir.get_hir_node_mut(*hir_id)
+                    && let HirNode::Block(block) = node
                 {
                     self.visit_block_mut(block, hlir);
                 }
