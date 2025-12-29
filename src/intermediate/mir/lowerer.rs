@@ -515,10 +515,8 @@ impl HIRToMIRFuncLowerer<'_> {
 
     /// Converts a block target to an [`RValue`].
     #[inline]
-    fn block_target_to_rvalue(target: Option<AssignTarget>) -> RValue {
-        target
-            .as_ref()
-            .map_or_else(RValue::unit, |t| RValue::copy(*t))
+    fn block_target_to_rvalue(target: Option<AssignTarget>) -> Option<RValue> {
+        target.as_ref().map(|t| RValue::copy(*t))
     }
 }
 
@@ -571,9 +569,10 @@ impl HIRToMIRFuncLowerer<'_> {
 
         self.visit_block_by_id(true_block, hlir);
 
-        if !self.is_directive_set() {
-            let true_block_value =
-                Self::block_target_to_rvalue(self.state.read_last_block_target());
+        if !self.is_directive_set()
+            && let Some(true_block_value) =
+                Self::block_target_to_rvalue(self.state.read_last_block_target())
+        {
             self.builder_mut_expect()
                 .push_local_assign(if_result_local, true_block_value);
             is_local_set = true;
@@ -591,8 +590,10 @@ impl HIRToMIRFuncLowerer<'_> {
                 self.emit_and_replace_block().unwrap();
             }
 
-            if !self.is_directive_set() {
-                let false_value = Self::block_target_to_rvalue(self.state.read_last_block_target());
+            if !self.is_directive_set()
+                && let Some(false_value) =
+                    Self::block_target_to_rvalue(self.state.read_last_block_target())
+            {
                 self.builder_mut_expect()
                     .push_local_assign(if_result_local, false_value);
             }
@@ -665,7 +666,7 @@ impl HIRToMIRFuncLowerer<'_> {
 
         let for_result_local = self.new_temp_local();
         let binding_local = self.new_temp_local();
-        let (inclusive, max_expr_id) = {
+        let (inclusive, max_expr_id, init_block_id) = {
             let Some(HirNode::Expr(iterable_expr)) = hlir.get_hir_node(iterable_id) else {
                 push_lower_err!(self, hlir, iterable_id, "Failed to get iterable expr.");
                 return;
@@ -696,15 +697,22 @@ impl HIRToMIRFuncLowerer<'_> {
 
             self.builder_mut_expect()
                 .push_assign(binding_local.into(), RValue::copy(binding_init_rhs_local));
-            self.emit_and_replace_block();
+            let init_block_id = self.emit_and_replace_block().unwrap();
             self.lut.insert(statement_binding, binding_local);
-            (*inclusive, *max_expr)
+            (*inclusive, *max_expr, init_block_id)
         };
 
-        let loop_start_bb_id = self.body.next_block_id();
+        self.builder_mut_expect().push_local_assign(
+            binding_local,
+            RValue::Increment(Operand::Copy(binding_local.into())),
+        );
+        let increment_bb_id = self.emit_and_replace_block().unwrap();
+        // Skip the increment on the first iteration.
+        self.update_goto_target(init_block_id, increment_bb_id.next());
+
         self.state
             .loop_stack
-            .push(HIRToMIRLoopState::new(loop_start_bb_id));
+            .push(HIRToMIRLoopState::new(increment_bb_id));
 
         let condition_expr = self.new_temp_local();
         let binary_op_kind = if inclusive {
@@ -732,11 +740,7 @@ impl HIRToMIRFuncLowerer<'_> {
         let branch_block_id = self.emit_and_replace_block().unwrap();
 
         self.visit_block_by_id(block_id, hlir);
-        self.builder_mut_expect().push_local_assign(
-            binding_local,
-            RValue::Increment(Operand::Copy(binding_local.into())),
-        );
-        self.builder_mut_expect().push_goto(loop_start_bb_id);
+        self.builder_mut_expect().push_goto(increment_bb_id);
         let final_loop_body_id = self.emit_and_replace_block().unwrap();
 
         if !self.update_branch_targets(
@@ -1490,6 +1494,13 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
 
     fn visit_block(&mut self, block: &Block, hlir: &HLIR) {
         self.state.last_block_target = None;
+        if block.statements.is_empty() {
+            let unit_local = self.new_temp_local();
+            self.builder_mut_expect()
+                .push_local_assign(unit_local, RValue::unit());
+            self.state.last_block_target = Some(unit_local.into());
+            return;
+        }
         self.super_block(block, hlir);
     }
 

@@ -70,6 +70,21 @@ impl i128 {
     pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
     pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
 }
+// @lang
+impl isize {
+    pub fn to_string(self) -> string { i64_to_string(self as i64) }
+    pub fn from_string(s: string) -> (Self, bool) {
+        let result = string_to_i64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let (v, err) = isize::from_string(s);
+        if err { default } else { v }
+    }
+
+    pub fn sqrt(self) -> Self { i64_sqrt(self as i64) as Self }
+    pub fn abs(self) -> Self { i64_abs(self as i64) as Self }
+}
 
 // @lang
 impl u8 {
@@ -133,6 +148,20 @@ impl u128 {
     }
     pub fn from_string_or(s: string, default: Self) -> Self {
         let (v, err) = u128::from_string(s);
+        if err { default } else { v }
+    }
+
+    pub fn sqrt(self) -> Self { u64_sqrt(self as u64) as Self }
+}
+// @lang
+impl usize {
+    pub fn to_string(self) -> string { u64_to_string(self as u64) }
+    pub fn from_string(s: string) -> (Self, bool) {
+        let result = string_to_u64(s);
+        (result.0 as Self, result.1)
+    }
+    pub fn from_string_or(s: string, default: Self) -> Self {
+        let (v, err) = usize::from_string(s);
         if err { default } else { v }
     }
 

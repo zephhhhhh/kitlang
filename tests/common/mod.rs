@@ -24,6 +24,9 @@ macro_rules! main {
     ($test_src:literal) => {
         concat!("fn main() { ", $test_src, " }")
     };
+    ($test_src:literal, $ret_ty:literal) => {
+        concat!("fn main() -> ", $ret_ty, " { ", $test_src, " }")
+    };
 }
 #[macro_export]
 macro_rules! wrap_and_parse {
