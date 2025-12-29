@@ -191,7 +191,18 @@ impl Parser<'_, '_> {
 
     fn parse_expr_atom_with_cast(&mut self) -> PResult<Box<Expression>> {
         let span_start = self.begin_span();
+        let refmut = self.parse_ref_and_refmut()?;
         let mut atom = self.parse_expr_atom()?;
+        let after_atom_span = self.finish_span(span_start);
+
+        atom = if refmut.is_ref() {
+            Expression::new_boxed(
+                ExpressionKind::Reference(atom, refmut.mutability()),
+                after_atom_span,
+            )
+        } else {
+            atom
+        };
 
         while self.check_kind(Keyword::As) {
             atom = self.parse_cast_op_continued(atom, span_start)?;
@@ -353,7 +364,7 @@ impl Parser<'_, '_> {
                 self.cursor.advance();
                 kind
             }
-            TokenKind::Literal(l) => {
+            TokenKind::Literal(l, _ty_spec) => {
                 let kind = match l {
                     LiteralKind::Float(f) => Literal::Float(*f),
                     LiteralKind::Integer(i) => Literal::Integer(*i),
@@ -665,7 +676,13 @@ impl Parser<'_, '_> {
                 self.cursor.advance();
                 ident.clone()
             }
-            TokenKind::Literal(LiteralKind::Integer(i)) => {
+            TokenKind::Literal(LiteralKind::Integer(i), ref type_specifier) => {
+                if type_specifier.is_some() {
+                    return Err(ParseError::new(
+                        ParseErrorKind::ExpectedIdentifier(member_token.kind.clone()),
+                        member_token,
+                    ));
+                }
                 self.cursor.advance();
                 i.to_string()
             }

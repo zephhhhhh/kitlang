@@ -116,9 +116,31 @@ impl Value {
 
     #[inline]
     #[must_use]
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+    pub const fn int_coerce(&self) -> Option<i64> {
+        match self {
+            Self::Integer(i) => Some(*i),
+            Self::UnsignedInteger(i) => Some(*i as i64),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    #[must_use]
     pub const fn uint(&self) -> Option<u64> {
         match self {
             Self::UnsignedInteger(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+    pub const fn uint_coerce(&self) -> Option<u64> {
+        match self {
+            Self::UnsignedInteger(i) => Some(*i),
+            Self::Integer(i) => Some(*i as u64),
             _ => None,
         }
     }
@@ -305,9 +327,14 @@ impl Value {
         }
 
         if !self.are_matching_types(rhs) {
-            return None;
+            return match self {
+                Self::Integer(i) => perform_int_op(*i, rhs.int_coerce()?, op),
+                Self::UnsignedInteger(u) => perform_uint_op(*u, rhs.uint_coerce()?, op),
+                _ => None,
+            };
         }
 
+        // TODO: Handle unsigned/signed properly.
         match self {
             Self::Unit => None,
             Self::Integer(i) => perform_int_op(*i, rhs.int()?, op),
@@ -412,6 +439,18 @@ impl From<Literal> for Value {
 impl From<&Literal> for Value {
     fn from(value: &Literal) -> Self {
         Self::from_literal(value.clone())
+    }
+}
+
+impl From<isize> for Value {
+    fn from(value: isize) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<usize> for Value {
+    fn from(value: usize) -> Self {
+        Self::UnsignedInteger(value as u64)
     }
 }
 
@@ -1266,7 +1305,7 @@ mod intrinsics {
         register_native_fn!(
             interpreter,
             to_lower,
-            is_empty,
+            str_len,
             i64_to_string,
             string_to_i64,
             u64_to_string,
@@ -1330,8 +1369,8 @@ mod intrinsics {
             .unwrap_or((false, true))
     }
     #[kitlang_native_fn]
-    fn is_empty(s: String) -> bool {
-        s.is_empty()
+    fn str_len(s: String) -> usize {
+        s.len()
     }
     #[kitlang_native_fn]
     fn to_lower(s: String) -> String {

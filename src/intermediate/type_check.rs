@@ -16,7 +16,7 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{Literal, SourceSpan};
+use crate::ast::{Literal, Mutability, SourceSpan};
 
 use crate::intermediate::hir::errors::{LowerResult, LoweringError, LoweringErrorKind};
 use crate::intermediate::hir::visitor::HLIRVisitorMut;
@@ -411,8 +411,9 @@ impl TypeChecker<'_> {
 
         if let HirNode::Expr(expr) = node {
             let expr_ty = self.eval_expr_type(expr, hlir, Some(expected))?;
-            self.meta.type_map.insert(id, expr_ty.clone());
-            Ok(expr_ty)
+            let final_expr_ty = Self::check_for_coercion(&expr_ty, expected);
+            self.meta.type_map.insert(id, final_expr_ty.clone());
+            Ok(final_expr_ty.clone())
         } else {
             Err(type_fail!(
                 on_span,
@@ -455,7 +456,7 @@ impl TypeChecker<'_> {
         expected: Option<&Type>,
     ) -> TypeResult<Type> {
         match &expr.kind {
-            ExprKind::Block(block_id) => self.eval_block_type_by_id(*block_id, hlir),
+            ExprKind::Block(block_id) => self.eval_block_type_by_id(*block_id, expected, hlir),
             ExprKind::Literal(literal) => {
                 let expected_kit = expected.and_then(|e| e.resolved());
                 match literal {
@@ -522,7 +523,7 @@ impl TypeChecker<'_> {
                     ));
                 }
 
-                let if_block_ty = self.eval_block_type_by_id(*hir_id1, hlir)?;
+                let if_block_ty = self.eval_block_type_by_id(*hir_id1, expected, hlir)?;
 
                 if let Some(else_block_id) = hir_id2 {
                     let else_block_ty =
@@ -554,7 +555,7 @@ impl TypeChecker<'_> {
                     ));
                 }
 
-                self.eval_block_type_by_id(*hir_id1, hlir)?;
+                self.eval_block_type_by_id(*hir_id1, None, hlir)?;
 
                 Ok(Type::unit())
             }
@@ -603,6 +604,9 @@ impl TypeChecker<'_> {
 
                 for (expected, (prov_ty, prov_id)) in func_args.iter().zip(user_params.iter()) {
                     if expected != prov_ty {
+                        // TODO: Provide better error messages with suggestions in the case that
+                        // the user provides for example an `i32` where a `&i32` is expected,
+                        // suggesting the user to add a reference operator.
                         return Err(type_fail!(
                             hlir,
                             *prov_id,
@@ -860,7 +864,19 @@ impl TypeChecker<'_> {
                     }
                 }
             }
-            ExprKind::Continue | ExprKind::Break => Ok(Type::unit()),
+            ExprKind::Break => {
+                if let Some(expected_t) = expected {
+                    Err(type_fail!(
+                        hlir,
+                        expr.id,
+                        "Cannot break from loop with expected type: `{}`",
+                        self.type_name(expected_t.clone())
+                    ))
+                } else {
+                    Ok(Type::unit())
+                }
+            }
+            ExprKind::Continue => Ok(Type::unit()),
             ExprKind::Cast(hir_id, target_type) => {
                 let expr_type = self.eval_expr_type_by_id(*hir_id, hlir)?;
                 let expr_type_r = self.resolved_type(*hir_id, &expr_type, hlir)?;
@@ -905,8 +921,10 @@ impl TypeChecker<'_> {
                 Ok(min_type)
             }
             ExprKind::Loop(body_id) => {
-                self.eval_block_type_by_id(*body_id, hlir)?;
-                if let Some(expected_t) = expected && expected_t.is_resolved() {
+                self.eval_block_type_by_id(*body_id, expected, hlir)?;
+                if let Some(expected_t) = expected
+                    && expected_t.is_resolved()
+                {
                     Ok(expected_t.clone())
                 } else {
                     Ok(Type::unit())
@@ -938,7 +956,7 @@ impl TypeChecker<'_> {
                     ));
                 }
 
-                self.eval_block_type_by_id(*loop_block_id, hlir)?;
+                self.eval_block_type_by_id(*loop_block_id, None, hlir)?;
 
                 Ok(Type::unit())
             }
@@ -978,6 +996,16 @@ impl TypeChecker<'_> {
                 match target_type_r {
                     KitTy::Array(inner_ty, _size) => Ok(Type::Resolved(*inner_ty.clone())),
                     KitTy::Slice(inner_ty) => Ok(Type::Resolved(*inner_ty.clone())),
+                    KitTy::Ref(reffed_ty) | KitTy::RefMut(reffed_ty) => match *reffed_ty {
+                        KitTy::Array(inner_ty, _size) => Ok(Type::Resolved(*inner_ty.clone())),
+                        KitTy::Slice(inner_ty) => Ok(Type::Resolved(*inner_ty.clone())),
+                        _ => Err(type_fail!(
+                            hlir,
+                            *target_expr_id,
+                            "Type `{}` is not indexable.",
+                            self.type_name(target_type)
+                        )),
+                    },
                     // TODO: String indexing to char..
                     _ => Err(type_fail!(
                         hlir,
@@ -1045,6 +1073,15 @@ impl TypeChecker<'_> {
                         elems.len(),
                     ))),
                 }
+            }
+            ExprKind::Reference(id, mutable) => {
+                let referred_type = self.eval_expr_type_by_id(*id, hlir)?;
+                let referred_type_r = self.resolved_type(*id, &referred_type, hlir)?;
+
+                Ok(Type::Resolved(match mutable {
+                    Mutability::Mutable => KitTy::RefMut(Box::new(referred_type_r)),
+                    Mutability::Immutable => KitTy::Ref(Box::new(referred_type_r)),
+                }))
             }
         }
     }
@@ -1204,6 +1241,7 @@ impl TypeChecker<'_> {
     fn eval_block_type_by_id(
         &mut self,
         id: HirId,
+        expected: Option<&Type>,
         hlir: &mut HLIRDisjointMut<'_>,
     ) -> TypeResult<Type> {
         let node = hlir
@@ -1211,7 +1249,7 @@ impl TypeChecker<'_> {
             .ok_or_else(|| type_fail!(hlir, id, "Failed to get block node."))?;
 
         if let HirNode::Block(block) = node {
-            self.eval_block_type(block, hlir)
+            self.eval_block_type(block, expected, hlir)
         } else {
             Err(type_fail!(
                 on_span,
@@ -1257,6 +1295,7 @@ impl TypeChecker<'_> {
     fn eval_block_type(
         &mut self,
         block: &Block,
+        expected: Option<&Type>,
         hlir: &mut HLIRDisjointMut<'_>,
     ) -> TypeResult<Type> {
         let statement_count = block.statements.len();
@@ -1267,13 +1306,12 @@ impl TypeChecker<'_> {
             let should_validate = block.root_block && !is_return_stmt;
 
             let expected_ty = if last_statement && should_validate {
-                let expected_return = self.current_expected_return().expect("Not in function?");
-                Some(expected_return)
+                expected
             } else {
                 None
             };
 
-            match self.eval_statement_type(statement, block, expected_ty.as_ref(), hlir) {
+            match self.eval_statement_type(statement, block, expected_ty, hlir) {
                 Ok(final_ty) => {
                     if last_statement {
                         return if should_validate {
@@ -1326,13 +1364,47 @@ impl TypeChecker<'_> {
     }
 }
 
+impl TypeChecker<'_> {
+    fn check_for_array_to_slice_coercion<'a>(resulted: &'a KitTy, expected: &'a KitTy) -> bool {
+        match (resulted, expected) {
+            (KitTy::Array(resulted_inner, _), KitTy::Slice(expected_inner)) => {
+                *resulted_inner == *expected_inner
+            }
+            _ => false,
+        }
+    }
+
+    fn ref_mutability_matches(resulted: &KitTy, expected: &KitTy) -> bool {
+        resulted.is_any_ref()
+            && expected.is_any_ref()
+            && resulted.ref_mutability() == expected.ref_mutability()
+    }
+
+    fn check_for_coercion<'a>(resulted: &'a Type, expected: &'a Type) -> &'a Type {
+        let Some(expected_r) = expected.resolved() else {
+            return resulted;
+        };
+        let Some(resulted_r) = resulted.resolved() else {
+            return resulted;
+        };
+
+        if Self::ref_mutability_matches(resulted_r, expected_r)
+            && let Some(expected_inner) = expected_r.inner_type()
+            && let Some(resulted_inner) = resulted_r.inner_type()
+            && Self::check_for_array_to_slice_coercion(resulted_inner, expected_inner)
+        {
+            return expected;
+        }
+
+        resulted
+    }
+}
+
 impl HLIRVisitorMut<'_> for TypeChecker<'_> {
-    fn visit_block_mut(&mut self, block: &mut Block, hlir: &mut HLIRDisjointMut<'_>) {
+    fn visit_block_mut(&mut self, _block: &mut Block, _hlir: &mut HLIRDisjointMut<'_>) {
         // Note: Routing the visit block call like this stops all visit_expr_, etc.. from being
         // called.
-        if let Err(e) = self.eval_block_type(block, hlir) {
-            self.errors.push(e);
-        }
+        log::debug!("Visiting block.");
     }
 
     fn visit_function_mut(&mut self, function: &mut Function, hlir: &mut HLIRDisjointMut<'_>) {
@@ -1355,7 +1427,10 @@ impl HLIRVisitorMut<'_> for TypeChecker<'_> {
                 }
             }
             if let Some(HirNode::Block(block)) = hlir.get_hir_node_mut(func_body.block) {
-                self.visit_block_mut(block, hlir);
+                let expected_return = self.current_expected_return().expect("Not in function?");
+                if let Err(e) = self.eval_block_type(block, Some(&expected_return), hlir) {
+                    self.errors.push(e);
+                }
             }
         }
         self.pop_current_return_type();

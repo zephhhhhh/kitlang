@@ -200,6 +200,9 @@ pub trait HLIRVisitor {
                     self.visit_expr_by_id(*element_id, hlir);
                 }
             }
+            ExprKind::Reference(id, ..) => {
+                self.visit_expr_by_id(*id, hlir);
+            }
             _ => {}
         }
     }
@@ -627,6 +630,9 @@ pub trait HLIRVisitorMut<'a> {
                 for element_id in elems {
                     self.visit_expr_by_id_mut(*element_id, hlir);
                 }
+            }
+            ExprKind::Reference(id, ..) => {
+                self.visit_expr_by_id_mut(*id, hlir);
             }
             _ => {}
         }

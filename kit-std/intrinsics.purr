@@ -1,5 +1,5 @@
 native global fn to_lower(s: string) -> string;
-native global fn is_empty(s: string) -> bool;
+native global fn str_len(s: string) -> usize;
 
 native global fn print(s: string);
 native global fn println(s: string);

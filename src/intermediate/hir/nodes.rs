@@ -141,6 +141,25 @@ impl Type {
             Self::Unresolved(_) => None,
         }
     }
+
+    /// If the type is a container type (array, slice, reference), get the inner type.
+    /// Otherwise, return `None`.
+    /// # Note
+    /// This only works for resolved types.
+    #[inline]
+    #[must_use]
+    pub const fn inner_type(&self) -> Option<&KitTy> {
+        match self {
+            Self::Resolved(kit_ty) => match kit_ty {
+                KitTy::Array(inner_ty, _)
+                | KitTy::Slice(inner_ty)
+                | KitTy::RefMut(inner_ty)
+                | KitTy::Ref(inner_ty) => Some(inner_ty),
+                _ => None,
+            },
+            Self::Unresolved(_) => None,
+        }
+    }
 }
 
 impl Type {
@@ -971,6 +990,8 @@ pub enum ExprKind {
     Tuple(Vec<HirId>),
     /// Array expression with multiple elements
     ArrayInit(Vec<HirId>),
+    /// A reference to another element.
+    Reference(HirId, Mutability),
 }
 
 /// An expression in HIR, containing its kind and source span.

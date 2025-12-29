@@ -725,6 +725,10 @@ impl HLIRLowerer<'_> {
                 }
                 Ok(ExprKind::ArrayInit(element_ids))
             }
+            ast::ExpressionKind::Reference(expr, mutable) => {
+                let expr_id = self.lower_expression(expr, owner_node)?;
+                Ok(ExprKind::Reference(expr_id, *mutable))
+            }
         }?;
 
         let hir_expr = Expr {

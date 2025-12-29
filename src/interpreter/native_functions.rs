@@ -80,11 +80,13 @@ impl_extract!(u8, UnsignedInteger, |i: &u64| *i as u8, 0);
 impl_extract!(u16, UnsignedInteger, |i: &u64| *i as u16, 0);
 impl_extract!(u32, UnsignedInteger, |i: &u64| *i as u32, 0);
 impl_extract!(u64, UnsignedInteger, |i: &u64| *i, 0);
+impl_extract!(usize, UnsignedInteger, |i: &u64| *i as usize, 0);
 
 impl_extract!(i8, Integer, |i: &i64| *i as i8, 0);
 impl_extract!(i16, Integer, |i: &i64| *i as i16, 0);
 impl_extract!(i32, Integer, |i: &i64| *i as i32, 0);
 impl_extract!(i64, Integer, |i: &i64| *i, 0);
+impl_extract!(isize, Integer, |i: &i64| *i as isize, 0);
 
 impl_extract!(f32, Float, |f: &f64| *f as f32, 0.0);
 impl_extract!(f64, Float, |f: &f64| *f, 0.0);

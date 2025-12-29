@@ -125,8 +125,8 @@ impl TypeResolver<'_> {
                     ))
                 }
             }
-            Ty::Tuple(tys, _) => {
-                let resolved_tys = tys
+            Ty::Tuple(tt, _) => {
+                let resolved_tys = tt
                     .iter()
                     .map(|t| {
                         // Try from primitive first, then resolve normally if failed.
@@ -139,23 +139,35 @@ impl TypeResolver<'_> {
                     .collect::<ResolveResult<Vec<KitTy>>>()?;
                 Ok(KitTy::Tuple(resolved_tys))
             }
-            Ty::Array(ty, size, _) => {
-                let arr_inner_type = if let Some(resolved_ty) = KitTy::try_from_ast_ty(ty) {
+            Ty::Array(tt, size, _) => {
+                let arr_inner_type = if let Some(resolved_ty) = KitTy::try_from_ast_ty(tt) {
                     Ok(resolved_ty)
                 } else {
-                    self.resolve_ast_type(ty)
+                    self.resolve_ast_type(tt)
                 };
                 Ok(KitTy::Array(Box::new(arr_inner_type?), *size))
             }
-            Ty::Slice(ty, _) => {
-                let slice_inner_type = if let Some(resolved_ty) = KitTy::try_from_ast_ty(ty) {
+            Ty::Slice(tt, _) => {
+                let slice_inner_type = if let Some(resolved_ty) = KitTy::try_from_ast_ty(tt) {
                     Ok(resolved_ty)
                 } else {
-                    self.resolve_ast_type(ty)
+                    self.resolve_ast_type(tt)
                 };
                 Ok(KitTy::Slice(Box::new(slice_inner_type?)))
             }
-            unk => Err(resolve_err!(
+            Ty::Ref(tt, mutable, _) => {
+                let slice_inner_type = if let Some(resolved_ty) = KitTy::try_from_ast_ty(tt) {
+                    Ok(resolved_ty)
+                } else {
+                    self.resolve_ast_type(tt)
+                };
+                if mutable.is_mutable() {
+                    Ok(KitTy::RefMut(Box::new(slice_inner_type?)))
+                } else {
+                    Ok(KitTy::Ref(Box::new(slice_inner_type?)))
+                }
+            }
+            unk @ Ty::Infer => Err(resolve_err!(
                 no_span,
                 "Cannot resolve type for unsupported AST type variant `{:?}` in `{}`",
                 unk,

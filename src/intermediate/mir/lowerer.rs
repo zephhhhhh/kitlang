@@ -1392,6 +1392,15 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
             ExprKind::Range(..) => {
                 todo!()
             }
+            ExprKind::Reference(id, _mutable) => {
+                let Some(target_local) = self.visit_expr_assigned(*id, hlir) else {
+                    push_lower_err!(self, hlir, *id, "Failed to eval reference target.");
+                    return;
+                };
+                let local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(local, RValue::refer(target_local));
+            }
         }
     }
 

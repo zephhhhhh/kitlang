@@ -6,12 +6,12 @@ use kitlang::{
 // Helper functions/macros..
 macro_rules! int_literal {
     ($val: literal) => {
-        TokenKind::Literal(LiteralKind::Integer($val))
+        TokenKind::Literal(LiteralKind::Integer($val), None)
     };
 }
 macro_rules! float_literal {
     ($val: literal) => {
-        TokenKind::Literal(LiteralKind::Float($val))
+        TokenKind::Literal(LiteralKind::Float($val), None)
     };
 }
 macro_rules! identifier {
@@ -65,12 +65,25 @@ fn lexer_code_cursor() {
     assert!(cursor.is_eof());
 }
 
+fn compare_token_kinds(lhs: &TokenKind, rhs: &TokenKind) -> bool {
+    match (lhs, rhs) {
+        (TokenKind::Literal(l1, _), TokenKind::Literal(l2, _)) => l1 == l2,
+        _ => lhs == rhs,
+    }
+}
+
 fn verify_token_kinds(iter: &mut impl Iterator<Item = Token>, expected_kinds: &[TokenKind]) {
     for expected_kind in expected_kinds {
-        assert_eq!(
-            iter.next().expect("Token should exist.").kind,
-            *expected_kind
-        );
+        if !compare_token_kinds(
+            &iter.next().expect("Token should exist.").kind,
+            expected_kind,
+        ) {
+            panic!(
+                "Token kind mismatch. Expected {:?}, got {:?}.",
+                expected_kind,
+                iter.next().expect("Token should exist.").kind
+            );
+        }
     }
 }
 

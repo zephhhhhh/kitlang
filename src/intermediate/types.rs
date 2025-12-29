@@ -1,9 +1,9 @@
 use crate::{
-    ast::{BinaryOpKind, Ty as ASTTy, UnaryOpKind},
+    ast::{BinaryOpKind, Mutability, Ty as ASTTy, UnaryOpKind},
     intermediate::resolver::TypeID,
 };
 
-use log::{error, warn};
+use log::warn;
 
 /// Represents the integer types in Kitlang.
 /// This is not a value in itself, but rather a type representation.
@@ -227,6 +227,10 @@ pub enum KitTy {
     Array(Box<KitTy>, usize),
     /// Slice type..
     Slice(Box<KitTy>),
+    /// Reference type..
+    Ref(Box<KitTy>),
+    /// Mutable reference type..
+    RefMut(Box<KitTy>),
 }
 
 impl KitTy {
@@ -246,11 +250,8 @@ impl KitTy {
             | ASTTy::This(..)
             | ASTTy::Tuple(..)
             | ASTTy::Array(..)
-            | ASTTy::Slice(..) => None,
-            a @ ASTTy::Ref(..) => {
-                error!("KitTy conversion not implemented for: {a:?}");
-                None
-            }
+            | ASTTy::Slice(..)
+            | ASTTy::Ref(..) => None,
         }
     }
 }
@@ -263,60 +264,149 @@ impl KitTy {
         !matches!(self, Self::Abstract(_))
     }
 
-    /// Returns true if the type is the unit type.
+    /// Returns `true` if the type is the unit type.
     #[inline]
     #[must_use]
     pub const fn is_unit(&self) -> bool {
         matches!(self, Self::Unit)
     }
 
-    /// Returns true if the type is an integer type.
+    /// Returns `true` if the type is an integer type.
     #[inline]
     #[must_use]
     pub const fn is_int(&self) -> bool {
         matches!(self, Self::Int(_))
     }
 
-    /// Returns true if the type is an unsigned integer type.
+    /// Returns `true` if the type is an unsigned integer type.
     #[inline]
     #[must_use]
     pub const fn is_uint(&self) -> bool {
         matches!(self, Self::UInt(_))
     }
 
-    /// Returns true if the type is a floating point type.
+    /// Returns `true` if the type is a floating point type.
     #[inline]
     #[must_use]
     pub const fn is_float(&self) -> bool {
         matches!(self, Self::Float(_))
     }
 
-    /// Returns true if the type is a boolean type.
+    /// Returns `true` if the type is a boolean type.
     #[inline]
     #[must_use]
     pub const fn is_bool(&self) -> bool {
         matches!(self, Self::Boolean)
     }
 
-    /// Returns true if the type is a char type.
+    /// Returns `true` if the type is a char type.
     #[inline]
     #[must_use]
     pub const fn is_char(&self) -> bool {
         matches!(self, Self::Char)
     }
 
-    /// Returns true if the type is a string type.
+    /// Returns `true` if the type is a string type.
     #[inline]
     #[must_use]
     pub const fn is_string(&self) -> bool {
         matches!(self, Self::String)
     }
 
-    /// Returns true if the type is an abstract (user-defined) type.
+    /// Returns `true` if the type is an abstract (user-defined) type.
     #[inline]
     #[must_use]
     pub const fn is_abstract(&self) -> bool {
-        matches!(self, Self::Abstract(_))
+        matches!(self, Self::Abstract(..))
+    }
+
+    /// Returns `true` if the type is a tuple type.
+    #[inline]
+    #[must_use]
+    pub const fn is_tuple(&self) -> bool {
+        matches!(self, Self::Tuple(..))
+    }
+
+    /// Returns `true` if the type is an array type.
+    #[inline]
+    #[must_use]
+    pub const fn is_array(&self) -> bool {
+        matches!(self, Self::Array(..))
+    }
+
+    /// Returns `true` if the type is a slice type.
+    #[inline]
+    #[must_use]
+    pub const fn is_slice(&self) -> bool {
+        matches!(self, Self::Slice(..))
+    }
+
+    /// Returns `true` if the type is an array or a slice type.
+    #[inline]
+    #[must_use]
+    pub const fn is_array_or_slice(&self) -> bool {
+        self.is_array() || self.is_slice()
+    }
+
+    /// Returns `true` if the type is a reference type.
+    #[inline]
+    #[must_use]
+    pub const fn is_ref(&self) -> bool {
+        matches!(self, Self::Ref(..))
+    }
+
+    /// Returns `true` if the type is a mutable reference type.
+    #[inline]
+    #[must_use]
+    pub const fn is_ref_mut(&self) -> bool {
+        matches!(self, Self::RefMut(..))
+    }
+
+    /// Returns `true` if the type is a reference or mutable reference type.
+    #[inline]
+    #[must_use]
+    pub const fn is_any_ref(&self) -> bool {
+        self.is_ref() || self.is_ref_mut()
+    }
+
+    /// Returns the mutability of the reference if the type is a reference.
+    #[inline]
+    #[must_use]
+    pub const fn ref_mutability(&self) -> Option<Mutability> {
+        match self {
+            Self::Ref(..) => Some(Mutability::Immutable),
+            Self::RefMut(..) => Some(Mutability::Mutable),
+            _ => None,
+        }
+    }
+
+    /// Returns the inner type if the type is a reference, mutable reference, slice, or array type.
+    /// # Example
+    /// If we have the type `&i32`, this function will return `i32`.
+    #[inline]
+    #[must_use]
+    pub const fn inner_type(&self) -> Option<&KitTy> {
+        match self {
+            Self::Ref(inner) | Self::RefMut(inner) | Self::Slice(inner) | Self::Array(inner, _) => {
+                Some(inner)
+            }
+            _ => None,
+        }
+    }
+
+    /// Returns the inner type if the type is a reference to a slice type.
+    /// # Example
+    /// If we have the type `&[i32]`, this function will return `i32`.
+    #[inline]
+    #[must_use]
+    pub const fn ref_slice_inner_type(&self) -> Option<&KitTy> {
+        match self {
+            Self::Ref(inner) => match **inner {
+                Self::Slice(ref slice_inner) => Some(slice_inner),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 }
 
@@ -336,7 +426,7 @@ impl KitTy {
             Self::Abstract(_) => 64,
             Self::Tuple(i) => i.iter().map(KitTy::bit_width).sum(),
             Self::Array(t, size) => t.bit_width() * (*size as u64),
-            Self::Slice(..) => KitUInt::USize.bit_width(),
+            Self::Slice(..) | Self::Ref(..) | Self::RefMut(..) => KitUInt::USize.bit_width(),
         }
     }
 
@@ -658,6 +748,14 @@ impl KitTy {
             Self::Boolean => Some("bool".into()),
             Self::Char => Some("char".into()),
             Self::String => Some("string".into()),
+            Self::Ref(it) => {
+                let inner_ty_str = it.to_type_str()?;
+                Some(format!("&{inner_ty_str}"))
+            }
+            Self::RefMut(it) => {
+                let inner_ty_str = it.to_type_str()?;
+                Some(format!("&mut {inner_ty_str}"))
+            }
             Self::Abstract(_) | Self::Tuple(..) | Self::Array(..) | Self::Slice(..) => None,
         }
     }

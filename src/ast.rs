@@ -1188,6 +1188,14 @@ pub enum ExpressionKind {
     /// # Kit Example
     /// `(1, 2, 3)`, `(x, y, name)`.
     ArrayInit(Vec<Box<Expression>>),
+    /// A reference to a value.
+    /// # Kit Example
+    /// ```ignore
+    /// let x = 20;
+    /// let y = &x; // Reference to x
+    /// let z = &mut x; // Mutable reference to x
+    /// ```
+    Reference(Box<Expression>, Mutability),
 }
 
 impl ExpressionKind {
@@ -1276,6 +1284,9 @@ impl Debug for ExpressionKind {
                 .finish(),
             Self::Tuple(arg0) => f.debug_tuple("Tuple").field(arg0).finish(),
             Self::ArrayInit(arg0) => f.debug_tuple("ArrayInit").field(arg0).finish(),
+            Self::Reference(arg0, arg1) => {
+                f.debug_tuple("Reference").field(arg0).field(arg1).finish()
+            }
         }
     }
 }

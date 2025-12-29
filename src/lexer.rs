@@ -314,6 +314,12 @@ pub const fn is_whitespace(c: char) -> bool {
     )
 }
 
+/// Returns true if the character is a valid type specifier start character.
+#[inline]
+const fn is_type_specifier_start(c: char) -> bool {
+    matches!(c, 'u' | 'i' | 'f')
+}
+
 /// Returns true if the character sequence describes a comment or doc block.
 #[inline]
 #[must_use]
@@ -496,6 +502,18 @@ impl Lexer<'_> {
         Some(Token::new(punct, (pos, pos + 1)))
     }
 
+    /// Parses an identifier as a string from the cursor.
+    #[inline]
+    #[must_use]
+    fn identifier_string(&mut self) -> String {
+        let pos = self.cursor.position();
+        let end_pos = pos
+            + self
+                .cursor
+                .consume_while(unicode_xid::UnicodeXID::is_xid_continue);
+        self.substr(pos, end_pos).to_string()
+    }
+
     /// Parses an identifier from the cursor.
     #[inline]
     #[must_use]
@@ -583,6 +601,19 @@ impl Lexer<'_> {
 
         let val_end = self.cursor.position();
         let value_string = self.substr(val_pos, val_end).replace('_', "");
+
+        let ts_peek = self.cursor.peek();
+        let type_specifier = if is_whitespace(ts_peek) || !is_type_specifier_start(ts_peek) {
+            None
+        } else {
+            let type_span = self.cursor.position();
+            let type_ident = self.identifier_string();
+            Some((
+                type_ident,
+                SourceSpan::new(type_span, self.cursor.position()),
+            ))
+        };
+
         let literal = if value_string.contains(['e', '.']) {
             value_string.parse::<f64>().ok().map(LiteralKind::Float)?
         } else {
@@ -591,7 +622,10 @@ impl Lexer<'_> {
                 .map(LiteralKind::Integer)?
         };
 
-        Some(Token::new(literal, (pos, val_end)))
+        Some(Token::new(
+            TokenKind::Literal(literal, type_specifier),
+            (pos, val_end),
+        ))
     }
 
     /// Parses a string literal from the cursor.

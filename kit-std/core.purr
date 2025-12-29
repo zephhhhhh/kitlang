@@ -182,7 +182,8 @@ impl string {
     pub fn to_string(self) -> string { self }
     pub fn from_string(s: string) -> string { s }
 
-    pub fn is_empty(self) -> bool { is_empty(self) }
+    pub fn len(self) -> usize { str_len(self) as usize }
+    pub fn is_empty(self) -> bool { self.len() == 0 as usize }
     pub fn to_lower(self) -> string { to_lower(self) }
 }
 

@@ -198,7 +198,8 @@ pub enum TokenKind {
     Ident(String),
     Keyword(Keyword),
     StringLiteral(String),
-    Literal(LiteralKind),
+    /// A literal with an optional type specifier.
+    Literal(LiteralKind, Option<(String, SourceSpan)>),
     Punctuation(Punctuation),
 
     InvalidIdent(String),
@@ -237,13 +238,13 @@ impl From<&Punctuation> for TokenKind {
 
 impl From<LiteralKind> for TokenKind {
     fn from(value: LiteralKind) -> Self {
-        Self::Literal(value)
+        Self::Literal(value, None)
     }
 }
 
 impl From<&LiteralKind> for TokenKind {
     fn from(value: &LiteralKind) -> Self {
-        Self::Literal(*value)
+        Self::Literal(*value, None)
     }
 }
 
@@ -298,7 +299,7 @@ impl TokenKind {
         match self {
             Self::Keyword(keyword) => keyword.is_significant(),
             Self::Punctuation(punctuation) => !matches!(punctuation, Punctuation::Ampersand),
-            Self::Ident(_) | Self::StringLiteral(_) | Self::Literal(_) | Self::Eof => true,
+            Self::Ident(_) | Self::StringLiteral(_) | Self::Literal(..) | Self::Eof => true,
             _ => false,
         }
     }

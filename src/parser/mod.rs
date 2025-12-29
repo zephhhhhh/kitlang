@@ -694,7 +694,7 @@ impl Parser<'_, '_> {
     fn expect_literal(&mut self) -> PResult<LiteralKind> {
         let token = self.peek()?.clone();
         match &token.kind {
-            TokenKind::Literal(lit) => {
+            TokenKind::Literal(lit, ..) => {
                 self.cursor.advance();
                 Ok(*lit)
             }

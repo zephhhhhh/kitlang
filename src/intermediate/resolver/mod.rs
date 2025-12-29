@@ -300,13 +300,19 @@ impl TypeRegistry {
                     .map(|t| self.type_name(Type::Resolved(t.clone())))
                     .join(", ")
             )),
-            Type::Resolved(KitTy::Array(ty, size)) => Some(format!(
+            Type::Resolved(KitTy::Array(tt, size)) => Some(format!(
                 "[{}; {}]",
-                self.type_name(Type::Resolved(*ty)),
+                self.type_name(Type::Resolved(*tt)),
                 size
             )),
-            Type::Resolved(KitTy::Slice(ty)) => {
-                Some(format!("[{}]", self.type_name(Type::Resolved(*ty))))
+            Type::Resolved(KitTy::Slice(tt)) => {
+                Some(format!("[{}]", self.type_name(Type::Resolved(*tt))))
+            }
+            Type::Resolved(KitTy::Ref(tt)) => {
+                Some(format!("&{}", self.type_name(Type::Resolved(*tt))))
+            }
+            Type::Resolved(KitTy::RefMut(tt)) => {
+                Some(format!("&mut {}", self.type_name(Type::Resolved(*tt))))
             }
             Type::Resolved(kit_ty) => kit_ty.to_type_str(),
         }
