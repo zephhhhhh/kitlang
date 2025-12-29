@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["Disjoint","HLIRDisjointMut"],"trait":["HLIRVisitor","HLIRVisitorMut"],"type":["DisjointHIRNode","DisjointItem","DisjointOwningNode"]};
+window.SIDEBAR_ITEMS = {"trait":["HLIRVisitor","HLIRVisitorMut"]};

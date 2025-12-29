@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["get_span_by_id","lower_ast_to_hir","parse_ast_to_hir_processed","parse_ast_to_hir_processed_with"],"mod":["errors","lowerer","nodes","visitor"],"struct":["DefId","HLIR","HirId","LocalDefId","OwnerDefId","ProgramMetaData"]};
+window.SIDEBAR_ITEMS = {"fn":["get_span_by_id","lower_ast_to_hir","parse_ast_to_hir_processed","parse_ast_to_hir_processed_with"],"mod":["errors","hlir","lowerer","nodes","visitor"],"struct":["DefId","Disjoint","DisjointMut","HLIR","HLIRDisjointMut","HirId","LocalDefId","OwnerDefId","ProgramMetaData"],"trait":["HLIRExt"]};
