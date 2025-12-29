@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["EOF_CHAR","ESCAPE_CHAR"],"fn":["is_comment_sequence","is_comment_token_kind","is_newline_char","is_whitespace","tokenise","tokenise_stripped","unescape_string"],"struct":["CodeCursor","Lexer"],"type":["CodeCursorIndex"]};
+window.SIDEBAR_ITEMS = {"constant":["EOF_CHAR","ESCAPE_CHAR"],"fn":["is_comment_sequence","is_comment_token_kind","is_newline_char","is_type_specifier_start","is_whitespace","tokenise","tokenise_stripped","unescape_string"],"struct":["CodeCursor","Lexer"],"type":["CodeCursorIndex"]};
