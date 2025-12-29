@@ -804,3 +804,5 @@ fn interp_stdlib_abs() {
     assert_execution_any_int!(main!("(-25 as i128).abs()", "i128"), 25);
     assert_execution_any_int!(main!("(-25 as isize).abs()", "isize"), 25);
 }
+
+// TODO: Run test programs ('./programs/*.purr'), validate output..
