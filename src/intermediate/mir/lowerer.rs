@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinaryOpKind, Mutability};
+use crate::ast::{BinaryOpKind, Mutability, UnaryOpKind};
 
 use crate::intermediate::hir::errors::{LowerResult, lowering_err, push_lower_err};
 use crate::intermediate::hir::nodes::{
@@ -175,7 +175,7 @@ impl HIRToMIRFuncLowererState {
 }
 
 struct HIRToMIRFuncLowerer<'a> {
-    pub program_meta_data: &'a ProgramMetaData,
+    pub meta: &'a ProgramMetaData,
     pub body: Body,
     pub func_owner_id: OwnerDefId,
     pub func_body_id: HirId,
@@ -198,7 +198,7 @@ impl<'a> HIRToMIRFuncLowerer<'a> {
         func_id: OwnerDefId,
     ) -> Result<Body, Vec<LoweringError>> {
         let mut f = Self {
-            program_meta_data: meta_data,
+            meta: meta_data,
             body: Body::new_empty(),
             func_owner_id: func_id,
             func_body_id: HirId::PLACEHOLDER_ID,
@@ -863,7 +863,7 @@ impl HIRToMIRFuncLowerer<'_> {
             push_lower_err!(self, hlir, target_id, "Failed to eval target method!");
             return;
         };
-        let Some(obj_ty) = self.program_meta_data.type_map.get(&target_id) else {
+        let Some(obj_ty) = self.meta.type_map.get(&target_id) else {
             push_lower_err!(
                 self,
                 hlir,
@@ -874,17 +874,14 @@ impl HIRToMIRFuncLowerer<'_> {
             return;
         };
 
-        let Some(method_def) = self
-            .program_meta_data
-            .find_ty_method_owner_def(obj_ty, method_name)
-        else {
+        let Some(method_def) = self.meta.find_ty_method_owner_def(obj_ty, method_name) else {
             push_lower_err!(
                 self,
                 hlir,
                 target_id,
                 "Failed to find method `{}` for type `{:?}`",
                 method_name,
-                self.program_meta_data.type_name(obj_ty.clone())
+                self.meta.type_name(obj_ty.clone())
             );
             return;
         };
@@ -1003,7 +1000,7 @@ impl HIRToMIRFuncLowerer<'_> {
             return;
         };
 
-        let type_id = match self.program_meta_data.type_map.get(&target_id) {
+        let type_id = match self.meta.type_map.get(&target_id) {
             Some(Type::Resolved(KitTy::Abstract(type_id))) => type_id,
             Some(Type::Resolved(KitTy::Tuple(tys))) => {
                 return self.lower_tuple_index(hlir, expr_id, target_local, tys, field_name);
@@ -1015,7 +1012,7 @@ impl HIRToMIRFuncLowerer<'_> {
         };
 
         let to_access = self
-            .program_meta_data
+            .meta
             .type_registry
             .get_from_type_id(*type_id)
             .expect("Type exists.");
@@ -1066,11 +1063,7 @@ impl HIRToMIRFuncLowerer<'_> {
             return;
         };
 
-        let Some(type_info) = self
-            .program_meta_data
-            .type_registry
-            .get_from_type_id(type_id)
-        else {
+        let Some(type_info) = self.meta.type_registry.get_from_type_id(type_id) else {
             push_lower_err!(
                 self,
                 hlir,
@@ -1201,11 +1194,26 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                     push_lower_err!(self, hlir, *hir_id, "Failed to resolve RHS of unary op.");
                     return;
                 };
-                let local = self.new_temp_local();
-                self.builder_mut_expect().push_local_assign(
-                    local,
-                    RValue::UnaryOp(*unary_op_kind, Operand::Copy(rhs_local)),
-                );
+                if let UnaryOpKind::Dereference = *unary_op_kind {
+                    let mutability = self
+                        .meta
+                        .type_map
+                        .get(hir_id)
+                        .and_then(|t| t.resolved())
+                        .and_then(KitTy::ref_mutability)
+                        .unwrap_or(Mutability::Immutable);
+                    let local = self.new_temp_local_with_mut(mutability);
+                    self.builder_mut_expect().push_local_assign(
+                        local,
+                        RValue::refer(rhs_local),
+                    );
+                } else {
+                    let local = self.new_temp_local();
+                    self.builder_mut_expect().push_local_assign(
+                        local,
+                        RValue::UnaryOp(*unary_op_kind, Operand::Copy(rhs_local)),
+                    );
+                }
             }
             ExprKind::If(condition, true_block, else_expr) => {
                 self.lower_if(hlir, expr.id, *condition, *true_block, else_expr.as_ref());
@@ -1396,11 +1404,25 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
             ExprKind::Range(..) => {
                 todo!()
             }
-            ExprKind::Reference(id, _mutable) => {
+            ExprKind::Reference(id, mutable) => {
                 let Some(target_local) = self.visit_expr_assigned(*id, hlir) else {
                     push_lower_err!(self, hlir, *id, "Failed to eval reference target.");
                     return;
                 };
+
+                if let Some(local) = self.body.local(target_local.local_id())
+                    && !local.mutable.is_mutable()
+                    && mutable.is_mutable()
+                {
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        *id,
+                        "Cannot take a mutable reference to an immutable variable!"
+                    );
+                    return;
+                }
+
                 let local = self.new_temp_local();
                 self.builder_mut_expect()
                     .push_local_assign(local, RValue::refer(target_local));

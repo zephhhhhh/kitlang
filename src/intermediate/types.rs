@@ -454,6 +454,10 @@ impl KitTy {
     #[must_use]
     pub fn unary_op_result_type(&self, op_kind: UnaryOpKind) -> Option<Self> {
         match self {
+            Self::Ref(inner_ty) | Self::RefMut(inner_ty) => match op_kind {
+                UnaryOpKind::Dereference => Some((**inner_ty).clone()),
+                UnaryOpKind::Not | UnaryOpKind::Negate => None,
+            },
             Self::Int(kit_int) => match op_kind {
                 UnaryOpKind::Dereference => None,
                 UnaryOpKind::Not | UnaryOpKind::Negate => Some(Self::Int(*kit_int)),
