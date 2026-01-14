@@ -1183,6 +1183,14 @@ impl HIRToMIRFuncLowerer<'_> {
 
         let self_arg = if self_type.is_any_ref() && !obj_ty.is_any_ref() {
             Operand::LValue(self_id)
+        } else if !self_type.is_any_ref() && obj_ty.is_any_ref() {
+            // If the method expects a value, but we have a reference, deref it.
+            let dereffed_local = self.new_temp_local();
+            self.builder_mut_expect().push_local_assign(
+                dereffed_local,
+                RValue::UnaryOp(UnaryOpKind::Dereference, Operand::Copy(self_id)),
+            );
+            Operand::Copy(dereffed_local.into())
         } else {
             Operand::Copy(self_id)
         };
