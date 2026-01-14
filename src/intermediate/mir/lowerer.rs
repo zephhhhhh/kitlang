@@ -1109,7 +1109,7 @@ impl HIRToMIRFuncLowerer<'_> {
             })
             .collect::<Option<Vec<_>>>()
         else {
-            push_lower_err!(self, hlir, expr_id, "Failed to eval all args!");
+            //push_lower_err!(self, hlir, expr_id, "Failed to eval all args!");
             return;
         };
 
