@@ -345,7 +345,7 @@
 <a href=#345 id=345 data-nosnippet>345</a>            <span class="self">Self</span>::Float(f) =&gt; perform_float_op(<span class="kw-2">*</span>f, rhs.float()<span class="question-mark">?</span>, op),
 <a href=#346 id=346 data-nosnippet>346</a>            <span class="self">Self</span>::String(s) =&gt; perform_string_op(s, rhs.str_ref()<span class="question-mark">?</span>, op),
 <a href=#347 id=347 data-nosnippet>347</a>            <span class="self">Self</span>::Boolean(b) =&gt; perform_bool_op(<span class="kw-2">*</span>b, rhs.bool()<span class="question-mark">?</span>, op),
-<a href=#348 id=348 data-nosnippet>348</a>            <span class="self">Self</span>::Ref(<span class="kw">_</span>) =&gt; <span class="macro">panic!</span>(<span class="string">"Cannot perform binary op on reference values!"</span>),
+<a href=#348 id=348 data-nosnippet>348</a>            <span class="self">Self</span>::Ref(..) =&gt; <span class="macro">panic!</span>(<span class="string">"Cannot perform binary op on reference values!"</span>),
 <a href=#349 id=349 data-nosnippet>349</a>            <span class="self">Self</span>::ADT(<span class="kw">_</span>) =&gt; <span class="macro">panic!</span>(<span class="string">"Cannot perform binary op on ADT values!"</span>),
 <a href=#350 id=350 data-nosnippet>350</a>            <span class="self">Self</span>::Tuple(<span class="kw">_</span>) =&gt; <span class="macro">panic!</span>(<span class="string">"Cannot perform binary op on Tuple values!"</span>),
 <a href=#351 id=351 data-nosnippet>351</a>            <span class="self">Self</span>::Array(<span class="kw">_</span>) =&gt; <span class="macro">panic!</span>(<span class="string">"Cannot perform binary op on Array values!"</span>),
@@ -411,7 +411,7 @@
 <a href=#411 id=411 data-nosnippet>411</a>    <span class="attr">#[inline]
 <a href=#412 id=412 data-nosnippet>412</a>    #[must_use]
 <a href=#413 id=413 data-nosnippet>413</a>    </span><span class="kw">pub const fn </span>is_reference(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
-<a href=#414 id=414 data-nosnippet>414</a>        <span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::Ref(<span class="kw">_</span>))
+<a href=#414 id=414 data-nosnippet>414</a>        <span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::Ref(..))
 <a href=#415 id=415 data-nosnippet>415</a>    }
 <a href=#416 id=416 data-nosnippet>416</a>
 <a href=#417 id=417 data-nosnippet>417</a>    <span class="attr">#[inline]
