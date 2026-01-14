@@ -155,6 +155,38 @@ pub fn execute_source_string(
 }
 
 /// Execute a given kitlang source code string with the MIR interpreter, using the provided native functions.
+/// The standard library is injected into the program with this function, if you do not want this for some reason,
+/// use `execute_source_string_no_std` instead.
+/// If `time_execution` is `true`, the different stages of execution will be timed and printed
+/// `no_io` indicates that the standard library will be injected, by the input/output functions are not registered,
+/// and should be registered manually in `native_functions`.
+/// # Errors
+/// This function will return an error if any part of the parsing, lowering or execution process fails.
+/// The returned error will contain a diagnostic message indicating the nature and location of any failures, as well
+/// as which stage they originate from.
+///
+/// These errors can be formatted into user-friendly error messages using the `format_as_error_message`
+/// method on the `KitlangError` on the `Err` variant.
+pub fn execute_source_string_no_io(
+    source: &str,
+    native_functions: crate::interpreter::mir_interpreter::RegisterNativeFns,
+    time_execution: bool,
+) -> KitlangResult<crate::interpreter::mir_interpreter::Value> {
+    use crate::compiler::Compiler;
+    use crate::interpreter::mir_interpreter::execute_mir_no_io;
+
+    let mut compiler = Compiler::new(source).profile_stages(time_execution);
+    let mir = compiler.compile_to_mir()?;
+
+    execute_mir_no_io(
+        mir,
+        compiler.context.meta(),
+        native_functions,
+        time_execution,
+    )
+}
+
+/// Execute a given kitlang source code string with the MIR interpreter, using the provided native functions.
 /// If `time_execution` is `true`, the different stages of execution will be timed and printed.
 /// # Errors
 /// This function will return an error if any part of the parsing, lowering or execution process fails.

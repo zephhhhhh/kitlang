@@ -63,15 +63,32 @@ impl Parser<'_, '_> {
         Ok(Statement::new(kind, self.finish_span(start_span)))
     }
 
+    fn check_for_this_pattern(&mut self) -> bool {
+        let mut lookahead = 0;
+        if self.check_kind_at(lookahead, Keyword::Mut) {
+            lookahead += 1;
+        }
+        if self.check_kind_at(lookahead, Punctuation::Ampersand) {
+            lookahead += 1;
+        }
+        if self.check_kind_at(lookahead, Keyword::Mut) {
+            lookahead += 1;
+        }
+
+        self.check_kind_at(lookahead, Keyword::This)
+    }
+
     pub fn parse_variable_pattern(&mut self) -> PResult<VariablePattern> {
         let start_span = self.begin_span();
 
-        let mutable = self.parse_mutability()?;
-        let ref_type = self.parse_ref_and_refmut()?;
+        let (var_pat, var_type) = if self.check_for_this_pattern() {
+            let mutable = self.parse_mutability()?;
+            let ref_type = self.parse_ref_and_refmut()?;
 
-        let var_ident_span = self.begin_span();
-        let (var_pat, var_type) = if self.check_kind_advance(Keyword::This) {
+            let var_ident_span = self.begin_span();
+            self.expect_kind(Keyword::This)?;
             let ident_span = self.finish_span(var_ident_span);
+
             let ty = if self.check_kind_advance(Punctuation::Colon) {
                 if ref_type.is_ref() {
                     let token = self.peek()?;
@@ -95,7 +112,7 @@ impl Parser<'_, '_> {
             let self_spanned = SpannedIdent::new("self", ident_span);
             (BindingPattern::Variable(self_spanned, mutable), ty)
         } else {
-            if ref_type.is_ref() {
+            if self.check_kind(Punctuation::Ampersand) {
                 let token = self.peek()?;
                 return Err(ParseError::new(
                     ParseErrorKind::ExpectedToken(

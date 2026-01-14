@@ -1,15 +1,22 @@
 //! Integration tests for the Kitlang interpreter.
 //! These tests verify that the interpreter produces correct output for various programs.
 
+use std::sync::Mutex;
+
 use kitlang::interpreter::mir_interpreter::Value;
-use kitlang::{execute_source_string, execute_source_string_no_std};
+use kitlang::{
+    execute_source_string, execute_source_string_no_io, execute_source_string_no_std,
+    register_native_fn,
+};
 
 mod common;
 #[allow(unused_imports)]
 use common::*;
+use kitlang_macros::kitlang_native_fn;
 
 macro_rules! execute_code {
     ($code:expr, $native_fns:expr) => {{ execute_source_string($code, $native_fns, false) }};
+    (no_io, $code:expr, $native_fns:expr) => {{ execute_source_string_no_io($code, $native_fns, false) }};
     (no_lib, $code:expr, $native_fns:expr) => {{ execute_source_string_no_std($code, $native_fns, false) }};
 }
 
@@ -805,4 +812,65 @@ fn interp_stdlib_abs() {
     assert_execution_any_int!(main!("(-25 as isize).abs()", "isize"), 25);
 }
 
-// TODO: Run test programs ('./programs/*.purr'), validate output..
+// Storage of printed output for verification in tests.
+static TEST_OUTPUT: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+#[kitlang_native_fn]
+fn println(s: String) {
+    if let Ok(mut output) = TEST_OUTPUT.lock() {
+        output.push(s.to_string());
+    }
+}
+
+fn clear_test_output() {
+    if let Ok(mut output) = TEST_OUTPUT.lock() {
+        output.clear();
+    }
+}
+
+fn get_test_output() -> Vec<String> {
+    if let Ok(output) = TEST_OUTPUT.lock() {
+        output.clone()
+    } else {
+        Vec::new()
+    }
+}
+
+#[test]
+fn interp_site_example() {
+    const PROGRAM_SRC: &str = include_str!("./programs/modified_site_example.purr");
+
+    clear_test_output();
+
+    execute_code!(no_io, PROGRAM_SRC, |i| {
+        register_native_fn!(i, println);
+    })
+    .expect("Site example program should execute without errors");
+
+    assert_eq!(
+        get_test_output(),
+        vec![
+            "[Adventure] Launching quest line",
+            "[Adventure] Running warm-up iterations",
+            "[Adventure]  Warm-up round 1",
+            "[Adventure]  Warm-up round 2",
+            "[Adventure]  Warm-up round 3",
+            "[Adventure] Drilling fundamentals",
+            "[Adventure] Attempting: Training Yard",
+            " + gained experience 2",
+            "[Adventure] Energy remaining: 3",
+            "[Adventure] Exploring the Iterable Ruins",
+            "[Adventure] Attempting: Iterable Ruins",
+            " + gained experience 3",
+            "[Adventure] Energy remaining: 2",
+            "[Adventure] Facing the Compiler Guardian",
+            "[Adventure] Attempting: Compiler Guardian",
+            " + gained experience 5",
+            "[Adventure] Hero is out of energy, relying on experience gains.",
+            "[Tracker] Adventure complete",
+            "[Tracker] Report generated",
+            "Hero { name: Compiler Cat, energy: 0, experience: 10 }",
+            "Recorded 2 events."
+        ]
+    );
+}

@@ -910,6 +910,13 @@ impl Ty {
     pub fn get_span_or(&self, default: SourceSpan) -> SourceSpan {
         self.get_span().unwrap_or(default)
     }
+
+    /// Returns true if the type is `Self`.
+    #[inline]
+    #[must_use]
+    pub fn is_self(&self) -> bool {
+        matches!(self, Self::This(_))
+    }
 }
 
 impl Debug for Ty {
@@ -1603,9 +1610,14 @@ impl Parameter {
     #[inline]
     #[must_use]
     pub fn is_self_param(&self) -> bool {
-        matches!((&self.pattern, &self.ty),
-            (BindingPattern::Variable(ident, _), Ty::This(..)) if ident.str() == "self"
-        )
+        let BindingPattern::Variable(ident, _) = &self.pattern else {
+            return false;
+        };
+        match (ident.str(), &self.ty) {
+            ("self", Ty::This(_)) => true,
+            ("self", Ty::Ref(inner_ty, _, _)) if inner_ty.is_self() => true,
+            _ => false,
+        }
     }
 }
 

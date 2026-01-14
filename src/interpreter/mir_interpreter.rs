@@ -14,6 +14,9 @@ use crate::intermediate::types::{KitFloat, KitInt, KitUInt};
 use crate::interpreter::errors::{InterpResult, interp_err};
 use crate::interpreter::native_functions::{IntoMIRKitlangFn, KitlangMIRNativeFn};
 
+#[allow(unused_imports)]
+use itertools::Itertools;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -1282,7 +1285,32 @@ pub fn execute_mir(
     .map_or(
         Err(interp_err!("Failed to find entry point.")),
         |mut interpreter| {
-            intrinsics::register_compiler_intrinsics(&mut interpreter);
+            intrinsics::register_compiler_intrinsics(&mut interpreter, false);
+            register_fns(&mut interpreter);
+
+            internal_execute_mir(&mut interpreter, time_execution)
+        },
+    )?)
+}
+
+/// Execute MIR with default compiler intrinsics registered.
+/// # Errors
+/// Errors if the entry point could not be found or if execution fails.
+pub fn execute_mir_no_io(
+    mir: MIR,
+    meta_data: &crate::prelude::ProgramMetaData,
+    register_fns: RegisterNativeFns,
+    time_execution: bool,
+) -> crate::KitlangResult<Value> {
+    Ok(Interpreter::new_with_program(Program::new(
+        mir,
+        meta_data.type_registry.clone(),
+        meta_data.namespace.clone(),
+    ))
+    .map_or(
+        Err(interp_err!("Failed to find entry point.")),
+        |mut interpreter| {
+            intrinsics::register_compiler_intrinsics(&mut interpreter, true);
             register_fns(&mut interpreter);
 
             internal_execute_mir(&mut interpreter, time_execution)
@@ -1301,7 +1329,7 @@ mod intrinsics {
     use kitlang_macros::kitlang_native_fn;
 
     /// Register the default compiler intrinsics.
-    pub fn register_compiler_intrinsics(interpreter: &mut Interpreter) {
+    pub fn register_compiler_intrinsics(interpreter: &mut Interpreter, no_io: bool) {
         register_native_fn!(
             interpreter,
             to_lower,
@@ -1322,7 +1350,7 @@ mod intrinsics {
         );
 
         #[cfg(not(feature = "webasm"))]
-        {
+        if !no_io {
             register_native_fn!(
                 interpreter,
                 print,

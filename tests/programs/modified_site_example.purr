@@ -1,0 +1,190 @@
+// All code is fully editible to experiment with..
+
+use adventure::Hero;
+
+/*  All Kitlang programs _need_ a `main` method.
+    This is where execution starts. 
+*/
+fn main() {
+    /*  We can define functions inside of other functions. 
+        Very handy for helper functions that don't make sense to be called elsewhere.
+        Note: These are _NOT_ lambdas, but rather they are just regular functions 
+        that are scoped to this function only. 
+    */
+    let name = "Compiler Cat"; // Hardcoded hero name for testing..
+
+    /*  Note all of these next functions are defined below.
+        Kitlang is order independent (unlike C/C++).
+
+        Here is an example of type inference, these are strongly typed but
+        since the type can be deduced from the right hand side, they are
+        deduced as the type of the assignment. 
+    */
+    let hero = Hero::new(name, 4);
+
+    /*  Both of these functions `Hero::new` and `adventure::run` return a `Hero`.
+        Strongly defining the type is also valid of course.
+        However strongly defining it as an incorrect type would cause an error.
+        The commented out code will not compile and will throw an error. (Try it!)
+        It will also cause an error when we try to call `diagnostics::report`
+        as this function expects to find a `Hero` but we are trying to call it with `i32`. 
+    */
+
+    let final_hero: Hero = adventure::run(hero);
+    //let final_hero: i32 = adventure::run(hero);
+
+    diagnostics::report(final_hero);
+}
+
+mod diagnostics {
+    /*  A leading '::' denotes that the path is relative to the 'root' of the project
+        and not to to the current module/path. 
+    */ 
+    use ::adventure::Hero;
+
+    // User defined data types..
+    pub struct Tracker {
+        events: i32
+    }
+
+    impl Tracker {
+        pub fn new() -> Tracker {
+            Tracker { events: 0 }
+        }
+
+        pub fn log(s: string) {
+            println("[Tracker] " + s);
+        }
+
+        /*  Functions with "self" as the first parameter are methods of a data type and must be defined
+            inside an "impl" block for the specified data type.
+        */
+        pub fn mark(self, label: string) -> Tracker {
+            Tracker::log(label);
+            Tracker { events: self.events + 1 }
+        }
+
+        pub fn summary(self) -> string {
+            "Recorded " + self.events.to_string() + " events."
+        }
+    }
+
+    pub fn report(hero: Hero) {
+        let tracker = Tracker::new()
+            .mark("Adventure complete")
+            .mark("Report generated");
+
+        println(hero.describe());
+        println(tracker.summary());
+    }
+}
+
+mod adventure {
+    pub struct Hero {
+        name: string,
+        energy: i32,
+        experience: i32
+    }
+
+    pub struct Quest {
+        label: string,
+        energy_cost: i32,
+        reward: i32
+    }
+
+    impl Hero {
+        pub fn new(name: string, energy: i32) -> Hero {
+            Hero {
+                name: name,
+                energy: energy,
+                experience: 0
+            }
+        }
+
+        pub fn describe(self) -> string {
+            "Hero { name: " + self.name + ", energy: " + self.energy.to_string() 
+                + ", experience: " + self.experience.to_string() + " }"
+        }
+
+        pub fn tackle(self, quest: Quest) -> Hero {
+            let label = quest.label;
+            let energy_cost = quest.energy_cost;
+            let reward = quest.reward;
+
+            log("Attempting: " + label);
+
+            let mut energy_left = self.energy - energy_cost;
+            if energy_left < 0 {
+                energy_left = 0;
+            }
+
+            println(" + gained experience " + reward.to_string());
+
+            if energy_left == 0 {
+                log("Hero is out of energy, relying on experience gains.");
+            } else {
+                log("Energy remaining: " + energy_left.to_string());
+            }
+
+            Hero {
+                name: self.name,
+                energy: energy_left,
+                experience: self.experience + reward
+            }
+        }
+    }
+
+    pub fn run(hero: Hero) -> Hero {
+        log("Launching quest line");
+        training::warm_up();
+
+        let after_training = quests::training(hero);
+        let after_exploration = quests::exploration(after_training);
+        quests::boss(after_exploration)
+    }
+
+    fn log(message: string) {
+        println("[Adventure] " + message);
+    }
+
+    mod training {
+        pub fn warm_up() {
+            ::adventure::log("Running warm-up iterations");
+            for round in 1..=3 {
+                ::adventure::log(" Warm-up round " + round.to_string());
+            }
+        }
+    }
+
+    pub mod quests {
+        // Use statements can import multiple items at once.
+        use ::adventure::{Hero, Quest, log};
+
+        pub fn training(hero: Hero) -> Hero {
+            log("Drilling fundamentals");
+            hero.tackle(Quest {
+                label: "Training Yard",
+                energy_cost: 1,
+                reward: 2
+            })
+        }
+
+        pub fn exploration(hero: Hero) -> Hero {
+            log("Exploring the Iterable Ruins");
+            hero.tackle(Quest {
+                label: "Iterable Ruins",
+                energy_cost: 1,
+                reward: 3
+            })
+        }
+
+        pub fn boss(hero: Hero) -> Hero {
+            log("Facing the Compiler Guardian");
+            hero.tackle(Quest {
+                label: "Compiler Guardian",
+                energy_cost: 2,
+                reward: 5
+            })
+        }
+    }
+}
