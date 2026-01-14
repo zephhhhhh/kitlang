@@ -90,7 +90,7 @@
 <a href=#90 id=90 data-nosnippet>90</a>            <span class="kw">let </span>ident_span = <span class="self">self</span>.finish_span(var_ident_span);
 <a href=#91 id=91 data-nosnippet>91</a>
 <a href=#92 id=92 data-nosnippet>92</a>            <span class="kw">let </span>ty = <span class="kw">if </span><span class="self">self</span>.check_kind_advance(Punctuation::Colon) {
-<a href=#93 id=93 data-nosnippet>93</a>                <span class="kw">if </span>ref_type.is_ref() {
+<a href=#93 id=93 data-nosnippet>93</a>                <span class="kw">if </span>ref_type.is_any_ref() {
 <a href=#94 id=94 data-nosnippet>94</a>                    <span class="kw">let </span>token = <span class="self">self</span>.peek()<span class="question-mark">?</span>;
 <a href=#95 id=95 data-nosnippet>95</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(ParseError::new(
 <a href=#96 id=96 data-nosnippet>96</a>                        ParseErrorKind::UnexpectedToken(token.kind.clone()),
@@ -99,7 +99,7 @@
 <a href=#99 id=99 data-nosnippet>99</a>                }
 <a href=#100 id=100 data-nosnippet>100</a>
 <a href=#101 id=101 data-nosnippet>101</a>                <span class="self">self</span>.parse_ty()<span class="question-mark">?
-<a href=#102 id=102 data-nosnippet>102</a>            </span>} <span class="kw">else if </span>ref_type.is_ref() {
+<a href=#102 id=102 data-nosnippet>102</a>            </span>} <span class="kw">else if </span>ref_type.is_any_ref() {
 <a href=#103 id=103 data-nosnippet>103</a>                Ty::Ref(
 <a href=#104 id=104 data-nosnippet>104</a>                    Box::new(Ty::This(ident_span)),
 <a href=#105 id=105 data-nosnippet>105</a>                    ref_type.mutability(),
