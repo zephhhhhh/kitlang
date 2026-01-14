@@ -122,6 +122,7 @@ impl Debug for LocalDefinition {
 #[derive(Clone, PartialEq, PartialOrd)]
 pub enum Operand {
     Copy(AssignTarget),
+    LValue(AssignTarget),
     Unit,
     Literal(Literal),
     Const, // Not sure yet
@@ -131,6 +132,7 @@ impl Debug for Operand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Copy(arg0) => write!(f, "Copy({arg0:?})"),
+            Self::LValue(arg0) => write!(f, "LValue({arg0:?})"),
             Self::Unit => write!(f, "Unit"),
             Self::Literal(arg0) => arg0.fmt(f),
             Self::Const => write!(f, "Const"),
@@ -478,6 +480,12 @@ impl Body {
     #[must_use]
     pub fn local_mut(&mut self, id: LocalId) -> Option<&mut LocalDefinition> {
         self.locals.get_mut(id.0 as usize)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn local_mutability(&self, id: LocalId) -> Option<bool> {
+        self.local(id).map(|l| l.mutable.is_mutable())
     }
 
     #[inline]

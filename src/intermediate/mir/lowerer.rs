@@ -226,6 +226,15 @@ impl<'a> HIRToMIRFuncLowerer<'a> {
 }
 
 impl HIRToMIRFuncLowerer<'_> {
+    /// Returns `true` if the given local ID is mutable, `false` otherwise.
+    #[inline]
+    #[must_use]
+    pub fn is_local_mutable(&self, local_id: LocalId) -> bool {
+        self.body.local_mutability(local_id).unwrap_or_default()
+    }
+}
+
+impl HIRToMIRFuncLowerer<'_> {
     const DEBUG_BLOCK_CREATION: bool = false;
 
     fn create_block_builder(&mut self) {
@@ -407,9 +416,14 @@ impl HIRToMIRFuncLowerer<'_> {
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
     #[must_use]
-    fn visit_expr_assigned(&mut self, expr_id: HirId, hlir: &HLIR) -> Option<AssignTarget> {
+    fn visit_expr_assigned(
+        &mut self,
+        expr_id: HirId,
+        lvalue: bool,
+        hlir: &HLIR,
+    ) -> Option<AssignTarget> {
         let before_locals = self.body.locals.len();
-        self.visit_expr_by_id(expr_id, hlir);
+        self.lower_expr_by_id(expr_id, lvalue, hlir);
         let after_locals = self.body.locals.len();
 
         if let Some(assign_target) = self.state.read_assign_target() {
@@ -534,6 +548,282 @@ impl HIRToMIRFuncLowerer<'_> {
 }
 
 impl HIRToMIRFuncLowerer<'_> {
+    /// Helper function to call `lower_expr` by using a given [`HirId`].
+    fn lower_expr_by_id(&mut self, expr_id: HirId, lvalue: bool, hlir: &HLIR) {
+        if let Some(HirNode::Expr(expr)) = hlir.get_hir_node(expr_id) {
+            self.lower_expr(expr, lvalue, hlir);
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn lower_expr(&mut self, expr: &Expr, lvalue: bool, hlir: &HLIR) {
+        match &expr.kind {
+            ExprKind::Block(hir_id) => self.visit_block_by_id(*hir_id, hlir),
+            ExprKind::Literal(literal) => {
+                let local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(local, RValue::literal(literal.clone()));
+            }
+            ExprKind::BinaryOp(binary_op_kind, hir_id, hir_id1) => {
+                let Some(lhs_local) = self.visit_expr_assigned(*hir_id, false, hlir) else {
+                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve LHS of binary op.");
+                    return;
+                };
+                let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, false, hlir) else {
+                    push_lower_err!(self, hlir, *hir_id1, "Failed to resolve RHS of binary op.");
+                    return;
+                };
+
+                let local = self.new_temp_local();
+                self.builder_mut_expect().push_local_assign(
+                    local,
+                    RValue::BinaryOp(
+                        *binary_op_kind,
+                        (Operand::Copy(lhs_local), Operand::Copy(rhs_local)),
+                    ),
+                );
+            }
+            ExprKind::UnaryOp(unary_op_kind, hir_id) => {
+                let Some(rhs_local) = self.visit_expr_assigned(*hir_id, false, hlir) else {
+                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve RHS of unary op.");
+                    return;
+                };
+                if let UnaryOpKind::Dereference = *unary_op_kind
+                    && lvalue
+                {
+                    let mutability = self
+                        .meta
+                        .type_map
+                        .get(hir_id)
+                        .and_then(|t| t.resolved())
+                        .and_then(KitTy::ref_mutability)
+                        .unwrap_or(Mutability::Immutable);
+                    let local = self.new_temp_local_with_mut(mutability);
+                    self.builder_mut_expect()
+                        .push_local_assign(local, RValue::Unchanged(Operand::LValue(rhs_local)));
+                } else {
+                    let local = self.new_temp_local();
+                    self.builder_mut_expect().push_local_assign(
+                        local,
+                        RValue::UnaryOp(*unary_op_kind, Operand::Copy(rhs_local)),
+                    );
+                }
+            }
+            ExprKind::If(condition, true_block, else_expr) => {
+                self.lower_if(hlir, expr.id, *condition, *true_block, else_expr.as_ref());
+            }
+            ExprKind::Loop(block) => {
+                self.lower_loop(hlir, expr.id, *block);
+            }
+            ExprKind::For(_, bind_id, iter_id, loop_block_id) => {
+                self.lower_for(hlir, expr.id, *bind_id, *iter_id, *loop_block_id);
+            }
+            ExprKind::While(loop_condition_id, block_id) => {
+                self.lower_while(hlir, expr.id, *loop_condition_id, *block_id);
+            }
+            ExprKind::Assign(hir_id, hir_id1) => {
+                let Some(target) = self.visit_expr_assigned(*hir_id, true, hlir) else {
+                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve assignment target.");
+                    return;
+                };
+
+                if !self.is_local_mutable(target.local_id()) {
+                    push_lower_err!(self, hlir, *hir_id, "Cannot assign to immutable variable!");
+                    return;
+                }
+
+                let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, false, hlir) else {
+                    push_lower_err!(self, hlir, *hir_id1, "Failed to resolve assignment RHS.");
+                    return;
+                };
+
+                self.builder_mut_expect()
+                    .push_assign(target, RValue::copy(rhs_local));
+            }
+            ExprKind::Call(call_expr, args) => {
+                self.lower_call(hlir, expr.id, *call_expr, args);
+            }
+            ExprKind::MethodCall(hir_id, ident, args) => {
+                self.lower_method_call(hlir, expr.id, *hir_id, ident.str(), args);
+            }
+            ExprKind::Index(target_id, index_id) => {
+                self.lower_index(hlir, lvalue, *target_id, *index_id);
+            }
+            ExprKind::FieldAccess(hir_id, ident) => {
+                self.lower_field_access(hlir, lvalue, expr.id, *hir_id, ident.str());
+            }
+            ExprKind::StructInit(struct_initialisation) => {
+                self.lower_struct_init(hlir, expr.id, struct_initialisation);
+            }
+            ExprKind::Path(ref_path) => {
+                if let Some(resolved) = ref_path.resolved_id() {
+                    self.handle_resolved_id(resolved, hlir);
+                } else {
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        expr.id,
+                        "Path not resolved `{:?}` (This should be impossible, if you see this, please report a bug!)",
+                        ref_path
+                    );
+                }
+            }
+            ExprKind::Continue => {
+                if self.state.is_in_loop() {
+                    let current_loop_cond_bb_id = self
+                        .state
+                        .current_loop()
+                        .expect("Not in loop?")
+                        .condition_block_id;
+                    self.builder_mut_expect()
+                        .set_exit_kind(BlockExitKind::Goto(current_loop_cond_bb_id));
+                    self.emit_and_replace_block()
+                        .expect("Continue block failed to emit.");
+                } else {
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        expr.id,
+                        "Cannot continue from outside of a loop!"
+                    );
+                }
+            }
+            ExprKind::Break => {
+                if self.state.is_in_loop() {
+                    let break_block_id = self.body.next_block_id();
+                    self.builder_mut_expect()
+                        .set_exit_kind(BlockExitKind::Goto(BasicBlockId::PLACEHOLDER_ID));
+                    self.state
+                        .current_loop()
+                        .expect("Not inside loop?")
+                        .push_break_to_update(break_block_id);
+                    assert!(
+                        self.emit_and_replace_block().unwrap() == break_block_id,
+                        "Break block id mismatch"
+                    );
+                } else {
+                    push_lower_err!(self, hlir, expr.id, "Cannot break from outside of a loop!");
+                }
+            }
+            ExprKind::Return(hir_id) => {
+                if self
+                    .builder()
+                    .expect("Builder doesn't exist")
+                    .directive
+                    .is_some()
+                {
+                    self.emit_and_replace_block().unwrap();
+                }
+
+                let return_value = if let Some(return_expr_id) = hir_id {
+                    if let Some(target) = self.visit_expr_assigned(*return_expr_id, false, hlir) {
+                        RValue::copy(target)
+                    } else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *return_expr_id,
+                            "Failed to get return value expression"
+                        );
+                        RValue::unit()
+                    }
+                } else {
+                    RValue::unit()
+                };
+
+                self.builder_mut_expect().push_return(return_value);
+            }
+            ExprKind::Cast(target, target_type) => {
+                let Some(lhs_local) = self.visit_expr_assigned(*target, false, hlir) else {
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        *target,
+                        "Failed to get type of cast expression lhs"
+                    );
+                    return;
+                };
+                let Some(resolved_type) = target_type.resolved() else {
+                    push_lower_err!(self, hlir, *target, "Failed to resolve target cast type");
+                    return;
+                };
+                let Some(cast_kind) = CastKind::from_type(resolved_type) else {
+                    push_lower_err!(self, hlir, *target, "Failed to get valid target cast type");
+                    return;
+                };
+                let local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(local, RValue::Cast(Operand::Copy(lhs_local), cast_kind));
+            }
+            ExprKind::Tuple(t) => {
+                let mut element_values = Vec::with_capacity(t.len());
+                for element_expr_id in t {
+                    if let Some(element_local) =
+                        self.visit_expr_assigned(*element_expr_id, false, hlir)
+                    {
+                        element_values.push(Operand::Copy(element_local));
+                    } else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *element_expr_id,
+                            "Failed to eval tuple element expression."
+                        );
+                        return;
+                    }
+                }
+                let tuple_local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(tuple_local, RValue::Tuple(element_values));
+            }
+            ExprKind::ArrayInit(elems) => {
+                let mut element_values = Vec::with_capacity(elems.len());
+                for element_expr_id in elems {
+                    if let Some(element_local) =
+                        self.visit_expr_assigned(*element_expr_id, false, hlir)
+                    {
+                        element_values.push(Operand::Copy(element_local));
+                    } else {
+                        push_lower_err!(
+                            self,
+                            hlir,
+                            *element_expr_id,
+                            "Failed to eval array element expression."
+                        );
+                        return;
+                    }
+                }
+                let array_local = self.new_temp_local();
+                self.builder_mut_expect()
+                    .push_local_assign(array_local, RValue::Array(element_values));
+            }
+            ExprKind::Range(..) => {
+                todo!()
+            }
+            ExprKind::Reference(id, mutable) => {
+                let Some(target_local) = self.visit_expr_assigned(*id, true, hlir) else {
+                    push_lower_err!(self, hlir, *id, "Failed to eval reference target.");
+                    return;
+                };
+
+                // TODO: Not correct.. &mut &.. should be allowed, as we can change the reference, just not what is behind it.
+                if !self.is_local_mutable(target_local.local_id()) && mutable.is_mutable() {
+                    push_lower_err!(
+                        self,
+                        hlir,
+                        *id,
+                        "Cannot take a mutable reference to an immutable variable!"
+                    );
+                    return;
+                }
+
+                let local = self.new_temp_local_with_mut(*mutable);
+                self.builder_mut_expect()
+                    .push_local_assign(local, RValue::refer(target_local));
+            }
+        }
+    }
+
     fn lower_if(
         &mut self,
         hlir: &HLIR,
@@ -549,7 +839,7 @@ impl HIRToMIRFuncLowerer<'_> {
         //      True block -> Goto block after last else block.
         //      Else block -> Goto next block after last else block (Same)
 
-        let Some(target) = self.visit_expr_assigned(condition, hlir) else {
+        let Some(target) = self.visit_expr_assigned(condition, false, hlir) else {
             push_lower_err!(self, hlir, condition, "Failed to eval if condition.");
             return;
         };
@@ -685,7 +975,8 @@ impl HIRToMIRFuncLowerer<'_> {
                 return;
             };
 
-            let Some(binding_init_rhs_local) = self.visit_expr_assigned(*min_expr, hlir) else {
+            let Some(binding_init_rhs_local) = self.visit_expr_assigned(*min_expr, false, hlir)
+            else {
                 push_lower_err!(
                     self,
                     hlir,
@@ -720,7 +1011,7 @@ impl HIRToMIRFuncLowerer<'_> {
         } else {
             BinaryOpKind::LessThan
         };
-        let Some(max_expr) = self.visit_expr_assigned(max_expr_id, hlir) else {
+        let Some(max_expr) = self.visit_expr_assigned(max_expr_id, false, hlir) else {
             push_lower_err!(self, hlir, max_expr_id, "Failed to eval max expr!");
             return;
         };
@@ -768,7 +1059,7 @@ impl HIRToMIRFuncLowerer<'_> {
             self.emit_and_replace_block();
         }
 
-        let Some(target) = self.visit_expr_assigned(condition, hlir) else {
+        let Some(target) = self.visit_expr_assigned(condition, false, hlir) else {
             push_lower_err!(self, hlir, condition, "Failed to eval while condition.");
             return;
         };
@@ -813,7 +1104,7 @@ impl HIRToMIRFuncLowerer<'_> {
         let Some(arg_local_ids) = args
             .iter()
             .map(|a_id| {
-                let local_id = self.visit_expr_assigned(*a_id, hlir)?;
+                let local_id = self.visit_expr_assigned(*a_id, false, hlir)?;
                 Some(Operand::Copy(local_id))
             })
             .collect::<Option<Vec<_>>>()
@@ -849,17 +1140,13 @@ impl HIRToMIRFuncLowerer<'_> {
         method_name: &str,
         args: &[HirId],
     ) {
-        fn is_def_method_func(hlir: &HLIR, owner_id: OwnerDefId) -> bool {
-            let Some(owning_node) = hlir.owning_node(owner_id) else {
-                return false;
-            };
-            let Some(func) = owning_node.hir_function_ref() else {
-                return false;
-            };
-            func.is_method
+        fn get_method_def_self_ty(hlir: &HLIR, owner_id: OwnerDefId) -> Option<&Type> {
+            let owning_node = hlir.owning_node(owner_id)?;
+            let func = owning_node.hir_function_ref()?;
+            func.self_type()
         }
 
-        let Some(self_id) = self.visit_expr_assigned(target_id, hlir) else {
+        let Some(self_id) = self.visit_expr_assigned(target_id, false, hlir) else {
             push_lower_err!(self, hlir, target_id, "Failed to eval target method!");
             return;
         };
@@ -874,7 +1161,10 @@ impl HIRToMIRFuncLowerer<'_> {
             return;
         };
 
-        let Some(method_def) = self.meta.find_ty_method_owner_def(obj_ty, method_name) else {
+        let Some(method_def) = self
+            .meta
+            .find_ty_method_owner_def(&obj_ty.recursive_derefed_type(), method_name)
+        else {
             push_lower_err!(
                 self,
                 hlir,
@@ -886,15 +1176,36 @@ impl HIRToMIRFuncLowerer<'_> {
             return;
         };
 
-        if !is_def_method_func(hlir, method_def) {
+        let Some(self_type) = get_method_def_self_ty(hlir, method_def) else {
             push_lower_err!(self, hlir, target_id, "Associated call is not a method!");
+            return;
+        };
+
+        let self_arg = if self_type.is_any_ref() && !obj_ty.is_any_ref() {
+            Operand::LValue(self_id)
+        } else {
+            Operand::Copy(self_id)
+        };
+
+        let valid_mut =
+            if self.is_local_mutable(self_id.local_id()) && !obj_ty.are_all_refs_non_mut() {
+                true
+            } else {
+                obj_ty.are_all_refs_mut()
+            };
+        if self_type.is_ref_mut() && !valid_mut {
+            push_lower_err!(
+                self,
+                hlir,
+                target_id,
+                "Cannot pass immutable variable as mutable reference!"
+            );
             return;
         }
 
-        let self_arg = Operand::Copy(self_id);
         let Some(arg_local_ids) = std::iter::once(Some(self_arg))
             .chain(args.iter().map(|a_id| {
-                let local_id = self.visit_expr_assigned(*a_id, hlir)?;
+                let local_id = self.visit_expr_assigned(*a_id, false, hlir)?;
                 Some(Operand::Copy(local_id))
             }))
             .collect::<Option<Vec<_>>>()
@@ -927,12 +1238,12 @@ impl HIRToMIRFuncLowerer<'_> {
         self.state.last_block_target = Some(call_result_slot.into());
     }
 
-    fn lower_index(&mut self, hlir: &HLIR, target_id: HirId, index_id: HirId) {
-        let Some(target_at) = self.visit_expr_assigned(target_id, hlir) else {
+    fn lower_index(&mut self, hlir: &HLIR, lvalue: bool, target_id: HirId, index_id: HirId) {
+        let Some(target_at) = self.visit_expr_assigned(target_id, true, hlir) else {
             push_lower_err!(self, hlir, target_id, "Failed to eval target index local!");
             return;
         };
-        let Some(index_at) = self.visit_expr_assigned(index_id, hlir) else {
+        let Some(index_at) = self.visit_expr_assigned(index_id, false, hlir) else {
             push_lower_err!(self, hlir, index_id, "Failed to eval index local!");
             return;
         };
@@ -941,16 +1252,24 @@ impl HIRToMIRFuncLowerer<'_> {
         let index_local = index_at.local_expect();
 
         let local = self.new_temp_local_with_mut(self.get_mutability_of_local(target_local));
-        self.builder_mut_expect().push_local_assign(
-            local,
-            RValue::refer(AssignTarget::Index(target_local, index_local)),
-        );
+        if lvalue {
+            self.builder_mut_expect().push_local_assign(
+                local,
+                RValue::refer(AssignTarget::Index(target_local, index_local)),
+            );
+        } else {
+            self.builder_mut_expect().push_local_assign(
+                local,
+                RValue::copy(AssignTarget::Index(target_local, index_local)),
+            );
+        }
     }
 
     fn lower_tuple_index(
         &mut self,
         hlir: &HLIR,
         expr_id: HirId,
+        lvalue: bool,
         target_local: AssignTarget,
         tuple_tys: &[KitTy],
         index_ident: &str,
@@ -982,31 +1301,72 @@ impl HIRToMIRFuncLowerer<'_> {
 
         let target_local_id = target_local.local_expect();
         let local = self.new_temp_local_with_mut(self.get_mutability_of_local(target_local_id));
-        self.builder_mut_expect().push_local_assign(
-            local,
-            RValue::refer(AssignTarget::Field(target_local_id, index)),
-        );
+        if lvalue {
+            self.builder_mut_expect().push_local_assign(
+                local,
+                RValue::refer(AssignTarget::Field(target_local_id, index)),
+            );
+        } else {
+            self.builder_mut_expect().push_local_assign(
+                local,
+                RValue::copy(AssignTarget::Field(target_local_id, index)),
+            );
+        }
     }
 
     fn lower_field_access(
         &mut self,
         hlir: &HLIR,
+        lvalue: bool,
         expr_id: HirId,
         target_id: HirId,
         field_name: &str,
     ) {
-        let Some(target_local) = self.visit_expr_assigned(target_id, hlir) else {
+        let Some(target_local) = self.visit_expr_assigned(target_id, true, hlir) else {
             push_lower_err!(self, hlir, target_id, "Failed to eval target field local!");
             return;
         };
 
-        let type_id = match self.meta.type_map.get(&target_id) {
-            Some(Type::Resolved(KitTy::Abstract(type_id))) => type_id,
-            Some(Type::Resolved(KitTy::Tuple(tys))) => {
-                return self.lower_tuple_index(hlir, expr_id, target_local, tys, field_name);
+        let Some(target_ty) = self.meta.type_map.get(&target_id) else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Failed to get target type for field access."
+            );
+            return;
+        };
+        let target_mut_override = target_ty.are_all_refs_mut();
+        let Some(true_target_ty) = target_ty.recursive_derefed() else {
+            push_lower_err!(
+                self,
+                hlir,
+                expr_id,
+                "Failed to deref target type for field access."
+            );
+            return;
+        };
+
+        let type_id = match true_target_ty {
+            KitTy::Abstract(type_id) => type_id,
+            KitTy::Tuple(tys) => {
+                return self.lower_tuple_index(
+                    hlir,
+                    expr_id,
+                    lvalue,
+                    target_local,
+                    tys,
+                    field_name,
+                );
             }
             _ => {
-                push_lower_err!(self, hlir, target_id, "Target is not abstract.");
+                push_lower_err!(
+                    self,
+                    hlir,
+                    target_id,
+                    "Target is not abstract: `{:?}`",
+                    true_target_ty
+                );
                 return;
             }
         };
@@ -1016,7 +1376,6 @@ impl HIRToMIRFuncLowerer<'_> {
             .type_registry
             .get_from_type_id(*type_id)
             .expect("Type exists.");
-
         let Some(field_index) = to_access.find_field_index(field_name) else {
             push_lower_err!(
                 self,
@@ -1029,11 +1388,24 @@ impl HIRToMIRFuncLowerer<'_> {
         };
 
         let target_local_id = target_local.local_expect();
-        let local = self.new_temp_local_with_mut(self.get_mutability_of_local(target_local_id));
-        self.builder_mut_expect().push_local_assign(
-            local,
-            RValue::refer(AssignTarget::Field(target_local_id, field_index)),
-        );
+        let mutable = if target_mut_override {
+            Mutability::Mutable
+        } else {
+            self.get_mutability_of_local(target_local_id)
+        };
+        let local = self.new_temp_local_with_mut(mutable);
+
+        if lvalue {
+            self.builder_mut_expect().push_local_assign(
+                local,
+                RValue::refer(AssignTarget::Field(target_local_id, field_index)),
+            );
+        } else {
+            self.builder_mut_expect().push_local_assign(
+                local,
+                RValue::copy(AssignTarget::Field(target_local_id, field_index)),
+            );
+        }
     }
 
     fn lower_struct_init(
@@ -1103,7 +1475,7 @@ impl HIRToMIRFuncLowerer<'_> {
                 return;
             };
 
-            if let Some(field_init_local) = self.visit_expr_assigned(field_init.expr, hlir) {
+            if let Some(field_init_local) = self.visit_expr_assigned(field_init.expr, false, hlir) {
                 *field_values.get_mut(field_index).expect("Field index") =
                     Operand::Copy(field_init_local);
             } else {
@@ -1123,7 +1495,13 @@ impl HIRToMIRFuncLowerer<'_> {
         );
     }
 
-    fn lower_tuple_destructuring(&mut self, hlir: &HLIR, temp_local: LocalId, bind_ids: &[HirId]) {
+    fn lower_tuple_destructuring(
+        &mut self,
+        hlir: &HLIR,
+        lvalue: bool,
+        temp_local: LocalId,
+        bind_ids: &[HirId],
+    ) {
         for (index, bind_id) in bind_ids.iter().enumerate() {
             let Some(binding) = hlir.binding_by_id(*bind_id) else {
                 push_lower_err!(
@@ -1143,16 +1521,24 @@ impl HIRToMIRFuncLowerer<'_> {
                     self.lut.insert(*bind_id, local_id);
                     self.builder_mut_expect().push_local_assign(
                         local_id,
-                        RValue::refer(AssignTarget::Field(temp_local, index)),
+                        if lvalue {
+                            RValue::refer(AssignTarget::Field(temp_local, index))
+                        } else {
+                            RValue::copy(AssignTarget::Field(temp_local, index))
+                        },
                     );
                 }
                 BindingKind::Tuple(ids) => {
                     let destructure_local = self.new_temp_local_with_mut(binding.modifiers.mutable);
                     self.builder_mut_expect().push_local_assign(
                         destructure_local,
-                        RValue::refer(AssignTarget::Field(temp_local, index)),
+                        if lvalue {
+                            RValue::refer(AssignTarget::Field(temp_local, index))
+                        } else {
+                            RValue::copy(AssignTarget::Field(temp_local, index))
+                        },
                     );
-                    self.lower_tuple_destructuring(hlir, destructure_local, ids);
+                    self.lower_tuple_destructuring(hlir, lvalue, destructure_local, ids);
                 }
             }
         }
@@ -1163,271 +1549,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
     // This *has* to have too many lines..
     #[allow(clippy::too_many_lines)]
     fn visit_expr(&mut self, expr: &Expr, hlir: &HLIR) {
-        match &expr.kind {
-            ExprKind::Block(hir_id) => self.visit_block_by_id(*hir_id, hlir),
-            ExprKind::Literal(literal) => {
-                let local = self.new_temp_local();
-                self.builder_mut_expect()
-                    .push_local_assign(local, RValue::literal(literal.clone()));
-            }
-            ExprKind::BinaryOp(binary_op_kind, hir_id, hir_id1) => {
-                let Some(lhs_local) = self.visit_expr_assigned(*hir_id, hlir) else {
-                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve LHS of binary op.");
-                    return;
-                };
-                let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) else {
-                    push_lower_err!(self, hlir, *hir_id1, "Failed to resolve RHS of binary op.");
-                    return;
-                };
-
-                let local = self.new_temp_local();
-                self.builder_mut_expect().push_local_assign(
-                    local,
-                    RValue::BinaryOp(
-                        *binary_op_kind,
-                        (Operand::Copy(lhs_local), Operand::Copy(rhs_local)),
-                    ),
-                );
-            }
-            ExprKind::UnaryOp(unary_op_kind, hir_id) => {
-                let Some(rhs_local) = self.visit_expr_assigned(*hir_id, hlir) else {
-                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve RHS of unary op.");
-                    return;
-                };
-                if let UnaryOpKind::Dereference = *unary_op_kind {
-                    let mutability = self
-                        .meta
-                        .type_map
-                        .get(hir_id)
-                        .and_then(|t| t.resolved())
-                        .and_then(KitTy::ref_mutability)
-                        .unwrap_or(Mutability::Immutable);
-                    let local = self.new_temp_local_with_mut(mutability);
-                    self.builder_mut_expect().push_local_assign(
-                        local,
-                        RValue::refer(rhs_local),
-                    );
-                } else {
-                    let local = self.new_temp_local();
-                    self.builder_mut_expect().push_local_assign(
-                        local,
-                        RValue::UnaryOp(*unary_op_kind, Operand::Copy(rhs_local)),
-                    );
-                }
-            }
-            ExprKind::If(condition, true_block, else_expr) => {
-                self.lower_if(hlir, expr.id, *condition, *true_block, else_expr.as_ref());
-            }
-            ExprKind::Loop(block) => {
-                self.lower_loop(hlir, expr.id, *block);
-            }
-            ExprKind::For(_, bind_id, iter_id, loop_block_id) => {
-                self.lower_for(hlir, expr.id, *bind_id, *iter_id, *loop_block_id);
-            }
-            ExprKind::While(loop_condition_id, block_id) => {
-                self.lower_while(hlir, expr.id, *loop_condition_id, *block_id);
-            }
-            ExprKind::Assign(hir_id, hir_id1) => {
-                let Some(target) = self.visit_expr_assigned(*hir_id, hlir) else {
-                    push_lower_err!(self, hlir, *hir_id, "Failed to resolve assignment target.");
-                    return;
-                };
-
-                if let Some(local) = self.body.local(target.local_id())
-                    && !local.mutable.is_mutable()
-                {
-                    push_lower_err!(self, hlir, *hir_id, "Cannot assign to immutable variable!");
-                    return;
-                }
-
-                let Some(rhs_local) = self.visit_expr_assigned(*hir_id1, hlir) else {
-                    push_lower_err!(self, hlir, *hir_id1, "Failed to resolve assignment RHS.");
-                    return;
-                };
-
-                self.builder_mut_expect()
-                    .push_assign(target, RValue::copy(rhs_local));
-            }
-            ExprKind::Call(call_expr, args) => {
-                self.lower_call(hlir, expr.id, *call_expr, args);
-            }
-            ExprKind::MethodCall(hir_id, ident, args) => {
-                self.lower_method_call(hlir, expr.id, *hir_id, ident.str(), args);
-            }
-            ExprKind::Index(target_id, index_id) => {
-                self.lower_index(hlir, *target_id, *index_id);
-            }
-            ExprKind::FieldAccess(hir_id, ident) => {
-                self.lower_field_access(hlir, expr.id, *hir_id, ident.str());
-            }
-            ExprKind::StructInit(struct_initialisation) => {
-                self.lower_struct_init(hlir, expr.id, struct_initialisation);
-            }
-            ExprKind::Path(ref_path) => {
-                if let Some(resolved) = ref_path.resolved_id() {
-                    self.handle_resolved_id(resolved, hlir);
-                } else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        expr.id,
-                        "Path not resolved `{:?}` (This should be impossible, if you see this, please report a bug!)",
-                        ref_path
-                    );
-                }
-            }
-            ExprKind::Continue => {
-                if self.state.is_in_loop() {
-                    let current_loop_cond_bb_id = self
-                        .state
-                        .current_loop()
-                        .expect("Not in loop?")
-                        .condition_block_id;
-                    self.builder_mut_expect()
-                        .set_exit_kind(BlockExitKind::Goto(current_loop_cond_bb_id));
-                    self.emit_and_replace_block()
-                        .expect("Continue block failed to emit.");
-                } else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        expr.id,
-                        "Cannot continue from outside of a loop!"
-                    );
-                }
-            }
-            ExprKind::Break => {
-                if self.state.is_in_loop() {
-                    let break_block_id = self.body.next_block_id();
-                    self.builder_mut_expect()
-                        .set_exit_kind(BlockExitKind::Goto(BasicBlockId::PLACEHOLDER_ID));
-                    self.state
-                        .current_loop()
-                        .expect("Not inside loop?")
-                        .push_break_to_update(break_block_id);
-                    assert!(
-                        self.emit_and_replace_block().unwrap() == break_block_id,
-                        "Break block id mismatch"
-                    );
-                } else {
-                    push_lower_err!(self, hlir, expr.id, "Cannot break from outside of a loop!");
-                }
-            }
-            ExprKind::Return(hir_id) => {
-                if self
-                    .builder()
-                    .expect("Builder doesn't exist")
-                    .directive
-                    .is_some()
-                {
-                    self.emit_and_replace_block().unwrap();
-                }
-
-                let return_value = if let Some(return_expr_id) = hir_id {
-                    if let Some(target) = self.visit_expr_assigned(*return_expr_id, hlir) {
-                        RValue::copy(target)
-                    } else {
-                        push_lower_err!(
-                            self,
-                            hlir,
-                            *return_expr_id,
-                            "Failed to get return value expression"
-                        );
-                        RValue::unit()
-                    }
-                } else {
-                    RValue::unit()
-                };
-
-                self.builder_mut_expect().push_return(return_value);
-            }
-            ExprKind::Cast(target, target_type) => {
-                let Some(lhs_local) = self.visit_expr_assigned(*target, hlir) else {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        *target,
-                        "Failed to get type of cast expression lhs"
-                    );
-                    return;
-                };
-                let Some(resolved_type) = target_type.resolved() else {
-                    push_lower_err!(self, hlir, *target, "Failed to resolve target cast type");
-                    return;
-                };
-                let Some(cast_kind) = CastKind::from_type(resolved_type) else {
-                    push_lower_err!(self, hlir, *target, "Failed to get valid target cast type");
-                    return;
-                };
-                let local = self.new_temp_local();
-                self.builder_mut_expect()
-                    .push_local_assign(local, RValue::Cast(Operand::Copy(lhs_local), cast_kind));
-            }
-            ExprKind::Tuple(t) => {
-                let mut element_values = Vec::with_capacity(t.len());
-                for element_expr_id in t {
-                    if let Some(element_local) = self.visit_expr_assigned(*element_expr_id, hlir) {
-                        element_values.push(Operand::Copy(element_local));
-                    } else {
-                        push_lower_err!(
-                            self,
-                            hlir,
-                            *element_expr_id,
-                            "Failed to eval tuple element expression."
-                        );
-                        return;
-                    }
-                }
-                let tuple_local = self.new_temp_local();
-                self.builder_mut_expect()
-                    .push_local_assign(tuple_local, RValue::Tuple(element_values));
-            }
-            ExprKind::ArrayInit(elems) => {
-                let mut element_values = Vec::with_capacity(elems.len());
-                for element_expr_id in elems {
-                    if let Some(element_local) = self.visit_expr_assigned(*element_expr_id, hlir) {
-                        element_values.push(Operand::Copy(element_local));
-                    } else {
-                        push_lower_err!(
-                            self,
-                            hlir,
-                            *element_expr_id,
-                            "Failed to eval array element expression."
-                        );
-                        return;
-                    }
-                }
-                let array_local = self.new_temp_local();
-                self.builder_mut_expect()
-                    .push_local_assign(array_local, RValue::Array(element_values));
-            }
-            ExprKind::Range(..) => {
-                todo!()
-            }
-            ExprKind::Reference(id, mutable) => {
-                let Some(target_local) = self.visit_expr_assigned(*id, hlir) else {
-                    push_lower_err!(self, hlir, *id, "Failed to eval reference target.");
-                    return;
-                };
-
-                if let Some(local) = self.body.local(target_local.local_id())
-                    && !local.mutable.is_mutable()
-                    && mutable.is_mutable()
-                {
-                    push_lower_err!(
-                        self,
-                        hlir,
-                        *id,
-                        "Cannot take a mutable reference to an immutable variable!"
-                    );
-                    return;
-                }
-
-                let local = self.new_temp_local();
-                self.builder_mut_expect()
-                    .push_local_assign(local, RValue::refer(target_local));
-            }
-        }
+        self.lower_expr(expr, false, hlir);
     }
 
     fn visit_let_statement(&mut self, _id: HirId, let_statement: &LetStatement, hlir: &HLIR) {
@@ -1450,7 +1572,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 self.lut.insert(binding.id, local_id);
 
                 if let Some(init_id) = &let_statement.initial_value {
-                    if let Some(target) = self.visit_expr_assigned(*init_id, hlir) {
+                    if let Some(target) = self.visit_expr_assigned(*init_id, false, hlir) {
                         self.builder_mut_expect()
                             .push_local_assign(local_id, RValue::copy(target));
                     } else {
@@ -1469,7 +1591,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 let Some(init_id) = &let_statement.initial_value else {
                     return;
                 };
-                let Some(target) = self.visit_expr_assigned(*init_id, hlir) else {
+                let Some(target) = self.visit_expr_assigned(*init_id, false, hlir) else {
                     push_lower_err!(
                         self,
                         hlir,
@@ -1482,7 +1604,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                 self.builder_mut_expect()
                     .push_local_assign(temp_local_id, RValue::copy(target));
 
-                self.lower_tuple_destructuring(hlir, temp_local_id, ids);
+                self.lower_tuple_destructuring(hlir, false, temp_local_id, ids);
             }
         }
     }
@@ -1575,7 +1697,7 @@ impl HLIRVisitor for HIRToMIRFuncLowerer<'_> {
                         continue;
                     };
                     if let BindingKind::Tuple(ids) = &binding.kind {
-                        self.lower_tuple_destructuring(hlir, param_local, ids);
+                        self.lower_tuple_destructuring(hlir, false, param_local, ids);
                     }
                 }
 

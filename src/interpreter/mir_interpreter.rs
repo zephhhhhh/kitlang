@@ -67,7 +67,7 @@ pub enum Value {
     Float(f64),
     String(String),
     Boolean(bool),
-    Ref(AssignTarget),
+    Ref(ContextTarget),
     ADT(ADTValueKind),
     Tuple(Vec<Value>),
     Array(Vec<Value>),
@@ -95,7 +95,7 @@ impl Value {
             Self::Float(f) => f.to_string(),
             Self::String(s) => s.clone(),
             Self::Boolean(b) => b.to_string(),
-            Self::Ref(at) => format!("{at:?}"),
+            Self::Ref(context_target) => format!("&({context_target:?})"),
             Self::ADT(kind) => kind.to_string(),
             Self::Tuple(vals) => {
                 let elements: Vec<String> = vals.iter().map(Value::repr_string).collect();
@@ -224,7 +224,7 @@ impl Value {
                 UnaryOpKind::Not => Some(Self::Boolean(!b)),
                 UnaryOpKind::Dereference | UnaryOpKind::Negate => None,
             },
-            Self::Ref(_) => todo!(),
+            Self::Ref(..) => todo!(),
             Self::ADT(_) => todo!(),
             Self::Tuple(_) => todo!(),
             Self::Array(_) => todo!(),
@@ -518,40 +518,117 @@ impl_tuple_from!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6);
 impl_tuple_from!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6, T8: 7);
 
 #[derive(Debug, Clone)]
-pub struct ExecutionFrame {
-    pub locals: Vec<Value>,
+pub struct StackContext {
+    pub local_start: u32,
+    pub local_count: u32,
 }
 
-impl ExecutionFrame {
-    #[inline]
+impl StackContext {
     #[must_use]
-    pub fn new_with_capacity(capacity: usize) -> Self {
-        Self {
-            locals: vec![Value::Unit; capacity],
+    pub fn local_index(&self, local_id: LocalId) -> usize {
+        (self.local_start as usize).saturating_add(local_id.0 as usize)
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ExecutionContext {
+    pub value_stack: Vec<Value>,
+    pub stack_ctxs: Vec<StackContext>,
+}
+
+impl ExecutionContext {
+    #[inline]
+    pub fn push_stack(&mut self, local_count: usize) {
+        #[allow(clippy::cast_possible_truncation)]
+        self.stack_ctxs.push(StackContext {
+            local_start: self.value_stack.len() as u32,
+            local_count: local_count as u32,
+        });
+        self.value_stack
+            .extend_from_slice(&vec![Value::Unit; local_count]);
+    }
+
+    #[inline]
+    pub fn pop_stack(&mut self) {
+        if let Some(ctx) = self.stack_ctxs.pop() {
+            self.value_stack.truncate(ctx.local_start as usize);
         }
     }
 
-    /// Set the function arguments in the execution frame locals.
-    /// # Panics
-    /// Panics if there is not enough space in the locals for the function arguments.
-    #[allow(clippy::cast_possible_truncation)]
-    #[inline]
-    pub fn set_arguments(&mut self, values: &[Value]) {
+    #[must_use]
+    pub fn current_ctx(&self) -> Option<&StackContext> {
+        self.stack_ctxs.last()
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    #[must_use]
+    pub fn current_ctx_expect(&self) -> &StackContext {
+        self.current_ctx().expect("No current stack context?")
+    }
+}
+
+impl ExecutionContext {
+    #[must_use]
+    pub fn local_index(&self, local_id: LocalId) -> usize {
+        self.current_ctx_expect().local_index(local_id)
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    pub fn push_arguments(&mut self, args: &[Value]) {
+        let current_context = self.current_ctx_expect().clone();
         assert!(
-            values.len().saturating_add(1) <= self.locals.len(),
+            args.len().saturating_add(1) <= current_context.local_count as usize,
             "Not enough space in locals for function arguments!"
         );
-        for (i, value) in values.iter().enumerate() {
-            *self
-                .local_mut(LocalId((i as u32).saturating_add(1)))
-                .unwrap() = value.clone();
+        let start_index = current_context.local_start as usize;
+        for (i, arg) in args.iter().enumerate() {
+            self.value_stack[start_index + i + 1] = arg.clone();
         }
     }
 
     #[inline]
     #[allow(clippy::missing_errors_doc)]
+    pub fn get(&self, index: usize) -> InterpResult<&Value> {
+        self.value_stack
+            .get(index)
+            .ok_or_else(|| interp_err!("Cannot get value from stack with index `{index}`."))
+    }
+
+    #[inline]
+    #[allow(clippy::missing_errors_doc)]
+    pub fn get_mut(&mut self, index: usize) -> InterpResult<&mut Value> {
+        self.value_stack
+            .get_mut(index)
+            .ok_or_else(|| interp_err!("Cannot get mutable value from stack with index `{index}`."))
+    }
+
+    #[inline]
+    #[allow(clippy::missing_errors_doc)]
+    pub fn get_field(&self, index: usize, field_index: usize) -> InterpResult<&Value> {
+        self.get(index)?.index(field_index).ok_or_else(|| {
+            interp_err!(
+                "Cannot get field index `{field_index}` from value at stack index `{index}`."
+            )
+        })
+    }
+
+    #[inline]
+    #[allow(clippy::missing_errors_doc)]
+    pub fn get_field_mut(&mut self, index: usize, field_index: usize) -> InterpResult<&mut Value> {
+        self.get_mut(index)?.index_mut(field_index).ok_or_else(|| {
+            interp_err!(
+                "Cannot get field index `{field_index}` from value at stack index `{index}`."
+            )
+        })
+    }
+}
+
+// Access..
+impl ExecutionContext {
+    #[inline]
+    #[allow(clippy::missing_errors_doc)]
     pub fn field_access(&self, id: LocalId, field_index: usize) -> InterpResult<&Value> {
-        self.value(self.perform_deref(AssignTarget::Local(id))?)?
+        self.ctx_value(self.perform_deref_target(AssignTarget::Local(id))?)?
             .index(field_index)
             .ok_or_else(|| interp_err!("Field index `{field_index}` out of bounds."))
     }
@@ -563,43 +640,31 @@ impl ExecutionFrame {
         id: LocalId,
         field_index: usize,
     ) -> InterpResult<&mut Value> {
-        self.value_mut(self.perform_deref(AssignTarget::Local(id))?)?
+        self.ctx_value_mut(self.perform_deref_target(AssignTarget::Local(id))?)?
             .index_mut(field_index)
             .ok_or_else(|| interp_err!("Field index `{field_index}` out of bounds."))
     }
 
-    /// # Panics
-    /// This function will panic if:
-    /// - The `LocalId` doesn't exist
-    /// - The field index doesn't exist
-    /// - The value at the `LocalId` is not an `ADT`
     #[inline]
-    #[must_use]
-    pub fn field_access_expect(&self, id: LocalId, field_index: usize) -> &Value {
-        self.field_access(id, field_index)
-            .expect("Field access doesn't exist.")
-    }
-
-    /// # Panics
-    /// This function will panic if:
-    /// - The `LocalId` doesn't exist
-    /// - The field index doesn't exist
-    /// - The value at the `LocalId` is not an `ADT`
-    #[inline]
-    #[must_use]
-    pub fn field_access_expect_mut(&mut self, id: LocalId, field_index: usize) -> &mut Value {
-        self.field_access_mut(id, field_index)
-            .expect("Field access doesn't exist mut.")
+    #[allow(clippy::missing_errors_doc)]
+    pub fn index_value(&self, idx_id: LocalId) -> InterpResult<usize> {
+        let ctx_target = self.perform_deref_target(AssignTarget::Local(idx_id))?;
+        let index_value = self.ctx_value(ctx_target)?;
+        index_value
+            .as_index_usize()
+            .ok_or_else(|| interp_err!("Cannot convert `{index_value:#?}` to usize index."))
     }
 
     #[inline]
     #[allow(clippy::missing_errors_doc)]
     pub fn index(&self, id: LocalId, idx_id: LocalId) -> InterpResult<&Value> {
-        let index_value = self.value(self.perform_deref(AssignTarget::Local(idx_id))?)?;
+        let ctx_target = self.perform_deref_target(AssignTarget::Local(idx_id))?;
+        let index_value = self.ctx_value(ctx_target)?;
         let index = index_value
             .as_index_usize()
             .ok_or_else(|| interp_err!("Cannot convert `{index_value:#?}` to usize index."))?;
-        self.value(self.perform_deref(AssignTarget::Local(id))?)?
+        let tar = self.perform_deref_target(AssignTarget::Local(id))?;
+        self.ctx_value(tar)?
             .index(index)
             .ok_or_else(|| interp_err!("Index `{index}` out of bounds."))
     }
@@ -607,125 +672,135 @@ impl ExecutionFrame {
     #[inline]
     #[allow(clippy::missing_errors_doc)]
     pub fn index_mut(&mut self, id: LocalId, idx_id: LocalId) -> InterpResult<&mut Value> {
-        let index_value = self.value(self.perform_deref(AssignTarget::Local(idx_id))?)?;
+        let ctx_target = self.perform_deref_target(AssignTarget::Local(idx_id))?;
+        let index_value = self.ctx_value(ctx_target)?;
         let index = index_value
             .as_index_usize()
             .ok_or_else(|| interp_err!("Cannot convert `{index_value:#?}` to usize index."))?;
-        self.value_mut(self.perform_deref(AssignTarget::Local(id))?)?
+        let tar = self.perform_deref_target(AssignTarget::Local(id))?;
+        self.ctx_value_mut(tar)?
             .index_mut(index)
             .ok_or_else(|| interp_err!("Index `{index}` out of bounds."))
-    }
-
-    /// # Panics
-    /// This function will panic if:
-    /// - The `LocalId` doesn't exist
-    /// - The field index doesn't exist
-    /// - The value at the `LocalId` is not an `ADT`
-    #[inline]
-    #[must_use]
-    pub fn index_expect(&self, id: LocalId, idx_id: LocalId) -> &Value {
-        self.index(id, idx_id).expect("Index doesn't exist.")
-    }
-
-    /// # Panics
-    /// This function will panic if:
-    /// - The `LocalId` doesn't exist
-    /// - The field index doesn't exist
-    /// - The value at the `LocalId` is not an `ADT`
-    #[inline]
-    #[must_use]
-    pub fn index_expect_mut(&mut self, id: LocalId, idx_id: LocalId) -> &mut Value {
-        self.index_mut(id, idx_id)
-            .expect("Index doesn't exist mut.")
     }
 
     #[inline]
     #[allow(clippy::missing_errors_doc)]
     pub fn local(&self, id: LocalId) -> InterpResult<&Value> {
-        self.locals
-            .get(id.0 as usize)
-            .ok_or_else(|| interp_err!("Local `{id:?}` does not exist."))
+        self.get(self.local_index(id))
+            .map_err(|_| interp_err!("Local `{id:?}` does not exist."))
     }
 
     #[inline]
     #[allow(clippy::missing_errors_doc)]
     pub fn local_mut(&mut self, id: LocalId) -> InterpResult<&mut Value> {
-        self.locals
-            .get_mut(id.0 as usize)
-            .ok_or_else(|| interp_err!("Local `{id:?}` does not exist."))
+        self.get_mut(self.local_index(id))
+            .map_err(|_| interp_err!("Local `{id:?}` does not exist (mut)."))
     }
 
-    /// # Panics
-    /// Panics if the `LocalId` doesn't exist.
     #[inline]
-    #[must_use]
-    pub fn local_expect(&self, id: LocalId) -> &Value {
-        self.locals
-            .get(id.0 as usize)
-            .expect("Local doesn't exist.")
+    #[allow(clippy::missing_errors_doc)]
+    pub fn ctx_value(&self, at: ContextTarget) -> InterpResult<&Value> {
+        match at {
+            ContextTarget::StackIndex(idx) => self.get(idx),
+            ContextTarget::Field(stack_idx, field_index) => self.get_field(stack_idx, field_index),
+            ContextTarget::Index(stack_idx, index) => self.get_field(stack_idx, index),
+        }
     }
 
-    /// # Panics
-    /// Panics if the `LocalId` doesn't exist.
     #[inline]
-    #[must_use]
-    pub fn local_expect_mut(&mut self, id: LocalId) -> &mut Value {
-        self.locals
-            .get_mut(id.0 as usize)
-            .expect("Local doesn't exist mut.")
+    #[allow(clippy::missing_errors_doc)]
+    pub fn ctx_value_mut(&mut self, at: ContextTarget) -> InterpResult<&mut Value> {
+        match at {
+            ContextTarget::StackIndex(idx) => self.get_mut(idx),
+            ContextTarget::Field(stack_idx, field_index) => {
+                self.get_field_mut(stack_idx, field_index)
+            }
+            ContextTarget::Index(stack_idx, index) => self.get_field_mut(stack_idx, index),
+        }
     }
 
     #[inline]
     #[allow(clippy::missing_errors_doc)]
     pub fn value(&self, at: AssignTarget) -> InterpResult<&Value> {
-        match at {
-            AssignTarget::Local(local_id) => self.local(local_id),
-            AssignTarget::Field(local_id, field_index) => self.field_access(local_id, field_index),
-            AssignTarget::Index(local_id, index_id) => self.index(local_id, index_id),
-        }
+        let target = self.assign_target_to_context_target(at)?;
+        self.ctx_value(target)
     }
 
     #[inline]
     #[allow(clippy::missing_errors_doc)]
     pub fn value_mut(&mut self, at: AssignTarget) -> InterpResult<&mut Value> {
-        match at {
-            AssignTarget::Local(local_id) => self.local_mut(local_id),
-            AssignTarget::Field(local_id, field_index) => {
-                self.field_access_mut(local_id, field_index)
-            }
-            AssignTarget::Index(local_id, index_id) => self.index_mut(local_id, index_id),
+        let target = self.assign_target_to_context_target(at)?;
+        self.ctx_value_mut(target)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ContextTarget {
+    StackIndex(usize),
+    Field(usize, usize /*FieldIndex*/),
+    Index(usize, usize),
+}
+
+impl ContextTarget {
+    #[inline]
+    #[must_use]
+    pub const fn stack_index(&self) -> Option<usize> {
+        match self {
+            Self::StackIndex(stack_idx) => Some(*stack_idx),
+            _ => None,
         }
     }
+}
 
-    /// # Panics
-    /// Panics if the `AssignTarget` doesn't exist.
+// Deref..
+impl ExecutionContext {
     #[inline]
-    #[must_use]
-    pub fn value_expect(&self, at: AssignTarget) -> &Value {
-        self.value(at).expect("Value doesn't exist.")
-    }
-
-    /// # Panics
-    /// Panics if the `AssignTarget` doesn't exist.
-    #[inline]
-    #[must_use]
-    pub fn value_expect_mut(&mut self, at: AssignTarget) -> &mut Value {
-        self.value_mut(at).expect("Value doesn't exist mut.")
+    #[allow(clippy::missing_errors_doc)]
+    pub fn perform_single_deref_ctx_target(
+        &self,
+        at: ContextTarget,
+    ) -> InterpResult<ContextTarget> {
+        match self.ctx_value(at)? {
+            Value::Ref(value) => Ok(*value),
+            _ => Ok(at),
+        }
     }
 
     #[inline]
     #[allow(clippy::missing_errors_doc)]
-    pub fn perform_deref(&self, at: AssignTarget) -> InterpResult<AssignTarget> {
-        let local_mut = match at {
-            AssignTarget::Local(local_id) => self.local(local_id),
-            AssignTarget::Field(local_id, field_index) => self.field_access(local_id, field_index),
-            AssignTarget::Index(local_id, index_id) => self.index(local_id, index_id),
-        }?;
-
-        match local_mut {
-            Value::Ref(a) => self.perform_deref(*a),
+    pub fn perform_deref_ctx_target(&self, at: ContextTarget) -> InterpResult<ContextTarget> {
+        match self.ctx_value(at)? {
+            Value::Ref(value) => self.perform_deref_ctx_target(*value),
             _ => Ok(at),
         }
+    }
+
+    #[inline]
+    #[allow(clippy::missing_errors_doc)]
+    pub fn perform_deref_target(&self, at: AssignTarget) -> InterpResult<ContextTarget> {
+        match self.value(at)? {
+            Value::Ref(value) => self.perform_deref_ctx_target(*value),
+            _ => self.assign_target_to_context_target(at),
+        }
+    }
+
+    #[inline]
+    #[allow(clippy::missing_errors_doc)]
+    #[allow(clippy::missing_panics_doc)]
+    pub fn assign_target_to_context_target(&self, at: AssignTarget) -> InterpResult<ContextTarget> {
+        Ok(match at {
+            AssignTarget::Local(local_id) => ContextTarget::StackIndex(self.local_index(local_id)),
+            AssignTarget::Field(local_id, field_index) => ContextTarget::Field(
+                self.perform_deref_target(AssignTarget::Local(local_id))?
+                    .stack_index()
+                    .expect("Field should be stack index."),
+                field_index,
+            ),
+            AssignTarget::Index(local_id, index_id) => {
+                ContextTarget::Index(self.local_index(local_id), self.index_value(index_id)?)
+            }
+        })
     }
 }
 
@@ -734,7 +809,7 @@ pub struct InterpreterState {
 
     pub native_functions: HashMap<String, Box<KitlangMIRNativeFn>>,
 
-    pub execution_frames: Vec<ExecutionFrame>,
+    pub ctx: ExecutionContext,
 }
 
 impl InterpreterState {
@@ -762,7 +837,7 @@ impl InterpreterState {
         Some(Self {
             entry,
             native_functions: HashMap::new(),
-            execution_frames: Vec::new(),
+            ctx: ExecutionContext::default(),
         })
     }
 }
@@ -793,53 +868,6 @@ impl InterpreterState {
     pub fn execute_from_entry(&mut self, program: &ProgramType) -> InterpResult<Value> {
         // log::info!("Running program: {:#?}", program);
         self.execute_function(program, self.entry, &[])
-    }
-}
-
-impl InterpreterState {
-    #[inline]
-    pub fn push_execution_frame(&mut self, local_count: usize) {
-        self.execution_frames
-            .push(ExecutionFrame::new_with_capacity(local_count));
-    }
-
-    #[inline]
-    pub fn pop_execution_frame(&mut self) -> Option<ExecutionFrame> {
-        self.execution_frames.pop()
-    }
-
-    #[inline]
-    #[allow(clippy::missing_errors_doc)]
-    pub fn execution_frame(&self) -> InterpResult<&ExecutionFrame> {
-        self.execution_frames
-            .last()
-            .ok_or_else(|| interp_err!("No execution frames exist."))
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn execution_frame_mut(&mut self) -> Option<&mut ExecutionFrame> {
-        self.execution_frames.last_mut()
-    }
-
-    /// # Panics
-    /// Panics if there are not any `ExecutionFrame`s.
-    #[inline]
-    #[must_use]
-    pub fn execution_frame_expect(&self) -> &ExecutionFrame {
-        self.execution_frames
-            .last()
-            .expect("No execution frames exist.")
-    }
-
-    /// # Panics
-    /// Panics if there are not any `ExecutionFrame`s.
-    #[inline]
-    #[must_use]
-    pub fn execution_frame_expect_mut(&mut self) -> &mut ExecutionFrame {
-        self.execution_frames
-            .last_mut()
-            .expect("No execution frames exist mut.")
     }
 }
 
@@ -879,8 +907,8 @@ impl InterpreterState {
             ));
         }
 
-        self.push_execution_frame(body.locals.len());
-        self.execution_frame_expect_mut().set_arguments(args);
+        self.ctx.push_stack(body.locals.len());
+        self.ctx.push_arguments(args);
 
         let mut current_block = body
             .block(BasicBlockId::ENTRY_BLOCK)
@@ -901,7 +929,8 @@ impl InterpreterState {
                 BlockExitKind::Branch(operand, true_block, false_block) => {
                     let condition = match operand {
                         Operand::Copy(at) => {
-                            let value = self.perform_deref(*at)?.clone();
+                            let cond_target = self.ctx.perform_deref_target(*at)?;
+                            let value = self.ctx.ctx_value(cond_target)?;
                             value.bool().ok_or_else(|| {
                                 interp_err!(
                                     "Failed to get block branch condition value as a boolean!"
@@ -926,7 +955,11 @@ impl InterpreterState {
                     let args: Vec<_> = operands
                         .iter()
                         .map(|o| match o {
-                            Operand::Copy(local) => Ok(self.perform_deref(*local)?.clone()),
+                            Operand::Copy(local) => Ok(self.ctx.value(*local)?.clone()),
+                            Operand::LValue(local) => {
+                                let ctx_tar = self.ctx.assign_target_to_context_target(*local)?;
+                                Ok(Value::Ref(ctx_tar))
+                            }
                             Operand::Literal(literal) => Ok(literal.into()),
                             Operand::Unit | Operand::Const => Ok(Value::Unit),
                         })
@@ -944,11 +977,8 @@ impl InterpreterState {
             }
         }
 
-        let return_value = self
-            .execution_frame()?
-            .local(LocalId::RETURN_VALUE)
-            .cloned();
-        self.pop_execution_frame();
+        let return_value = self.ctx.local(LocalId::RETURN_VALUE).cloned();
+        self.ctx.pop_stack();
         return_value
     }
 
@@ -956,10 +986,10 @@ impl InterpreterState {
     #[allow(clippy::missing_errors_doc)]
     fn eval_operand(&self, operand: &Operand) -> InterpResult<Value> {
         match operand {
-            Operand::Copy(local) => {
-                // FIXME: Don't assume deref.
-                Ok(self.perform_deref(*local)?.clone())
-            }
+            Operand::Copy(local) => Ok(self.ctx.value(*local)?.clone()),
+            Operand::LValue(local) => Ok(Value::Ref(
+                self.ctx.assign_target_to_context_target(*local)?,
+            )),
             Operand::Unit => Ok(Value::Unit),
             Operand::Literal(literal) => Ok(literal.into()),
             Operand::Const => {
@@ -986,11 +1016,23 @@ impl InterpreterState {
             }
             RValue::UnaryOp(unary_op_kind, operand) => {
                 let rhs_value = self.eval_operand(operand)?;
-                rhs_value.perform_unary_op(*unary_op_kind).ok_or_else(|| {
-                    interp_err!(
-                        "Failed to perform unary operation: {unary_op_kind:?} on {rhs_value:?}"
-                    )
-                })
+                match unary_op_kind {
+                    UnaryOpKind::Dereference => {
+                        let Value::Ref(ctx_tar) = rhs_value else {
+                            return Err(interp_err!(
+                                "Cannot deref non-reference value: {rhs_value:?}"
+                            ));
+                        };
+
+                        let final_tar = self.ctx.perform_single_deref_ctx_target(ctx_tar)?;
+                        self.ctx.ctx_value(final_tar).cloned()
+                    }
+                    _ => rhs_value.perform_unary_op(*unary_op_kind).ok_or_else(|| {
+                        interp_err!(
+                            "Failed to perform unary operation: {unary_op_kind:?} on {rhs_value:?}"
+                        )
+                    }),
+                }
             }
             RValue::Increment(operand) => {
                 let rhs_value = self.eval_operand(operand)?;
@@ -998,7 +1040,9 @@ impl InterpreterState {
                     interp_err!("Failed to perform increment operation on {rhs_value:?}")
                 })
             }
-            RValue::Ref(assign_target) => Ok(Value::Ref(*assign_target)),
+            RValue::Ref(assign_target) => Ok(Value::Ref(
+                self.ctx.assign_target_to_context_target(*assign_target)?,
+            )),
             RValue::ADT(kind, operands) => match kind {
                 crate::intermediate::mir::ADTKind::Struct(_) => {
                     let adt_values = operands
@@ -1033,26 +1077,13 @@ impl InterpreterState {
 
     #[inline]
     #[allow(clippy::missing_errors_doc)]
-    pub fn perform_deref(&self, local: AssignTarget) -> InterpResult<&Value> {
-        let frame = self.execution_frame_expect();
-        Ok(frame.value_expect(frame.perform_deref(local)?))
-    }
-
-    #[inline]
-    #[allow(clippy::missing_errors_doc)]
-    pub fn perform_deref_mut(&mut self, local: AssignTarget) -> InterpResult<&mut Value> {
-        let frame = self.execution_frame_expect_mut();
-        Ok(frame.value_expect_mut(frame.perform_deref(local)?))
-    }
-
-    #[inline]
-    #[allow(clippy::missing_errors_doc)]
     pub fn perform_assignment(
         &mut self,
         target: AssignTarget,
         new_value: Value,
     ) -> InterpResult<()> {
-        let local_mut = self.perform_deref_mut(target)?;
+        let derefed_tar = self.ctx.perform_deref_target(target)?;
+        let local_mut = self.ctx.ctx_value_mut(derefed_tar)?;
         if !local_mut.are_matching_types(&new_value) && !local_mut.is_unit() {
             warn!("Non matching types {target:?}: {local_mut:?} => {new_value:?}");
         }
@@ -1147,7 +1178,10 @@ impl InterpreterState {
     #[allow(clippy::missing_errors_doc)]
     pub fn deref_value(&self, value: Value) -> InterpResult<Value> {
         match value {
-            Value::Ref(at) => Ok(self.perform_deref(at)?.clone()),
+            Value::Ref(ctx_tar) => {
+                let ctx_deref = self.ctx.perform_deref_ctx_target(ctx_tar)?;
+                Ok(self.ctx.ctx_value(ctx_deref)?.clone())
+            }
             _ => Ok(value),
         }
     }
@@ -1158,7 +1192,7 @@ impl InterpreterState {
         match &statement.kind {
             StatementKind::Assign(target, rvalue) => match self.eval_rvalue(rvalue) {
                 Ok(new_value) => {
-                    self.perform_assignment(*target, self.deref_value(new_value)?)?;
+                    self.perform_assignment(*target, new_value)?;
                 }
                 Err(e) => {
                     return Err(interp_err!(

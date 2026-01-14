@@ -90,7 +90,7 @@ impl Parser<'_, '_> {
             let ident_span = self.finish_span(var_ident_span);
 
             let ty = if self.check_kind_advance(Punctuation::Colon) {
-                if ref_type.is_ref() {
+                if ref_type.is_any_ref() {
                     let token = self.peek()?;
                     return Err(ParseError::new(
                         ParseErrorKind::UnexpectedToken(token.kind.clone()),
@@ -99,7 +99,7 @@ impl Parser<'_, '_> {
                 }
 
                 self.parse_ty()?
-            } else if ref_type.is_ref() {
+            } else if ref_type.is_any_ref() {
                 Ty::Ref(
                     Box::new(Ty::This(ident_span)),
                     ref_type.mutability(),

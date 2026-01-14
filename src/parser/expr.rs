@@ -99,6 +99,7 @@ impl Parser<'_, '_> {
         &mut self,
         mut atom: Box<Expression>,
         span_start: u32,
+        deref: bool,
     ) -> PResult<Box<Expression>> {
         while !self.cursor.is_end() {
             atom = match self.peek_at(0)?.kind {
@@ -118,7 +119,11 @@ impl Parser<'_, '_> {
                         _ => self.parse_member_access(atom, span_start),
                     }
                 }
-                ref c if !self.is_double_eq() && c == &TokenKind::Punctuation(Punctuation::Eq) => {
+                ref c
+                    if !self.is_double_eq()
+                        && c == &TokenKind::Punctuation(Punctuation::Eq)
+                        && !deref =>
+                {
                     self.parse_assign_continued(atom, span_start)
                 }
                 _ => return Ok(atom),
@@ -127,7 +132,7 @@ impl Parser<'_, '_> {
         Ok(atom)
     }
 
-    pub fn parse_expr_atom(&mut self) -> PResult<Box<Expression>> {
+    pub fn parse_expr_atom(&mut self, from_deref: bool) -> PResult<Box<Expression>> {
         let span_start = self.begin_span();
 
         let token = self.peek_at(0)?;
@@ -186,23 +191,30 @@ impl Parser<'_, '_> {
                 token,
             )),
         }?;
-        self.process_atom(atom, span_start)
+        self.process_atom(atom, span_start, from_deref)
+    }
+
+    fn parse_reference_atom(&mut self) -> PResult<Box<Expression>> {
+        let span_start = self.begin_span();
+        let mut refs = vec![];
+        while let r = self.parse_ref_and_refmut()?
+            && r.is_any_ref()
+        {
+            refs.push(r);
+        }
+        let mut atom = self.parse_expr_atom(false)?;
+        for reference in refs.into_iter().rev() {
+            atom = Expression::new_boxed(
+                ExpressionKind::Reference(atom, reference.mutability()),
+                self.finish_span(span_start),
+            );
+        }
+        Ok(atom)
     }
 
     fn parse_expr_atom_with_cast(&mut self) -> PResult<Box<Expression>> {
         let span_start = self.begin_span();
-        let refmut = self.parse_ref_and_refmut()?;
-        let mut atom = self.parse_expr_atom()?;
-        let after_atom_span = self.finish_span(span_start);
-
-        atom = if refmut.is_ref() {
-            Expression::new_boxed(
-                ExpressionKind::Reference(atom, refmut.mutability()),
-                after_atom_span,
-            )
-        } else {
-            atom
-        };
+        let mut atom = self.parse_reference_atom()?;
 
         while self.check_kind(Keyword::As) {
             atom = self.parse_cast_op_continued(atom, span_start)?;
@@ -393,6 +405,8 @@ impl Parser<'_, '_> {
     ) -> PResult<Box<Expression>> {
         self.expect_kind(Punctuation::Eq)?;
 
+        //log::info!("Parsing assignment value for {:?}", lhs);
+
         let value_expr = self.parse_expression()?;
 
         Ok(Expression::new_boxed(
@@ -424,7 +438,7 @@ impl Parser<'_, '_> {
         };
         self.cursor.advance();
 
-        let target_expr = self.parse_expr_atom()?;
+        let target_expr = self.parse_expr_atom(unary == UnaryOpKind::Dereference)?;
 
         Ok(Expression::new_boxed(
             ExpressionKind::UnaryOp(unary, target_expr),

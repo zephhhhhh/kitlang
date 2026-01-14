@@ -282,7 +282,7 @@ impl RefType {
     /// Returns `true` if `self` is a `reference`.
     #[inline]
     #[must_use]
-    pub const fn is_ref(self) -> bool {
+    pub const fn is_any_ref(self) -> bool {
         matches!(self, Self::Ref | Self::RefMut)
     }
 }
@@ -394,6 +394,17 @@ impl Parser<'_, '_> {
         }
     }
 
+    /// Parse multiple `&` and `&mut` references from the current cursor position.
+    fn parse_multi_ref_and_refmut(&mut self) -> PResult<Vec<RefType>> {
+        let mut refs = vec![];
+        while let r = self.parse_ref_and_refmut()?
+            && r.is_any_ref()
+        {
+            refs.push(r);
+        }
+        Ok(refs)
+    }
+
     /// Parse an array or slice type from the current cursor position.
     /// # Example
     /// ```ignore
@@ -461,7 +472,7 @@ impl Parser<'_, '_> {
     /// Always expects atleast one `Identifier`.
     pub fn parse_ty(&mut self) -> PResult<Ty> {
         let span_start = self.begin_span();
-        let ref_type = self.parse_ref_and_refmut()?;
+        let ref_types = self.parse_multi_ref_and_refmut()?;
 
         let root_type = match self.peek()?.kind {
             TokenKind::Punctuation(Punctuation::OpenParen) => {
@@ -482,15 +493,16 @@ impl Parser<'_, '_> {
             _ => Ty::new(self.parse_spanned_path()?),
         };
 
-        if ref_type.is_ref() {
-            Ok(Ty::Ref(
-                Box::new(root_type),
+        let mut final_ty = root_type;
+        for ref_type in ref_types.into_iter().rev() {
+            final_ty = Ty::Ref(
+                Box::new(final_ty),
                 ref_type.mutability(),
                 self.finish_span(span_start),
-            ))
-        } else {
-            Ok(root_type)
+            );
         }
+
+        Ok(final_ty)
     }
 
     /// Parse the type identifier for an `impl` block.
