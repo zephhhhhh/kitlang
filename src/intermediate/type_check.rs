@@ -165,6 +165,29 @@ impl TypeChecker<'_> {
             })
             .cloned()
     }
+
+    /// Dereferences the given type recursively and ensures it is resolved.
+    /// # Returns
+    /// * `Ok(KitTy)` if the type was dereferenced and is resolved.
+    /// * `Err(TypeCheckFail)` if the type could not be dereferenced unresolved.
+    #[inline]
+    fn derefed_resolved_type(
+        &self,
+        id: HirId,
+        t: &Type,
+        hlir: &HLIRDisjointMut<'_>,
+    ) -> TypeResult<KitTy> {
+        t.recursive_derefed()
+            .ok_or_else(|| {
+                type_fail!(
+                    hlir.as_ref(),
+                    id,
+                    "Failed to deref to resolve expression type for `{}`",
+                    self.type_name(t.clone())
+                )
+            })
+            .cloned()
+    }
 }
 
 impl TypeChecker<'_> {
@@ -613,92 +636,86 @@ impl TypeChecker<'_> {
             }
             ExprKind::MethodCall(hir_id, ident, arg_ids) => {
                 let expr_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
+                let derefed_ty = self.derefed_resolved_type(*hir_id, &expr_ty, hlir)?;
 
-                match &expr_ty {
-                    Type::Resolved(t) => {
-                        let Some(method_def) =
-                            self.meta.find_ty_method_owner_def(&expr_ty, ident.str())
-                        else {
-                            return Err(type_fail!(
-                                hlir,
-                                expr.id,
-                                "Unable to resolve method '{}' for type {}",
-                                ident.str(),
-                                self.type_name(t)
-                            ));
-                        };
-
-                        let (func_params, func_output) = {
-                            let Some(func) = hlir
-                                .nonmut_ref()
-                                .owning_node(method_def)
-                                .expect("Exists")
-                                .hir_function_ref()
-                            else {
-                                return Err(type_fail!(
-                                    hlir,
-                                    *hir_id,
-                                    "Can't find func def '{:?}'",
-                                    ident
-                                ));
-                            };
-                            assert!(func.is_method, "Func is not a method?");
-                            (func.sig.parameters.clone(), func.sig.output.clone())
-                        };
-
-                        if func_params.len() != arg_ids.len().wrapping_add(1) {
-                            return Err(type_fail!(
-                                on_span,
-                                ident.span,
-                                "Method called with incorrect number of arguments! Expected: `{}`, supplied: `{}`",
-                                func_params.len().saturating_sub(1),
-                                arg_ids.len(),
-                            ));
-                        }
-
-                        let user_params = arg_ids
-                            .iter()
-                            .enumerate()
-                            .map(|(i, id)| {
-                                Ok((
-                                    self.eval_expr_type_by_id_expected(
-                                        *id,
-                                        hlir,
-                                        &func_params[i.wrapping_add(1)],
-                                    )?,
-                                    *id,
-                                ))
-                            })
-                            .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
-
-                        let arg_compare_iter = func_params.iter().skip(1).zip(user_params.iter());
-                        for (expected, (provided, prov_id)) in arg_compare_iter {
-                            if expected != provided {
-                                return Err(type_fail!(
-                                    hlir,
-                                    *prov_id,
-                                    "Method parameter type mismatch. Expected `{}`, found `{}`",
-                                    self.type_name(expected.clone()),
-                                    self.type_name(provided.clone())
-                                ));
-                            }
-                        }
-
-                        Ok(func_output.clone())
-                    }
-                    Type::Unresolved(t) => Err(type_fail!(
+                let Some(method_def) = self
+                    .meta
+                    .find_ty_method_owner_def(&Type::Resolved(derefed_ty.clone()), ident.str())
+                else {
+                    return Err(type_fail!(
                         hlir,
-                        *hir_id,
-                        "Method access type unresolved. {:?}",
-                        self.type_name(t)
-                    )),
+                        expr.id,
+                        "Unable to resolve method '{}' for type {}",
+                        ident.str(),
+                        self.type_name(derefed_ty)
+                    ));
+                };
+
+                let (func_params, func_output) = {
+                    let Some(func) = hlir
+                        .nonmut_ref()
+                        .owning_node(method_def)
+                        .expect("Exists")
+                        .hir_function_ref()
+                    else {
+                        return Err(type_fail!(
+                            hlir,
+                            *hir_id,
+                            "Can't find func def '{:?}'",
+                            ident
+                        ));
+                    };
+                    assert!(func.is_method, "Func is not a method?");
+                    (func.sig.parameters.clone(), func.sig.output.clone())
+                };
+
+                if func_params.len() != arg_ids.len().wrapping_add(1) {
+                    return Err(type_fail!(
+                        on_span,
+                        ident.span,
+                        "Method called with incorrect number of arguments! Expected: `{}`, supplied: `{}`",
+                        func_params.len().saturating_sub(1),
+                        arg_ids.len(),
+                    ));
                 }
+
+                let user_params = arg_ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| {
+                        Ok((
+                            self.eval_expr_type_by_id_expected(
+                                *id,
+                                hlir,
+                                &func_params[i.wrapping_add(1)],
+                            )?,
+                            *id,
+                        ))
+                    })
+                    .collect::<TypeResult<Vec<(Type, HirId)>>>()?;
+
+                let arg_compare_iter = func_params.iter().skip(1).zip(user_params.iter());
+                for (expected, (provided, prov_id)) in arg_compare_iter {
+                    if expected != provided {
+                        return Err(type_fail!(
+                            hlir,
+                            *prov_id,
+                            "Method parameter type mismatch. Expected `{}`, found `{}`",
+                            self.type_name(expected.clone()),
+                            self.type_name(provided.clone())
+                        ));
+                    }
+                }
+
+                Ok(func_output.clone())
             }
             // ExprKind::Index(hir_id, hir_id1) => {},
             ExprKind::FieldAccess(hir_id, ident) => {
                 let expr_ty = self.eval_expr_type_by_id(*hir_id, hlir)?;
-                match expr_ty {
-                    Type::Resolved(KitTy::Abstract(type_id)) => {
+                let derefed_ty = self.derefed_resolved_type(*hir_id, &expr_ty, hlir)?;
+
+                match derefed_ty {
+                    KitTy::Abstract(type_id) => {
                         let type_info = self
                             .meta
                             .type_registry
@@ -709,7 +726,7 @@ impl TypeChecker<'_> {
                             |field| Ok(field.ty.clone()),
                         )
                     }
-                    Type::Resolved(KitTy::Tuple(tys)) => {
+                    KitTy::Tuple(tys) => {
                         let index: usize = ident.str().parse().map_err(|_| {
                             type_fail!(
                                 hlir,
@@ -731,13 +748,7 @@ impl TypeChecker<'_> {
                             |ty| Ok(Type::Resolved(ty.clone())),
                         )
                     }
-                    Type::Unresolved(t) => Err(type_fail!(
-                        hlir,
-                        *hir_id,
-                        "Field access type unresolved. {:?}",
-                        self.type_name(t)
-                    )),
-                    Type::Resolved(t) => Err(type_fail!(
+                    t => Err(type_fail!(
                         hlir,
                         *hir_id,
                         "Can't access fields of type: {:?}",

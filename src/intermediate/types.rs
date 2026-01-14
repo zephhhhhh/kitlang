@@ -408,6 +408,56 @@ impl KitTy {
             _ => None,
         }
     }
+
+    /// Performs a _single_ dereference of the type if it is a reference or mutable reference.
+    /// # Returns
+    /// *   `Some(KitTy)`: Of the inner type, if `self` is a reference or mutable reference type.
+    /// *   `None`: If `self` is not a reference type.
+    /// # Example
+    /// *   If `self` is `&i32`, this function will return `i32`.
+    /// *   If `self` is `&&i32`, this function will return `&i32`.
+    /// *   If `self` is `i32`, this function will return `None`.
+    #[inline]
+    #[must_use]
+    pub const fn deref(&self) -> Option<&KitTy> {
+        match self {
+            Self::Ref(inner) | Self::RefMut(inner) => Some(inner),
+            _ => None,
+        }
+    }
+
+    /// Performs dereferencing recursively until a non-reference type is found.
+    /// # Returns
+    /// *   `Some(KitTy)`: Of the final inner type, if `self` is a reference or mutable reference type.
+    /// *   `None`: If `self` is not a reference type.
+    /// # Example
+    /// *   If `self` is `&i32`, this function will return `i32`.
+    /// *   If `self` is `&&i32`, this function will return `i32`.
+    /// *   If `self` is `i32`, this function will return `None`.
+    #[inline]
+    #[must_use]
+    pub fn recursive_deref(&self) -> Option<&KitTy> {
+        std::iter::successors(self.deref(), |ty| ty.deref()).last()
+    }
+
+    /// Performs dereferencing recursively until a non-reference type is found.
+    /// This function will return the final inner type even if `self` is not a reference type.
+    /// # Returns
+    /// *   [`&KitTy`]: Of the final inner type, if `self` is a reference or mutable reference type.
+    /// *   [`&KitTy`]: Of `self`, if `self` is not a reference type
+    /// # Example
+    /// *   If `self` is `&i32`, this function will return `i32`.
+    /// *   If `self` is `&&i32`, this function will return `i32`.
+    /// *   If `self` is `i32`, this function will return `i32`.
+    #[inline]
+    #[must_use]
+    pub fn recursive_derefed(&self) -> &KitTy {
+        if let Some(inner) = self.recursive_deref() {
+            inner
+        } else {
+            self
+        }
+    }
 }
 
 impl KitTy {

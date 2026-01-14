@@ -89,6 +89,30 @@ pub enum Type {
 }
 
 impl Type {
+    /// Returns [`Type::Unresolved`] if the type is `Unresolved`, otherwise calls `f` with the
+    /// inner [`KitTy`] value and returns the result as a Resolved type.
+    #[inline]
+    #[must_use]
+    pub fn and_then<F: FnOnce(KitTy) -> KitTy>(self, f: F) -> Type {
+        match self {
+            Self::Resolved(v) => Type::Resolved(f(v)),
+            Self::Unresolved(u) => Type::Unresolved(u),
+        }
+    }
+
+    /// Returns [`Type::Unresolved`] if the type is `Unresolved`, otherwise calls `f` with the
+    /// inner [`KitTy`] value and returns the result.
+    #[inline]
+    #[must_use]
+    pub fn map<F: FnOnce(KitTy) -> Type>(self, f: F) -> Type {
+        match self {
+            Self::Resolved(v) => f(v),
+            Self::Unresolved(u) => Type::Unresolved(u),
+        }
+    }
+}
+
+impl Type {
     /// Create a new `Type` representing the unit type.
     #[inline]
     #[must_use]
@@ -132,6 +156,33 @@ impl Type {
         }
     }
 
+    /// Returns `true` if the type is a reference type.
+    #[inline]
+    #[must_use]
+    pub const fn is_ref(&self) -> bool {
+        match self {
+            Self::Resolved(kit_ty) => kit_ty.is_ref(),
+            Self::Unresolved(_) => false,
+        }
+    }
+
+    /// Returns `true` if the type is a mutable reference type.
+    #[inline]
+    #[must_use]
+    pub const fn is_ref_mut(&self) -> bool {
+        match self {
+            Self::Resolved(kit_ty) => kit_ty.is_ref_mut(),
+            Self::Unresolved(_) => false,
+        }
+    }
+
+    /// Returns `true` if the type is a reference or mutable reference type.
+    #[inline]
+    #[must_use]
+    pub const fn is_any_ref(&self) -> bool {
+        self.is_ref() || self.is_ref_mut()
+    }
+
     /// Get the resolved Kit type, if it exists.
     #[inline]
     #[must_use]
@@ -159,6 +210,111 @@ impl Type {
             },
             Self::Unresolved(_) => None,
         }
+    }
+
+    /// Performs a _single_ dereference of the type if it is a reference or mutable reference.
+    /// # Returns
+    /// *   `Some(KitTy)`: Of the inner type, if `self` is a reference or mutable reference type.
+    /// *   `None`: If `self` is not a reference type, or `self` is [`Type::Unresolved`].
+    /// # Example
+    /// *   If `self` is `&i32`, this function will return `i32`.
+    /// *   If `self` is `&&i32`, this function will return `&i32`.
+    /// *   If `self` is `i32`, this function will return `None`.
+    /// *   If `self` is [`Type::Unresolved(..)`], this function will return `None`.
+    /// # Note
+    /// This only works for [`Type::Resolved`] types.
+    #[inline]
+    #[must_use]
+    pub const fn deref(&self) -> Option<&KitTy> {
+        match self {
+            Self::Resolved(kit_ty) => kit_ty.deref(),
+            Self::Unresolved(_) => None,
+        }
+    }
+
+    /// Performs dereferencing recursively until a non-reference type is found.
+    /// # Returns
+    /// *   `Some(KitTy)`: Of the final inner type, if `self` is a reference or mutable reference type.
+    /// *   `None`: If `self` is not a reference type, or `self` is [`Type::Unresolved`].
+    /// # Example
+    /// *   If `self` is `&i32`, this function will return `i32`.
+    /// *   If `self` is `&&i32`, this function will return `i32`.
+    /// *   If `self` is `i32`, this function will return `None`.
+    /// *   If `self` is [`Type::Unresolved(..)`], this function will return `None`.
+    /// # Note
+    /// This only works for [`Type::Resolved`] types.
+    #[inline]
+    #[must_use]
+    pub fn recursive_deref(&self) -> Option<&KitTy> {
+        match self {
+            Self::Resolved(kit_ty) => kit_ty.recursive_deref(),
+            Self::Unresolved(_) => None,
+        }
+    }
+
+    /// Performs dereferencing recursively until a non-reference type is found.
+    /// This function will return the final inner type even if `self` is not a reference type.
+    /// # Returns
+    /// *   `Some(KitTy)`: Of the final inner type, if `self` is a reference or mutable reference type.
+    /// *   `Some(KitTy)`: Of `self`, if `self` is not a reference type
+    /// *   `None`: If `self` is [`Type::Unresolved(..)`].
+    /// # Example
+    /// *   If `self` is `&i32`, this function will return `i32`.
+    /// *   If `self` is `&&i32`, this function will return `i32`.
+    /// *   If `self` is `i32`, this function will return `i32`.
+    /// *   If `self` is [`Type::Unresolved(..)`], this function will return `None`.
+    #[inline]
+    #[must_use]
+    pub fn recursive_derefed(&self) -> Option<&KitTy> {
+        match self {
+            Self::Resolved(kit_ty) => Some(kit_ty.recursive_derefed()),
+            Self::Unresolved(_) => None,
+        }
+    }
+
+    /// Performs dereferencing recursively until a non-reference type is found.
+    /// This function will return the final inner type even if the original type is not a reference type.
+    /// # Returns
+    /// *   [`Type`]: Of the final inner type, if the inner type is a reference or mutable reference type.
+    /// *   `None`: If `self` is not a reference type, or `self` is [`Type::Unresolved`].
+    /// # Example
+    /// *   If `self` is `&i32`, this function will return [`Type::Resolved(i32)`].
+    /// *   If `self` is `&&i32`, this function will return [`Type::Resolved(i32)`].
+    /// *   If `self` is `i32`, this function will return [`Type::Resolved(i32)`].
+    /// *   If `self` is [`Type::Unresolved(..)`], this function will return [`Type::Unresolved(..)`].
+    #[inline]
+    #[must_use]
+    pub fn recursive_derefed_type(&self) -> Type {
+        match self.recursive_derefed() {
+            Some(inner_ty) => Type::Resolved(inner_ty.clone()),
+            None => self.clone(),
+        }
+    }
+
+    /// Check if all references that make up this type are mutable references.
+    /// # Returns
+    /// *   `true`: If all references are mutable references.
+    /// *   `false`: If any reference is an immutable reference, or if the type is not a reference type.
+    #[inline]
+    #[must_use]
+    pub fn are_all_refs_mut(&self) -> bool {
+        let first = self.resolved().filter(|_| self.is_any_ref());
+        std::iter::successors(first, |ty| ty.deref())
+            .take_while(|ty| ty.is_any_ref())
+            .all(KitTy::is_ref_mut)
+    }
+
+    /// Returns if all references that make up this type are immutable references.
+    /// # Returns
+    /// *   `true`: If all references are immutable references.
+    /// *   `false`: If any reference is an mutable reference, or if the type is not a reference type.
+    #[inline]
+    #[must_use]
+    pub fn are_all_refs_non_mut(&self) -> bool {
+        let first = self.resolved().filter(|_| self.is_any_ref());
+        std::iter::successors(first, |ty| ty.deref())
+            .take_while(|ty| ty.is_any_ref())
+            .all(KitTy::is_ref)
     }
 }
 
@@ -649,6 +805,20 @@ impl Debug for Function {
             .field("vis", &self.vis)
             .field("body", &self.body)
             .finish()
+    }
+}
+
+impl Function {
+    /// If the function is a method, get the type of the `self` parameter.
+    /// Otherwise, return `None`.
+    #[inline]
+    #[must_use]
+    pub fn self_type(&self) -> Option<&Type> {
+        if self.is_method {
+            self.sig.parameters.first()
+        } else {
+            None
+        }
     }
 }
 

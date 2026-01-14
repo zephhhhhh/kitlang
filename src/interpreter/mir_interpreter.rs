@@ -345,7 +345,7 @@ impl Value {
             Self::Float(f) => perform_float_op(*f, rhs.float()?, op),
             Self::String(s) => perform_string_op(s, rhs.str_ref()?, op),
             Self::Boolean(b) => perform_bool_op(*b, rhs.bool()?, op),
-            Self::Ref(_) => panic!("Cannot perform binary op on reference values!"),
+            Self::Ref(..) => panic!("Cannot perform binary op on reference values!"),
             Self::ADT(_) => panic!("Cannot perform binary op on ADT values!"),
             Self::Tuple(_) => panic!("Cannot perform binary op on Tuple values!"),
             Self::Array(_) => panic!("Cannot perform binary op on Array values!"),
@@ -411,7 +411,7 @@ impl Value {
     #[inline]
     #[must_use]
     pub const fn is_reference(&self) -> bool {
-        matches!(self, Self::Ref(_))
+        matches!(self, Self::Ref(..))
     }
 
     #[inline]
