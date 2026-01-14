@@ -1109,8 +1109,8 @@
 <a href=#1109 id=1109 data-nosnippet>1109</a>            })
 <a href=#1110 id=1110 data-nosnippet>1110</a>            .collect::&lt;<span class="prelude-ty">Option</span>&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;&gt;()
 <a href=#1111 id=1111 data-nosnippet>1111</a>        <span class="kw">else </span>{
-<a href=#1112 id=1112 data-nosnippet>1112</a>            <span class="macro">push_lower_err!</span>(<span class="self">self</span>, hlir, expr_id, <span class="string">"Failed to eval all args!"</span>);
-<a href=#1113 id=1113 data-nosnippet>1113</a>            <span class="kw">return</span>;
+<a href=#1112 id=1112 data-nosnippet>1112</a>            <span class="comment">//push_lower_err!(self, hlir, expr_id, "Failed to eval all args!");
+<a href=#1113 id=1113 data-nosnippet>1113</a>            </span><span class="kw">return</span>;
 <a href=#1114 id=1114 data-nosnippet>1114</a>        };
 <a href=#1115 id=1115 data-nosnippet>1115</a>
 <a href=#1116 id=1116 data-nosnippet>1116</a>        <span class="kw">if </span><span class="self">self</span>.is_directive_set() {
